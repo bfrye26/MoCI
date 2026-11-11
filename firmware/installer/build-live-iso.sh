@@ -15,7 +15,11 @@ cd "$WORK"
 # The host is Ubuntu, but the live installer must use Debian repositories.
 # Explicit mode and mirrors prevent live-build from inheriting the Ubuntu
 # archive (archive.ubuntu.com/ubuntu/dists/bookworm does not exist).
+# UEFI-only installer: do not invoke the Syslinux/ISOLINUX BIOS bootloader.
+# Ubuntu's live-build may fail assembling Syslinux when its files are absent.
+# The target router is UEFI, so use GRUB EFI exclusively.
 lb config --mode debian --distribution bookworm --architectures amd64 --binary-images iso-hybrid \
+  --bootloaders grub-efi \
   --mirror-bootstrap https://deb.debian.org/debian \
   --mirror-chroot https://deb.debian.org/debian \
   --mirror-binary https://deb.debian.org/debian \
