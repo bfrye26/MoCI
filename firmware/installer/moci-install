@@ -27,8 +27,8 @@ while read -r dev type; do
   ((bytes >= 17179869184)) || continue
   disks+=("$dev" "$(lsblk -dn -o SIZE,MODEL "$dev" | xargs)")
 done < <(lsblk -dnpo NAME,TYPE)
-[ -n "\${disks[0]-}" ] || fail "No eligible SSD was found."
-TARGET=$(ask --menu "Select the DESTINATION DISK (all data will be erased):" 20 80 12 "\${disks[@]}") || exit 1
+[ -n "${disks[0]-}" ] || fail "No eligible SSD was found."
+TARGET=$(ask --menu "Select the DESTINATION DISK (all data will be erased):" 20 80 12 "${disks[@]}") || exit 1
 [[ -b "$TARGET" && "$(lsblk -dn -o TYPE "$TARGET")" == disk && "$TARGET" != "$live_disk" ]] || fail "Invalid disk choice."
 nics=()
 for link in /sys/class/net/*; do
@@ -38,9 +38,9 @@ for link in /sys/class/net/*; do
   [[ "$mac" =~ ^([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}$ ]] || continue
   nics+=("$nic" "$mac")
 done
-[ -n "\${nics[2]-}" ] || fail "Two physical Ethernet ports are required."
-wan=$(ask --menu "Select WAN/uplink Ethernet port:" 18 80 10 "\${nics[@]}") || exit 1
-lan=$(ask --menu "Select LAN/client Ethernet port:" 18 80 10 "\${nics[@]}") || exit 1
+[ -n "${nics[2]-}" ] || fail "Two physical Ethernet ports are required."
+wan=$(ask --menu "Select WAN/uplink Ethernet port:" 18 80 10 "${nics[@]}") || exit 1
+lan=$(ask --menu "Select LAN/client Ethernet port:" 18 80 10 "${nics[@]}") || exit 1
 [ "$wan" != "$lan" ] || fail "WAN and LAN cannot be the same."
 wan_mac=$(cat /sys/class/net/"$wan"/address)
 lan_mac=$(cat /sys/class/net/"$lan"/address)
@@ -52,7 +52,7 @@ IFS=. read -r a b c d <<< "$ip"
 for octet in "$a" "$b" "$c" "$d"; do ((10#$octet <= 255)) || fail "Invalid IP octet."; done
 ((10#$a > 0 && 10#$a < 224 && 10#$d > 0 && 10#$d < 255)) || fail "Invalid host IP."
 pass=$(ask --passwordbox "Administrator password (12+ characters):" 10 70) || exit 1
-((\${#pass} >= 12)) || fail "Password must be at least 12 characters."
+((${#pass} >= 12)) || fail "Password must be at least 12 characters."
 again=$(ask --passwordbox "Confirm administrator password:" 10 70) || exit 1
 [ "$pass" = "$again" ] || fail "Passwords did not match."
 hash=$(printf '%s\n' "$pass" | openssl passwd -6 -stdin)
