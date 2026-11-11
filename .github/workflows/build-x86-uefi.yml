@@ -43,6 +43,22 @@ jobs:
         run: |
           cd "$RUNNER_TEMP/openwrt/bin/targets/x86/64"
           sha256sum *ext4-combined-efi.img.gz > moci-firmware-sha256sums.txt
+      - name: Build interactive USB installer ISO
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y live-build xorriso isolinux syslinux-common squashfs-tools debootstrap
+          IMAGE=$(find "$RUNNER_TEMP/openwrt/bin/targets/x86/64" -maxdepth 1 -name '*ext4-combined-efi.img.gz' -print -quit)
+          test -n "$IMAGE"
+          sudo bash firmware/installer/build-live-iso.sh "$IMAGE" "$RUNNER_TEMP/moci-installer"
+          sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/moci-installer"
+          test -s "$RUNNER_TEMP/moci-installer/MoCI-x86-64-UEFI-Installer-UNTESTED.iso"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: moci-x86-64-usb-installer-UNTESTED
+          path: |
+            ${{ runner.temp }}/moci-installer/MoCI-x86-64-UEFI-Installer-UNTESTED.iso
+            ${{ runner.temp }}/moci-installer/SHA256SUMS
+          retention-days: 30
       - uses: actions/upload-artifact@v4
         with:
           name: moci-openwrt-x86-64-uefi-UNTESTED
