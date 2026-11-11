@@ -101,9 +101,14 @@ wan=\$(resolve_nic '$wan_mac') || exit 1
 lan=\$(resolve_nic '$lan_mac') || exit 1
 [ "\$wan" != "\$lan" ] || exit 1
 uci -q set system.@system[0].hostname='$name'
+# OpenWrt x86's standard LAN is carried by br-lan. Update its bridge port
+# instead of trying to bind an IP directly to an enslaved physical NIC.
+[ "\$(uci -q get network.@device[0].name)" = 'br-lan' ] || exit 1
+uci -q delete network.@device[0].ports
+uci -q add_list network.@device[0].ports="\$lan"
 uci -q set network.lan=interface
 uci -q set network.lan.proto=static
-uci -q set network.lan.device="\$lan"
+uci -q set network.lan.device='br-lan'
 uci -q set network.lan.ipaddr='$ip'
 uci -q set network.lan.netmask='255.255.255.0'
 uci -q set network.wan=interface
