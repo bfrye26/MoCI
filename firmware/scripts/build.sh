@@ -14,6 +14,7 @@ rm -rf package/moci/.git
 cp -a "$SOURCE_V07/moci-app-docker"/. package/moci-app-docker/
 mkdir -p files
 cp -a "$WORK/files"/. files/
+chmod 0755 files/etc/uci-defaults/90-moci-setup
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 cat > .config <<'CONFIG'
