@@ -29,7 +29,7 @@ lb config --mode debian --distribution bookworm --architectures amd64 --binary-i
 # package installation and the resulting live system.
 mkdir -p config/archives config/package-lists config/includes.chroot/usr/local/sbin \
   config/includes.chroot/opt/moci config/includes.chroot/etc/profile.d
-printf '%s\\n' 'deb https://security.debian.org/debian-security bookworm-security main' \
+printf '%s\n' 'deb https://security.debian.org/debian-security bookworm-security main' \
   > config/archives/moci-security.list.chroot
 cp config/archives/moci-security.list.chroot config/archives/moci-security.list.binary
 cat > config/package-lists/moci.list.chroot <<'PKGS'
