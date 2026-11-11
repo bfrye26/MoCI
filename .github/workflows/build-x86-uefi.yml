@@ -1,5 +1,11 @@
 name: OpenWrt x86-64 UEFI firmware (experimental)
 on:
+  push:
+    branches: ['develop/docker-manager']
+    paths:
+      - '.github/workflows/build-x86-uefi.yml'
+      - 'firmware/**'
+      - 'integrations/docker-manager/**'
   workflow_dispatch:
 permissions:
   contents: read
