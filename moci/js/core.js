@@ -1,6 +1,9 @@
 export class OpenWrtCore {
 	constructor() {
-		this.sessionId = localStorage.getItem('ubus_session');
+		this.sessionId = sessionStorage.getItem('ubus_session');
+		// Remove legacy persisted credentials and tokens on load.
+		localStorage.removeItem('saved_credentials');
+		localStorage.removeItem('ubus_session');
 		this.features = {};
 		this.modules = new Map();
 		this.routes = new Map();
@@ -109,12 +112,7 @@ export class OpenWrtCore {
 			}
 		}
 
-		const savedCreds = this.getSavedCredentials();
-		if (savedCreds) {
-			await this.autoLogin(savedCreds.username, savedCreds.password);
-		} else {
-			this.showLoginView();
-		}
+		this.showLoginView();
 	}
 
 	async loadFeatures() {
@@ -277,34 +275,7 @@ export class OpenWrtCore {
 		}
 	}
 
-	getSavedCredentials() {
-		try {
-			const saved = localStorage.getItem('saved_credentials');
-			return saved ? JSON.parse(saved) : null;
-		} catch {
-			return null;
-		}
-	}
-
-	saveCredentials(username, password) {
-		localStorage.setItem('saved_credentials', JSON.stringify({ username, password }));
-	}
-
-	clearSavedCredentials() {
-		localStorage.removeItem('saved_credentials');
-	}
-
-	async autoLogin(username, password) {
-		try {
-			await this.login(username, password, true);
-		} catch (err) {
-			console.error('Auto-login failed:', err);
-			this.clearSavedCredentials();
-			this.showLoginView();
-		}
-	}
-
-	async login(username, password, rememberMe = false) {
+	async login(username, password) {
 		const response = await fetch('/ubus', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
@@ -328,11 +299,7 @@ export class OpenWrtCore {
 
 		if (data.result && data.result[1] && data.result[1].ubus_rpc_session) {
 			this.sessionId = data.result[1].ubus_rpc_session;
-			localStorage.setItem('ubus_session', this.sessionId);
-
-			if (rememberMe) {
-				this.saveCredentials(username, password);
-			}
+			sessionStorage.setItem('ubus_session', this.sessionId);
 
 			await this.initSession();
 		} else {
@@ -355,8 +322,7 @@ export class OpenWrtCore {
 		} catch {}
 
 		this.stopPolling();
-		localStorage.removeItem('ubus_session');
-		this.clearSavedCredentials();
+		sessionStorage.removeItem('ubus_session');
 		this.sessionId = null;
 		this.showLoginView();
 	}
@@ -367,16 +333,14 @@ export class OpenWrtCore {
 		document.getElementById('main-view').classList.add('hidden');
 
 		const loginForm = document.getElementById('login-form');
-		const rememberCheckbox = document.getElementById('remember-me');
 
 		loginForm.onsubmit = async e => {
 			e.preventDefault();
 			const username = document.getElementById('username').value;
 			const password = document.getElementById('password').value;
-			const rememberMe = rememberCheckbox?.checked || false;
 
 			try {
-				await this.login(username, password, rememberMe);
+				await this.login(username, password);
 			} catch (err) {
 				console.error('Login error:', err);
 				this.showToast('Login failed: ' + err.message, 'error');
