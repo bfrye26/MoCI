@@ -105,7 +105,7 @@ def spec_validate(spec):
         if not isinstance(ports,list) or len(ports)>8 or not isinstance(volumes,list) or len(volumes)>4:
             raise ValueError('Invalid service mappings')
         for p in ports:
-            if not isinstance(p,str) or not re.fullmatch(r'127\\.0\\.0\\.1:[0-9]{4,5}:[0-9]{1,5}',p):
+            if not isinstance(p,str) or not re.fullmatch(r'127\.0\.0\.1:[0-9]{4,5}:[0-9]{1,5}',p):
                 raise ValueError('Only local TCP ports allowed')
             port=int(p.split(':')[1])
             if not 1024<=port<=65535 or port in ports_used:
