@@ -22,11 +22,11 @@ lb config --mode debian --distribution bookworm --architectures amd64 --binary-i
   --mirror-chroot-security https://security.debian.org/debian-security \
   --mirror-binary-security https://security.debian.org/debian-security \
   --archive-areas main --bootappend-live "boot=live components quiet" \
-  # Ubuntu live-build's automatic firmware discovery fetches the obsolete
-  # /dists/bookworm/Contents-amd64.gz and fails with HTTP 404. The ISO is a
-  # minimal installer, not the router runtime; skip auto firmware discovery.
   --debian-installer none --security false \
   --firmware-chroot false --firmware-binary false
+# Ubuntu live-build's automatic firmware discovery fetches the obsolete
+# /dists/bookworm/Contents-amd64.gz and fails with HTTP 404. The ISO is a
+# minimal installer, not the router runtime; skip auto firmware discovery.
 # Ubuntu 24.04 ships an older live-build that constructs 'bookworm/updates'
 # for Debian security, a nonexistent suite (HTTP 404). Prevent that
 # automatic source and add Debian 12's valid suite explicitly for both
