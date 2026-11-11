@@ -5,6 +5,7 @@ export default class ApplicationsAddon {
     this.core.registerRoute('/docker', () => this.render());
     this.active = 'catalog';
     this.category = 'All';
+    this.profile = 'all';
   }
   async rpc(method, args={}) {
     const [status, data] = await this.core.ubusCall('moci-docker', method, args);
@@ -53,13 +54,29 @@ export default class ApplicationsAddon {
   }
   renderCatalog(root,apps) {
     const categories=['All',...new Set(apps.map(a=>a.category))];
-    root.innerHTML=`<div class="docker-intro"><h2>Homelab App Store</h2><p>Browse useful self-hosted software. Installation requires a reviewed template and an administrator-approved immutable image. Unavailable apps are shown for reference.</p></div>
-      <div class="docker-filters">${categories.map(c=>`<button class="action-btn" data-category="${this.esc(c)}">${this.esc(c)}</button>`).join('')}</div>
-      <div class="docker-app-grid">${apps.map(a=>`<article class="docker-app-card" data-app-category="${this.esc(a.category)}"><small>${this.esc(a.category)}</small><h3>${this.esc(a.name)}</h3><p>${this.esc(a.description)}</p><footer><span>${a.ready?'Approved':'Setup required'}</span><button class="action-btn" data-install="${this.esc(a.id)}" ${a.ready?'':'disabled'}>Install</button></footer></article>`).join('')}</div>`;
-    root.querySelectorAll('[data-category]').forEach(b=>b.addEventListener('click',()=>{
-      this.category=b.dataset.category;
-      root.querySelectorAll('[data-app-category]').forEach(card=>{card.hidden=this.category!=='All'&&card.dataset.appCategory!==this.category;});
-    }));
+    root.innerHTML=`<div class="docker-intro"><h2>Applications</h2><p>Browse ${apps.length} self-hosted services for office networks and homelabs. Apps marked Setup required are not installable until reviewed templates, approved digests and authentication gates are ready.</p></div>
+      <div class="docker-filters" role="group" aria-label="Application profiles">
+      ${[['all','All apps'],['office','Office LAN'],['home','Homelab'],['both','Office + Homelab']].map(([id,label])=>`<button type="button" class="action-btn" data-profile="${id}" aria-pressed="${this.profile===id}">${label}</button>`).join('')}
+      </div>
+      <div class="docker-filters" role="group" aria-label="Application categories">
+      ${categories.map(c=>`<button type="button" class="action-btn" data-category="${this.esc(c)}" aria-pressed="${this.category===c}">${this.esc(c)}</button>`).join('')}</div>
+      <p class="docker-result-count" aria-live="polite"></p>
+      <div class="docker-app-grid">${apps.map(a=>`<article class="docker-app-card" data-app-category="${this.esc(a.category)}" data-app-profile="${this.esc(a.profile||'both')}"><small>${this.esc(a.category)} · ${this.esc(a.complexity||'review')} setup</small><h3>${this.esc(a.name)}</h3><p>${this.esc(a.description)}</p>${a.risk&&a.risk!=='review'?`<p class="docker-app-warning">Attention: ${this.esc(a.risk.replaceAll('-',' '))}</p>`:''}<footer><span>${a.ready?'Approved':'Setup required'}</span><button type="button" class="action-btn" data-install="${this.esc(a.id)}" ${a.ready?'':'disabled'}>Install</button></footer></article>`).join('')}</div>`;
+    const updateFilters=()=>{
+      let visible=0;
+      root.querySelectorAll('[data-app-category]').forEach(card=>{
+        const matchCategory=this.category==='All'||card.dataset.appCategory===this.category;
+        const matchProfile=this.profile==='all'||card.dataset.appProfile===this.profile||card.dataset.appProfile==='both';
+        card.hidden=!(matchCategory&&matchProfile);
+        if(!card.hidden)visible++;
+      });
+      root.querySelector('.docker-result-count').textContent=`${visible} apps shown`;
+      root.querySelectorAll('[data-profile]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.profile===this.profile)));
+      root.querySelectorAll('[data-category]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.category===this.category)));
+    };
+    root.querySelectorAll('[data-category]').forEach(b=>b.addEventListener('click',()=>{this.category=b.dataset.category;updateFilters();}));
+    root.querySelectorAll('[data-profile]').forEach(b=>b.addEventListener('click',()=>{this.profile=b.dataset.profile;updateFilters();}));
+    updateFilters();
     root.querySelectorAll('[data-install]').forEach(b=>b.addEventListener('click',async()=>{
       if(!window.confirm('Install approved app '+b.dataset.install+'?'))return;
       try{await this.rpc('install_catalog',{id:b.dataset.install});this.core.showToast('Installation completed','success');await this.renderView('managed_stacks');}
