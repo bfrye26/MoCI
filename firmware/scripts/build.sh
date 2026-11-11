@@ -9,8 +9,10 @@ cd "$OPENWRT_SRC"
 [[ -f "$MOCI_SRC/Makefile" && -f "$MOCI_SRC/dist/moci/index.html" ]] || { echo 'MoCI dist not built' >&2; exit 1; }
 [[ -f "$SOURCE_V07/moci-app-docker/Makefile" ]] || { echo 'Docker add-on source not imported' >&2; exit 1; }
 mkdir -p package/moci package/moci-app-docker
-cp -a "$MOCI_SRC"/. package/moci/
-rm -rf package/moci/.git
+# Copy only MoCI's buildable package sources. Do not recursively embed
+# firmware scripts, Docker integrations, Git metadata or development assets.
+cp "$MOCI_SRC/Makefile" "$MOCI_SRC/LICENSE" "$MOCI_SRC/rpcd-acl.json" package/moci/
+cp -a "$MOCI_SRC/files" "$MOCI_SRC/dist" package/moci/
 cp -a "$SOURCE_V07/moci-app-docker"/. package/moci-app-docker/
 mkdir -p files
 cp -a "$WORK/files"/. files/
