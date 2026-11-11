@@ -82,7 +82,7 @@ def catalog():
         if not isinstance(appid,str) or not NAME.fullmatch(appid): continue
         image=pinned.get(appid)
         ready=bool(WRITES_ENABLED and app.get('template_available') and image in approved and image.split('@')[0]==app.get('repository')) if image else False
-        apps.append({k:app.get(k) for k in ('id','name','description','category','repository') } | {'ready':ready})
+        apps.append({k:app.get(k) for k in ('id','name','description','category','repository','profile','complexity','risk') } | {'ready':ready})
     return {'catalog':apps}
 
 def spec_validate(spec):
