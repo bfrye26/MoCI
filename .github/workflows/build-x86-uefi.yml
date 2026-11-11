@@ -1,0 +1,47 @@
+name: OpenWrt x86-64 UEFI firmware (experimental)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib gettext git libncurses-dev libssl-dev python3 python3-setuptools rsync unzip zlib1g-dev file wget curl subversion swig time zip libelf-dev jq
+      - name: Build MoCI frontend
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+          test -f dist/moci/index.html
+      - name: Verify Docker package is imported
+        run: |
+          test -f integrations/docker-manager/moci-app-docker/Makefile
+          test -f integrations/docker-manager/moci-app-docker/files/moci-docker-api
+      - name: Pin OpenWrt release
+        run: git clone --depth 1 --branch v25.12.2 https://github.com/openwrt/openwrt.git "$RUNNER_TEMP/openwrt"
+      - name: Build firmware
+        env:
+          OPENWRT_SRC: ${{ runner.temp }}/openwrt
+          MOCI_SRC: ${{ github.workspace }}
+          SOURCE_V07: ${{ github.workspace }}/integrations/docker-manager
+          JOBS: '2'
+        run: bash firmware/scripts/build.sh
+      - name: Generate SHA256 checksums
+        run: |
+          cd "$RUNNER_TEMP/openwrt/bin/targets/x86/64"
+          sha256sum *ext4-combined-efi.img.gz > moci-firmware-sha256sums.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: moci-openwrt-x86-64-uefi-UNTESTED
+          path: |
+            ${{ runner.temp }}/openwrt/bin/targets/x86/64/*ext4-combined-efi.img.gz
+            ${{ runner.temp }}/openwrt/bin/targets/x86/64/*manifest
+            ${{ runner.temp }}/openwrt/bin/targets/x86/64/moci-firmware-sha256sums.txt
+          retention-days: 30
