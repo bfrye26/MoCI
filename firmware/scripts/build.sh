@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# WSL2 imports Windows PATH entries by default. OpenWrt's Go package
+# exports PATH in generated shell commands, where Windows directories with
+# spaces or parentheses can break compilation (notably dockerd).
+# Do not forward the Windows PATH into the OpenWrt build.
+export PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 : "${OPENWRT_SRC:?Set OPENWRT_SRC to OpenWrt source}"
 : "${MOCI_SRC:?Set MOCI_SRC to MoCI checkout}"
 : "${SOURCE_V07:?Set SOURCE_V07 to integrated Docker add-on source}"
