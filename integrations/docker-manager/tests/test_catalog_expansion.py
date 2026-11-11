@@ -21,7 +21,7 @@ class CatalogueExpansionTests(unittest.TestCase):
     def test_reference_article_apps_covered(self):
         required = {
             "homepage", "home-assistant", "plex", "jellyfin",
-            "nextcloud", "pihole", "nginx-proxy-manager", "watchtower",
+            "nextcloud", "portainer", "pihole", "nginx-proxy-manager", "watchtower",
             "duplicati", "openspeedtest", "tautulli", "audiobookshelf",
             "immich", "netdata", "fail2ban", "dashy",
         }
@@ -35,7 +35,7 @@ class CatalogueExpansionTests(unittest.TestCase):
 
     def test_risky_apps_marked(self):
         by_id = {a["id"]: a for a in self.apps}
-        for id in ("pihole", "fail2ban", "watchtower", "netdata"):
+        for id in ("pihole", "fail2ban", "watchtower", "netdata", "portainer"):
             self.assertNotEqual(by_id[id]["risk"], "review")
 
     def test_required_metadata(self):
