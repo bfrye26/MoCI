@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+IMAGE=/opt/moci/firmware.img.gz
+TARGET=
+ROOT=/mnt/moci-install
+fail() { whiptail --title "MoCI installer" --msgbox "$1" 10 72 || true; exit 1; }
+ask() { whiptail --title "MoCI installer" "$@" 3>&1 1>&2 2>&3; }
+cleanup() { mountpoint -q "$ROOT" && umount "$ROOT" || true; }
+trap cleanup EXIT
+[ "$EUID" -eq 0 ] || { echo "Run as root"; exit 1; }
+for x in whiptail lsblk sha256sum gzip dd sgdisk parted partprobe udevadm e2fsck resize2fs openssl awk; do
+  command -v "$x" >/dev/null || fail "Missing dependency: $x"
+done
+[ -s "$IMAGE" ] && [ -s /opt/moci/firmware.sha256 ] || fail "Bundled firmware missing."
+(cd /opt/moci && sha256sum -c firmware.sha256) || fail "Firmware checksum mismatch."
+ask --msgbox "Install MoCI x86-64 UEFI to an SSD. You will select a disk, WAN and LAN ports, IP address and password. This will erase the selected disk." 12 75
+live=$(findmnt -n -o SOURCE /run/live/medium 2>/dev/null || true)
+live_disk=
+if [[ "$live" == /dev/* ]]; then
+  parent=$(lsblk -nro PKNAME "$live" | head -n1)
+  [ -z "$parent" ] || live_disk=/dev/$parent
+fi
+disks=()
+while read -r dev type; do
+  [ "$type" = disk ] && [ "$dev" != "$live_disk" ] || continue
+  bytes=$(blockdev --getsize64 "$dev" 2>/dev/null || echo 0)
+  ((bytes >= 17179869184)) || continue
+  disks+=("$dev" "$(lsblk -dn -o SIZE,MODEL "$dev" | xargs)")
+done < <(lsblk -dnpo NAME,TYPE)
+[ -n "\${disks[0]-}" ] || fail "No eligible SSD was found."
+TARGET=$(ask --menu "Select the DESTINATION DISK (all data will be erased):" 20 80 12 "\${disks[@]}") || exit 1
+[[ -b "$TARGET" && "$(lsblk -dn -o TYPE "$TARGET")" == disk && "$TARGET" != "$live_disk" ]] || fail "Invalid disk choice."
+nics=()
+for link in /sys/class/net/*; do
+  nic=$(basename "$link")
+  [ "$nic" != lo ] && [ -e "$link/device" ] || continue
+  mac=$(cat "$link/address")
+  [[ "$mac" =~ ^([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}$ ]] || continue
+  nics+=("$nic" "$mac")
+done
+[ -n "\${nics[2]-}" ] || fail "Two physical Ethernet ports are required."
+wan=$(ask --menu "Select WAN/uplink Ethernet port:" 18 80 10 "\${nics[@]}") || exit 1
+lan=$(ask --menu "Select LAN/client Ethernet port:" 18 80 10 "\${nics[@]}") || exit 1
+[ "$wan" != "$lan" ] || fail "WAN and LAN cannot be the same."
+wan_mac=$(cat /sys/class/net/"$wan"/address)
+lan_mac=$(cat /sys/class/net/"$lan"/address)
+name=$(ask --inputbox "Router hostname:" 10 70 moci-router) || exit 1
+[[ "$name" =~ ^[a-z][a-z0-9-]{0,39}$ && "$name" != *- ]] || fail "Invalid hostname."
+ip=$(ask --inputbox "LAN IPv4 address (netmask 255.255.255.0):" 10 70 192.168.50.1) || exit 1
+[[ "$ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || fail "Invalid IP."
+IFS=. read -r a b c d <<< "$ip"
+for octet in "$a" "$b" "$c" "$d"; do ((10#$octet <= 255)) || fail "Invalid IP octet."; done
+((10#$a > 0 && 10#$a < 224 && 10#$d > 0 && 10#$d < 255)) || fail "Invalid host IP."
+pass=$(ask --passwordbox "Administrator password (12+ characters):" 10 70) || exit 1
+((\${#pass} >= 12)) || fail "Password must be at least 12 characters."
+again=$(ask --passwordbox "Confirm administrator password:" 10 70) || exit 1
+[ "$pass" = "$again" ] || fail "Passwords did not match."
+hash=$(printf '%s\n' "$pass" | openssl passwd -6 -stdin)
+unset pass again
+ask --yesno "ERASE $TARGET?\n\nWAN: $wan ($wan_mac)\nLAN: $lan ($lan_mac)\nHostname: $name\nWeb UI: http://$ip/moci/\n\nALL CONTENTS OF THIS DISK WILL BE LOST." 17 77 || exit 1
+while read -r part; do
+  [ -z "$(lsblk -n -o MOUNTPOINTS "$part" | tr -d '[:space:]')" ] || fail "Mounted target volume: $part"
+done < <(lsblk -nrpo NAME "$TARGET")
+ask --infobox "Writing firmware to $TARGET..." 8 60
+gzip -dc "$IMAGE" | dd of="$TARGET" bs=4M conv=fsync status=none || fail "Write failed."
+sync
+sgdisk -e "$TARGET" >/dev/null && partprobe "$TARGET" && udevadm settle || fail "Partition scan failed."
+mkdir -p "$ROOT"
+rootpart=
+while read -r part fs; do
+  [ "$part" != "$TARGET" ] && [ "$fs" = ext4 ] || continue
+  if mount -o ro "$part" "$ROOT"; then
+    [ ! -f "$ROOT/etc/config/network" ] || rootpart=$part
+    umount "$ROOT"
+    [ -z "$rootpart" ] || break
+  fi
+done < <(lsblk -rpn -o NAME,FSTYPE "$TARGET")
+[ -n "$rootpart" ] || fail "Could not locate installed root filesystem."
+partno=$(cat /sys/class/block/"$(basename "$rootpart")"/partition)
+parted -s "$TARGET" "resizepart $partno 100%" && partprobe "$TARGET" && udevadm settle || fail "SSD expansion failed."
+status=0
+e2fsck -f -p "$rootpart" || status=$?
+((status <= 1)) || fail "Filesystem check failed."
+resize2fs "$rootpart" || fail "Filesystem resize failed."
+mount "$rootpart" "$ROOT" || fail "Could not mount installed router."
+awk -F: -v pw="$hash" 'BEGIN {OFS=":"} $1=="root" {$2=pw; found=1} {print} END {if (!found) exit 1}' "$ROOT/etc/shadow" > "$ROOT/etc/shadow.new" || fail "Root account unavailable."
+chmod 600 "$ROOT/etc/shadow.new"
+mv "$ROOT/etc/shadow.new" "$ROOT/etc/shadow"
+mkdir -p "$ROOT/etc/uci-defaults"
+cat > "$ROOT/etc/uci-defaults/95-moci-installer" <<EOF
+#!/bin/sh
+resolve_nic() {
+  for net in /sys/class/net/*; do
+    [ -r "\$net/address" ] || continue
+    [ "\$(cat "\$net/address")" = "\$1" ] && { basename "\$net"; return 0; }
+  done
+  return 1
+}
+wan=\$(resolve_nic '$wan_mac') || exit 1
+lan=\$(resolve_nic '$lan_mac') || exit 1
+[ "\$wan" != "\$lan" ] || exit 1
+uci -q set system.@system[0].hostname='$name'
+uci -q set network.lan=interface
+uci -q set network.lan.proto=static
+uci -q set network.lan.device="\$lan"
+uci -q set network.lan.ipaddr='$ip'
+uci -q set network.lan.netmask='255.255.255.0'
+uci -q set network.wan=interface
+uci -q set network.wan.proto=dhcp
+uci -q set network.wan.device="\$wan"
+uci -q commit network
+uci -q commit system
+exit 0
+EOF
+chmod 755 "$ROOT/etc/uci-defaults/95-moci-installer"
+sync
+umount "$ROOT"
+ask --msgbox "Installation complete.\n\nRemove installer USB, reboot from SSD in UEFI mode, connect your computer to $lan, and open:\n\nhttp://$ip/moci/\n\nUse a test router until QEMU and security tests pass." 16 75
