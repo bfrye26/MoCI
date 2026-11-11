@@ -22,9 +22,16 @@ lb config --mode debian --distribution bookworm --architectures amd64 --binary-i
   --mirror-chroot-security https://security.debian.org/debian-security \
   --mirror-binary-security https://security.debian.org/debian-security \
   --archive-areas main --bootappend-live "boot=live components quiet" \
-  --debian-installer none --security true
-mkdir -p config/package-lists config/includes.chroot/usr/local/sbin \
+  --debian-installer none --security false
+# Ubuntu 24.04 ships an older live-build that constructs 'bookworm/updates'
+# for Debian security, a nonexistent suite (HTTP 404). Prevent that
+# automatic source and add Debian 12's valid suite explicitly for both
+# package installation and the resulting live system.
+mkdir -p config/archives config/package-lists config/includes.chroot/usr/local/sbin \
   config/includes.chroot/opt/moci config/includes.chroot/etc/profile.d
+printf '%s\\n' 'deb https://security.debian.org/debian-security bookworm-security main' \
+  > config/archives/moci-security.list.chroot
+cp config/archives/moci-security.list.chroot config/archives/moci-security.list.binary
 cat > config/package-lists/moci.list.chroot <<'PKGS'
 live-boot
 live-config
