@@ -12,7 +12,15 @@ OUTDIR=$(cd "$OUTDIR" && pwd)
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 cd "$WORK"
-lb config --distribution bookworm --architectures amd64 --binary-images iso-hybrid \
+# The host is Ubuntu, but the live installer must use Debian repositories.
+# Explicit mode and mirrors prevent live-build from inheriting the Ubuntu
+# archive (archive.ubuntu.com/ubuntu/dists/bookworm does not exist).
+lb config --mode debian --distribution bookworm --architectures amd64 --binary-images iso-hybrid \
+  --mirror-bootstrap https://deb.debian.org/debian \
+  --mirror-chroot https://deb.debian.org/debian \
+  --mirror-binary https://deb.debian.org/debian \
+  --mirror-chroot-security https://security.debian.org/debian-security \
+  --mirror-binary-security https://security.debian.org/debian-security \
   --archive-areas main --bootappend-live "boot=live components quiet" \
   --debian-installer none --security true
 mkdir -p config/package-lists config/includes.chroot/usr/local/sbin \
