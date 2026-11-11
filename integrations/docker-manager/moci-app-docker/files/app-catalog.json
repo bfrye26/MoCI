@@ -1,0 +1,117 @@
+{
+  "schema": 1,
+  "apps": [
+    {
+      "id": "adguard-home",
+      "name": "AdGuard Home",
+      "category": "Networking",
+      "repository": "adguard/adguardhome",
+      "description": "DNS filtering",
+      "template_available": true
+    },
+    {
+      "id": "uptime-kuma",
+      "name": "Uptime Kuma",
+      "category": "Monitoring",
+      "repository": "louislam/uptime-kuma",
+      "description": "Uptime monitoring",
+      "template_available": true
+    },
+    {
+      "id": "jellyfin",
+      "name": "Jellyfin",
+      "category": "Media",
+      "repository": "jellyfin/jellyfin",
+      "description": "Media streaming",
+      "template_available": false
+    },
+    {
+      "id": "home-assistant",
+      "name": "Home Assistant",
+      "category": "Automation",
+      "repository": "ghcr.io/home-assistant/home-assistant",
+      "description": "Home automation",
+      "template_available": false
+    },
+    {
+      "id": "immich",
+      "name": "Immich",
+      "category": "Photos",
+      "repository": "ghcr.io/immich-app/immich-server",
+      "description": "Photo backups",
+      "template_available": false
+    },
+    {
+      "id": "syncthing",
+      "name": "Syncthing",
+      "category": "Storage",
+      "repository": "syncthing/syncthing",
+      "description": "File synchronization",
+      "template_available": false
+    },
+    {
+      "id": "nextcloud",
+      "name": "Nextcloud",
+      "category": "Storage",
+      "repository": "nextcloud",
+      "description": "Private cloud",
+      "template_available": false
+    },
+    {
+      "id": "vaultwarden",
+      "name": "Vaultwarden",
+      "category": "Security",
+      "repository": "vaultwarden/server",
+      "description": "Password management",
+      "template_available": false
+    },
+    {
+      "id": "gitea",
+      "name": "Gitea",
+      "category": "Development",
+      "repository": "gitea/gitea",
+      "description": "Self-hosted Git",
+      "template_available": false
+    },
+    {
+      "id": "grafana",
+      "name": "Grafana",
+      "category": "Monitoring",
+      "repository": "grafana/grafana",
+      "description": "Dashboards",
+      "template_available": false
+    },
+    {
+      "id": "prometheus",
+      "name": "Prometheus",
+      "category": "Monitoring",
+      "repository": "prom/prometheus",
+      "description": "Metrics",
+      "template_available": false
+    },
+    {
+      "id": "paperless-ngx",
+      "name": "Paperless-ngx",
+      "category": "Productivity",
+      "repository": "ghcr.io/paperless-ngx/paperless-ngx",
+      "description": "Document archive",
+      "template_available": false
+    },
+    {
+      "id": "nginx-proxy-manager",
+      "name": "Nginx Proxy Manager",
+      "category": "Networking",
+      "repository": "jc21/nginx-proxy-manager",
+      "description": "Reverse proxy",
+      "template_available": false
+    },
+    {
+      "id": "beszel",
+      "name": "Beszel",
+      "category": "Monitoring",
+      "repository": "henrygd/beszel",
+      "description": "Server monitoring",
+      "template_available": false
+    }
+  ]
+}
