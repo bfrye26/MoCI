@@ -618,6 +618,17 @@
       "template_available": false
     },
     {
+      "id": "portainer",
+      "name": "Portainer CE",
+      "category": "Maintenance",
+      "repository": "portainer/portainer-ce",
+      "description": "Optional advanced Docker manager; grants Docker socket access",
+      "profile": "both",
+      "complexity": "advanced",
+      "risk": "docker-socket",
+      "template_available": false
+    },
+    {
       "id": "prometheus",
       "name": "Prometheus",
       "category": "Monitoring",
