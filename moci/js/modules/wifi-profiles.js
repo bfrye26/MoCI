@@ -53,7 +53,7 @@ export default class WifiProfilesModule{
     if(window.location.protocol!=='https:'){
       root.append(this.elem('p','For credential safety, password changes require HTTPS. Configure a trusted TLS certificate before creating or removing Wi-Fi passwords.','wifi-security-warning'));
     }
-    const aps=Object.entries(this.wifi).filter(([name,w])=>AP.test(name)&&w?.['.type']==='wifi-iface'&&w.mode==='ap');
+    const aps=Object.entries(this.wifi).filter(([name,w])=>AP.test(name)&&w?.['.type']==='wifi-iface'&&w.mode==='ap'&&['psk2','psk2+ccmp','psk2+aes','sae-mixed','psk-mixed'].includes(String(w.encryption||'')));
     const zones=Object.entries(this.fw).filter(([id,z])=>z?.['.type']==='zone'&&String(z.name||'').startsWith('moci_'));
     const usable=zones.flatMap(([,z])=>{
       const names=Array.isArray(z.network)?z.network:String(z.network||'').split(/\s+/);
@@ -90,6 +90,10 @@ export default class WifiProfilesModule{
          !usable.some(p=>p.network===target)||!Number.isInteger(vlan)||vlan<2||vlan>4094||
          key.length<8||key.length>63){this.core.showToast('Invalid Wi-Fi mapping','error');return;}
       const station='moci_psk_'+slug,vlanId='moci_vlan_'+slug;
+      const vlanName='moci-'+slug.slice(0,9); // hostapd VLAN interface names cannot exceed 14 characters.
+      if(Object.values(this.wifi).some(v=>v?.['.type']==='wifi-vlan'&&v.iface===ap&&v.name===vlanName)){
+        this.core.showToast('VLAN interface name conflicts with another password. Choose a distinct label.','error');return;
+      }
       if(this.wifi[station]||this.wifi[vlanId]||
         Object.values(this.wifi).some(v=>v?.['.type']==='wifi-vlan'&&String(v.vid)===String(vlan)&&v.iface===ap)){
         this.core.showToast('Password label or VLAN already in use on this SSID','error');return;
@@ -99,10 +103,12 @@ export default class WifiProfilesModule{
       try{
         await this.uci('add',{config:'wireless',type:'wifi-vlan',name:vlanId});
         await this.uci('set',{config:'wireless',section:vlanId,values:{
-          iface:ap,name:'moci-'+slug,vid:String(vlan),network:target}});
+          iface:ap,name:vlanName,vid:String(vlan),network:target}});
         await this.uci('add',{config:'wireless',type:'wifi-station',name:station});
         await this.uci('set',{config:'wireless',section:station,values:{
-          iface:ap,vid:String(vlan),key}});
+          iface:ap,vid:String(vlan),key,mac:'00:00:00:00:00:00'}});
+        // OpenWrt must activate per-PSK dynamic VLAN handling on the AP.
+        await this.uci('set',{config:'wireless',section:ap,values:{dynamic_vlan:'1'}});
         await this.applyConfirm();
         this.core.showToast('Wi-Fi profile added','success');
         await this.show();
@@ -111,7 +117,7 @@ export default class WifiProfilesModule{
     });
     root.append(this.elem('h3','Add password to existing SSID'),form,
       this.elem('h3','Managed Wi-Fi password profiles'));
-    if(!aps.length)root.append(this.elem('p','No Wi-Fi access points are configured on this router.','profiles-description'));
+    if(!aps.length)root.append(this.elem('p','No compatible WPA2/mixed AP detected. Configure a WPA2-PSK or compatible mixed-mode access point first.','profiles-description'));
     if(!usable.length)root.append(this.elem('p','No isolated security profiles are available. Create one in Security Profiles first.','profiles-description'));
     if(!entries.length)root.append(this.elem('p','No additional passwords configured.','profiles-description'));
     for(const [section,entry] of entries){
