@@ -208,10 +208,6 @@ def spec_validate(spec, app_id=None):
                 # never allow this through arbitrary custom Compose.
                 managed['read_only']=False
                 managed.pop('user')
-                if approved_template.get('needs_root_for_volume_init') is True:
-                    # Trusted app only, still no capabilities, no host network,
-                    # no host bind mounts and no privilege escalation.
-                    managed['user']='0:0'
         safe[name]=managed
     return {'services':safe,'volumes':{key:{} for key in sorted(named_volumes)}}
 
@@ -234,10 +230,52 @@ def compose(name,arguments):
         raise ValueError('Compose operation failed: '+error)
     return result.stdout[:4096].decode('utf-8','replace')
 
+def initialize_approved_volume(app_id,spec):
+    """Initialize only a reviewed named-volume mount for a fixed app image.
+
+    Runs a one-shot root process without network or host mounts, with only
+    CAP_CHOWN. The application itself never receives root permissions.
+    """
+    template=template_specs().get(app_id,{})
+    initializer=template.get('volume_initializer')
+    if not initializer:
+        return
+    if not isinstance(initializer,dict) or set(initializer)!={'path','uid','gid'}:
+        raise ValueError('Invalid approved volume initializer')
+    uid=initializer['uid'];gid=initializer['gid'];path=initializer['path']
+    if any(not isinstance(value,int) or isinstance(value,bool) or not 1<=value<=65534 for value in (uid,gid)):
+        raise ValueError('Invalid volume owner')
+    if not isinstance(path,str) or not re.fullmatch(r'/[A-Za-z0-9_-]+(?:/[A-Za-z0-9_.-]+)*',path):
+        raise ValueError('Invalid volume initialization mount')
+    service=spec['services'].get('app')
+    if not isinstance(service,dict):
+        raise ValueError('Approved app must use the app service')
+    named=[v.split(':',1)[0] for v in service['volumes'] if v.split(':',1)[1]==path]
+    if len(named)!=1:
+        raise ValueError('Approved mount was not found in app')
+    volume='moci-'+app_id+'_'+named[0]
+    if not re.fullmatch(r'[a-z][a-z0-9_-]{0,100}',volume):
+        raise ValueError('Invalid Docker volume name')
+    subprocess.run(['/usr/bin/docker','volume','create','--label','com.moci.managed=true',volume],
+       stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,timeout=15,check=True)
+    # Never pass untrusted shell fragments. Owner and path are positional args.
+    init=['/usr/bin/docker','run','--rm','--network','none','--read-only',
+          '--user','0:0','--cap-drop','ALL','--cap-add','CHOWN',
+          '--security-opt','no-new-privileges:true','--pids-limit','64',
+          '--memory','128m','--mount',
+          'type=volume,source='+volume+',target='+path,
+          '--entrypoint','/bin/sh',service['image'],'-c',
+          'chown "$1" "$2"','moci-volume-init',str(uid)+':'+str(gid),path]
+    result=subprocess.run(init,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,
+                          timeout=45,check=False)
+    if result.returncode:
+        raise ValueError('Approved volume initialization failed')
+
 def deploy(name,raw,app_id=None):
     if not isinstance(name,str) or not NAME.fullmatch(name) or not isinstance(raw,str) or len(raw.encode())>MAX_SPEC:
         raise ValueError('Invalid stack deployment')
-    value=json.dumps(spec_validate(json.loads(raw),app_id=app_id),indent=2,sort_keys=True).encode()
+    validated=spec_validate(json.loads(raw),app_id=app_id)
+    value=json.dumps(validated,indent=2,sort_keys=True).encode()
     root=STACKS+'/'+name
     os.makedirs(root,mode=0o700,exist_ok=True)
     with open(root+'/.lock','a+b') as lock:
@@ -250,7 +288,10 @@ def deploy(name,raw,app_id=None):
             with os.fdopen(fd,'wb') as f:
                 os.fchmod(f.fileno(),0o600);f.write(value);f.flush();os.fsync(f.fileno())
             os.replace(tmp,path)
-            try: compose(name,['up','-d','--wait','--remove-orphans'])
+            try:
+                if app_id:
+                    initialize_approved_volume(app_id,validated)
+                compose(name,['up','-d','--wait','--remove-orphans'])
             except Exception:
                 if before is None: os.unlink(path)
                 else:
