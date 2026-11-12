@@ -217,6 +217,18 @@ export default class NetworkModule {
 			const cleanup = this.core.delegateActions(tableId, handlers);
 			if (cleanup) this.cleanups.push(cleanup);
 		}
+		// Users should be able to reserve an address directly from a live lease.
+		const leaseTable=document.getElementById('dhcp-leases-table');
+		if(leaseTable){
+			const handler=event=>{
+				const button=event.target.closest('button[data-reserve-mac]');
+				if(!button||!leaseTable.contains(button))return;
+				this.openReservation(button.dataset);
+			};
+			leaseTable.addEventListener('click',handler);
+			this.cleanups.push(()=>leaseTable.removeEventListener('click',handler));
+		}
+
 
 		document.getElementById('save-fw-defaults-btn')?.addEventListener('click', () => this.saveFwDefaults());
 		document.getElementById('save-dns-config-btn')?.addEventListener('click', () => this.saveDnsConfig());
@@ -1163,81 +1175,129 @@ export default class NetworkModule {
 	}
 
 	async loadDHCP() {
-		await this.core.loadResource('dhcp-leases-table', 4, 'dhcp', async () => {
+		await this.core.loadResource('dhcp-leases-table', 5, 'dhcp', async () => {
 			let leases = [];
 			try {
-				const [s, r] = await this.core.ubusCall('moci', 'getDHCPLeases', {});
-				if (s === 0 && r?.dhcp_leases) leases = r.dhcp_leases;
-			} catch {}
-
-			this.core.renderTable(
-				'#dhcp-leases-table',
-				leases,
-				4,
-				'No active DHCP leases',
-				l => `<tr>
-				<td>${this.core.escapeHtml(l.hostname || 'Unknown')}</td>
-				<td>${this.core.escapeHtml(l.ipaddr || 'N/A')}</td>
-				<td>${this.core.escapeHtml(l.macaddr || 'N/A')}</td>
-				<td>${l.expires > 0 ? l.expires + 's' : 'Permanent'}</td>
-			</tr>`
-			);
+				const [status, response] = await this.core.ubusCall('moci', 'getDHCPLeases', {});
+				if(status===0 && Array.isArray(response?.dhcp_leases))leases=response.dhcp_leases;
+			}catch(error){console.warn('DHCP leases unavailable:',error);}
 
 			const [status, result] = await this.core.uciGet('dhcp');
-			if (status !== 0 || !result?.values) return;
-			this._dhcpCfg = result.values;
+			if (status!==0||!result?.values) throw new Error('DHCP configuration unavailable');
+			this._dhcpCfg=result.values;
+			const statics=this.core.filterUciSections(result.values,'host');
+			const normalizeMac=value=>String(value||'').trim().toLowerCase();
+			const isMac=value=>/^(?:[0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(String(value||''));
+			const ipValid=value=>{
+				const parts=String(value||'').split('.');
+				return parts.length===4&&parts.every(p=>/^\d{1,3}$/.test(p)&&Number(p)<=255);
+			};
+			const sameMac=(entry,mac)=>String(entry.mac||'').toLowerCase().split(/[\s,]+/).includes(normalizeMac(mac));
 
-			const pools = this.core.filterUciSections(result.values, 'dhcp');
-			this.core.renderTable(
-				'#dhcp-pools-table',
-				pools,
-				7,
-				'No DHCP pools configured',
-				p => `<tr>
-				<td>${this.core.escapeHtml(p.section)}</td>
-				<td>${this.core.escapeHtml(p.interface || '---')}</td>
-				<td>${this.core.escapeHtml(p.start || '---')}</td>
-				<td>${this.core.escapeHtml(p.limit || '---')}</td>
-				<td>${this.core.escapeHtml(p.leasetime || '---')}</td>
-				<td>${this.core.renderStatusBadge(p.ignore !== '1', 'ACTIVE', 'IGNORED')}</td>
-				<td>${this.core.renderActionButtons(p.section)}</td>
-			</tr>`
-			);
+			this.core.renderTable('#dhcp-leases-table',leases,5,'No active DHCP leases',lease=>{
+				const mac=normalizeMac(lease.macaddr);
+				const ip=String(lease.ipaddr||'');
+				const assigned=statics.find(entry=>sameMac(entry,mac));
+				const taken=statics.some(entry=>String(entry.ip||'')===ip&&!sameMac(entry,mac));
+				const canReserve=isMac(mac)&&ipValid(ip)&&!taken;
+				const label=assigned?'Edit reservation':taken?'IP already reserved':'Reserve IP';
+				const action=canReserve?`<button type="button" class="action-btn" data-reserve-mac="${this.core.escapeHtml(mac)}" data-reserve-ip="${this.core.escapeHtml(ip)}" data-reserve-name="${this.core.escapeHtml(lease.hostname||'')}" data-reserve-section="${this.core.escapeHtml(assigned?.section||'')}">${label}</button>`:
+					`<span class="text-muted">${taken?'IP already reserved':'Unavailable'}</span>`;
+				return `<tr>
+					<td>${this.core.escapeHtml(lease.hostname||'Unknown')}</td>
+					<td>${this.core.escapeHtml(ip||'N/A')}</td>
+					<td>${this.core.escapeHtml(mac||'N/A')}</td>
+					<td>${Number(lease.expires)>0?Math.floor(Number(lease.expires))+'s':'Permanent'}</td>
+					<td>${action}</td>
+				</tr>`;
+			});
 
-			const statics = this.core.filterUciSections(result.values, 'host');
-			this.core.renderTable(
-				'#dhcp-static-table',
-				statics,
-				4,
-				'No static leases',
-				s => `<tr>
-				<td>${this.core.escapeHtml(s.name || 'N/A')}</td>
-				<td>${this.core.escapeHtml(s.mac || 'N/A')}</td>
-				<td>${this.core.escapeHtml(s.ip || 'N/A')}</td>
-				<td>${this.core.renderActionButtons(s.section)}</td>
-			</tr>`
-			);
+			const pools=this.core.filterUciSections(result.values,'dhcp');
+			this.core.renderTable('#dhcp-pools-table',pools,7,'No DHCP pools configured',pool=>`<tr>
+				<td>${this.core.escapeHtml(pool.section)}</td>
+				<td>${this.core.escapeHtml(pool.interface||'---')}</td>
+				<td>${this.core.escapeHtml(pool.start||'---')}</td>
+				<td>${this.core.escapeHtml(pool.limit||'---')}</td>
+				<td>${this.core.escapeHtml(pool.leasetime||'---')}</td>
+				<td>${this.core.renderStatusBadge(pool.ignore!=='1','ACTIVE','IGNORED')}</td>
+				<td>${this.core.renderActionButtons(pool.section)}</td>
+			</tr>`);
+
+			this.core.renderTable('#dhcp-static-table',statics,4,'No static leases',entry=>`<tr>
+				<td>${this.core.escapeHtml(entry.name||'N/A')}</td>
+				<td>${this.core.escapeHtml(entry.mac||'N/A')}</td>
+				<td>${this.core.escapeHtml(entry.ip||'N/A')}</td>
+				<td>${this.core.renderActionButtons(entry.section)}</td>
+			</tr>`);
 		});
+	}
+
+	openReservation(data) {
+		const mac=String(data.reserveMac||'');
+		const ip=String(data.reserveIp||'');
+		const entry=String(data.reserveSection||'');
+		if(!/^(?:[0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(mac)||
+			!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(ip)){
+			this.core.showToast('Cannot reserve this device: invalid MAC or IPv4 address','error');
+			return;
+		}
+		this.core.resetModal('static-lease-modal');
+		const safeName=String(data.reserveName||'').trim().toLowerCase().replace(/[^a-z0-9-]/g,'-').replace(/^-+|-+$/g,'').slice(0,63);
+		document.getElementById('edit-static-lease-section').value=entry;
+		document.getElementById('edit-static-lease-mac').value=mac;
+		document.getElementById('edit-static-lease-ip').value=ip;
+		document.getElementById('edit-static-lease-name').value=safeName;
+		this.core.openModal('static-lease-modal');
 	}
 
 	editStaticLease(id) {
 		this.core.uciEdit('dhcp', id, STATIC_LEASE_FIELDS, 'static-lease-modal', 'edit-static-lease-section');
 	}
 
-	saveStaticLease() {
-		this.core.uciSave({
-			config: 'dhcp',
-			uciType: 'host',
-			modalId: 'static-lease-modal',
-			sectionIdField: 'edit-static-lease-section',
-			fieldMap: STATIC_LEASE_FIELDS,
-			reloadFn: () => this.loadDHCP(),
-			successMsg: 'Static lease saved'
+	async reloadDHCPAfterReservation() {
+		// Commit alone does not make dnsmasq pick up UCI host reservations.
+		// A failed service reload must not be reported as a failed UCI commit.
+		try {
+			const [status, response]=await this.core.serviceReload('dnsmasq');
+			if(status!==0||Number(response?.code||0)!==0)throw new Error('dnsmasq reload denied');
+		} catch(error) {
+			console.warn('DHCP reservation saved but dnsmasq reload failed:',error);
+			this.core.showToast('Saved. DHCP service reload may be needed before the reservation takes effect.','info');
+		}
+		await this.loadDHCP();
+	}
+
+	async saveStaticLease() {
+		const mac=document.getElementById('edit-static-lease-mac')?.value.trim().toLowerCase()||'';
+		const ip=document.getElementById('edit-static-lease-ip')?.value.trim()||'';
+		const section=document.getElementById('edit-static-lease-section')?.value||'';
+		const octets=ip.split('.');
+		const validIp=octets.length===4&&octets.every(o=>/^\d{1,3}$/.test(o)&&Number(o)<=255);
+		if(!/^(?:[0-9a-f]{2}:){5}[0-9a-f]{2}$/.test(mac)||!validIp){
+			this.core.showToast('Enter a valid MAC address and IPv4 address','error');
+			return;
+		}
+		const configured=this.core.filterUciSections(this._dhcpCfg||{},'host');
+		const conflictingIp=configured.find(entry=>entry.section!==section&&entry.ip===ip);
+		const conflictingMac=configured.find(entry=>
+			entry.section!==section&&String(entry.mac||'').toLowerCase().split(/[\s,]+/).includes(mac));
+		if(conflictingIp||conflictingMac){
+			this.core.showToast(conflictingIp?'This IP is already reserved for another device':'This device already has an IP reservation','error');
+			return;
+		}
+		await this.core.uciSave({
+			config:'dhcp',
+			uciType:'host',
+			modalId:'static-lease-modal',
+			sectionIdField:'edit-static-lease-section',
+			fieldMap:STATIC_LEASE_FIELDS,
+			reloadFn:()=>this.reloadDHCPAfterReservation(),
+			successMsg:'Reservation saved. Reconnect the device to obtain its reserved IP.'
 		});
 	}
 
 	deleteStaticLease(id) {
-		this.core.uciDeleteEntry('dhcp', id, 'Delete this static lease?', () => this.loadDHCP());
+		this.core.uciDeleteEntry('dhcp',id,'Delete this reserved address?',()=>this.reloadDHCPAfterReservation());
 	}
 
 	async editDhcpPool(id) {

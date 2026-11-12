@@ -31,29 +31,43 @@ export default class WifiSchedulesModule{
     if(!this.root||this.loading)return;
     this.loading=true;this.root.textContent='Loading wireless radios and schedules…';
     try{
-      const [wifi,all]=await Promise.all([
-        this.rpc('get',{config:'wireless'}),
-        this.rpc('get',{config:'moci_wifi_schedule'})
+      // OpenWrt x86 / VirtualBox images often have neither wireless radio
+      // hardware nor an /etc/config/wireless file. Status 4 is "not found".
+      const optional=async name=>{
+        try{return {data:await this.rpc('get',{config:name}),missing:false};}
+        catch(error){
+          if(/\bstatus 4\b/.test(error.message))return {data:{values:{}},missing:true};
+          throw error;
+        }
+      };
+      const [wifi,schedules]=await Promise.all([
+        optional('wireless'),optional('moci_wifi_schedule')
       ]);
-      this.radios=Object.entries(wifi.values||{})
+      this.radios=Object.entries(wifi.data.values||{})
         .filter(([id,config])=>RADIO.test(id)&&config?.['.type']==='wifi-device')
         .map(([id])=>id);
-      this.config=all.values||{};
+      this.config=schedules.data.values||{};
+      this.wifiAvailable=!wifi.missing;
+      this.schedulerAvailable=!schedules.missing;
       this.render();
     }catch(error){
-      this.root.replaceChildren(this.element('p','Wi-Fi scheduling unavailable: '+error.message,'profiles-description'));
+      this.root.replaceChildren(this.element('p','Wi-Fi schedules could not be loaded: '+error.message,'profiles-description'));
     }finally{this.loading=false;}
   }
   render(){
     const root=this.root;root.replaceChildren();
     root.appendChild(this.element('p','Set allowed Wi-Fi hours by radio, including overnight periods. Schedule changes take effect within a minute. Manually disabled radios stay disabled.','profiles-description'));
     if(!this.radios.length){
-      root.appendChild(this.element('p','No compatible radio detected. Hyper-V x86 Ethernet-only systems do not normally include Wi-Fi hardware.','profiles-description'));
+      root.appendChild(this.element('p','No Wi-Fi radios are configured on this router. This is expected with VirtualBox and Ethernet-only x86 hardware. Wi-Fi scheduling becomes available after compatible wireless hardware and an OpenWrt wireless configuration are installed.','profiles-description'));
+    }
+    if(!this.schedulerAvailable){
+      root.appendChild(this.element('p','The Wi-Fi scheduler configuration is not installed. Scheduling controls are disabled until the moci_wifi_schedule service is provisioned.','profiles-description'));
     }
     const global=this.element('div',undefined,'profiles-entry');
     const globalTitle=this.element('strong','Wi-Fi scheduling');
     const toggle=this.element('input');toggle.type='checkbox';
     toggle.checked=this.config.settings?.enabled==='1';
+    toggle.disabled=!this.radios.length||!this.schedulerAvailable;
     const label=this.element('label',undefined,'profiles-check');
     label.append(toggle,this.element('span','Enable all configured schedules'));
     global.append(globalTitle,label);
@@ -94,7 +108,7 @@ export default class WifiSchedulesModule{
     }
     form.appendChild(days);
     const add=this.element('button','ADD WI-FI SCHEDULE','action-btn');
-    add.type='submit';add.disabled=!this.radios.some(r=>!used.has(r));
+    add.type='submit';add.disabled=!this.schedulerAvailable||!this.radios.some(r=>!used.has(r));
     form.append(add);
     form.addEventListener('submit',async e=>{
       e.preventDefault();

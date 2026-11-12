@@ -32,14 +32,23 @@ export default class VpnPoliciesModule{
     if(!this.root)return;
     this.root.replaceChildren(this.el('p','Loading profile routing and VPN interfaces…'));
     try{
+      // Missing pbr is common on small/test images; it should not hide
+      // other VPN functions such as inbound WireGuard server setup.
+      const pbrCall=this.uci('get',{config:'pbr'})
+        .then(data=>({data,missing:false}))
+        .catch(error=>{
+          if(/\bfailed \(4\)/.test(error.message))return {data:{values:{}},missing:true};
+          throw error;
+        });
       const [network,firewall,pbr]=await Promise.all([
         this.uci('get',{config:'network'}),
         this.uci('get',{config:'firewall'}),
-        this.uci('get',{config:'pbr'})
+        pbrCall
       ]);
       this.network=network.values||{};
       this.firewall=firewall.values||{};
-      this.pbr=pbr.values||{};
+      this.pbr=pbr.data.values||{};
+      this.pbrAvailable=!pbr.missing;
       this.render();
     }catch(e){this.root.replaceChildren(this.el('p','Unable to load VPN configuration: '+e.message,'profiles-description'));}
   }
@@ -85,6 +94,9 @@ export default class VpnPoliciesModule{
   render(){
     const root=this.root;root.replaceChildren();
     root.append(this.el('p','Route selected security profiles through existing outbound WireGuard tunnels. Add a second WireGuard hop using a static endpoint route. WAN fallback is blocked by the profile firewall zone when there is no WAN forwarding.','profiles-description'));
+    if(!this.pbrAvailable){
+      root.append(this.el('p','Policy-based routing (pbr) is not installed or configured. Outbound per-profile VPN routing is disabled until pbr is available, but inbound WireGuard and existing network configuration can still be viewed.','profiles-description'));
+    }
     const tunnels=this.vpnInterfaces(),profiles=this.profiles();
     const managed=Object.entries(this.pbr).filter(([id,v])=>id.startsWith('moci_pbr_')&&v?.['.type']==='policy');
     const form=this.el('form',undefined,'profiles-create');
@@ -99,7 +111,7 @@ export default class VpnPoliciesModule{
     const explain=this.el('p','The source CIDR must be the actual subnet used by this security profile. An outbound WireGuard client should be configured in Network → VPN before assigning the profile.','profiles-description');
     form.append(explain);
     const button=this.el('button','ASSIGN PROFILE TO VPN','action-btn');button.type='submit';
-    button.disabled=!tunnels.length||!profiles.length;form.append(button);
+    button.disabled=!this.pbrAvailable||!tunnels.length||!profiles.length;form.append(button);
     form.addEventListener('submit',async event=>{
       event.preventDefault();if(this.busy)return;
       const p=profiles.find(v=>v.id===profile.value);

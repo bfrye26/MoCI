@@ -6,6 +6,7 @@ export default class ApplicationsAddon {
     this.active = 'catalog';
     this.category = 'All';
     this.profile = 'all';
+    this.core.registerExtension('dashboard:widget',{id:'docker-running-apps',render:wrapper=>{void this.renderDashboardWidget(wrapper);}});
   }
   async rpc(method, args={}) {
     const write = ['deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action','set_deployments','stack_config'].includes(method);
@@ -138,31 +139,42 @@ export default class ApplicationsAddon {
   }
   renderCatalog(root,apps) {
     const categories=['All',...new Set(apps.map(a=>a.category))];
-    root.innerHTML=`<div class="docker-intro"><h2>Applications</h2><p>Browse ${apps.length} self-hosted services for office networks and homelabs. Reviewed templates support guided installation. Other listings open a Compose setup wizard so users can configure ports, volumes and verified image versions.</p>${this.readOnly?'<p class="docker-note" role="status"><strong>Docker is running, but deployments are locked.</strong> The App Store needs an administrator to enable management and approve verified application images. Catalogue entries are not automatically approved one-click installers. No approval is bypassed automatically.</p>':''}</div>
+    const reviewedCount=apps.filter(a=>a.reviewed_template).length;
+    const installedCount=apps.filter(a=>a.installed).length;
+    root.innerHTML=`<div class="docker-intro"><h2>Applications</h2><p>${apps.length} apps listed · ${reviewedCount} reviewed one-click templates · ${installedCount} installed. Every listing includes setup guidance. Apps without reviewed templates require manual configuration and may need services this router cannot safely provide.</p>${this.readOnly?'<p class="docker-note" role="status"><strong>Docker is running, but deployments are locked.</strong> The App Store needs an administrator to enable management and approve verified application images. Catalogue entries are not automatically approved one-click installers. No approval is bypassed automatically.</p>':''}</div>
       <div class="docker-filters" role="group" aria-label="Application profiles">
       ${[['all','All apps'],['office','Office LAN'],['home','Homelab'],['both','Office + Homelab']].map(([id,label])=>`<button type="button" class="action-btn" data-profile="${id}" aria-pressed="${this.profile===id}">${label}</button>`).join('')}
       </div>
       <div class="docker-filters" role="group" aria-label="Application categories">
       ${categories.map(c=>`<button type="button" class="action-btn" data-category="${this.esc(c)}" aria-pressed="${this.category===c}">${this.esc(c)}</button>`).join('')}</div>
+      <label class="docker-search-label" for="docker-app-search">Find an application<input id="docker-app-search" type="search" class="form-input" placeholder="Search app names, descriptions or categories" autocomplete="off" value="${this.esc(this.search||'')}"></label>
+      <div class="docker-filters" role="group" aria-label="Installation readiness"><button class="action-btn" type="button" data-state="all">All installation types</button><button class="action-btn" type="button" data-state="reviewed">Reviewed templates</button><button class="action-btn" type="button" data-state="manual">Manual setup</button><button class="action-btn" type="button" data-state="installed">Installed</button></div>
       <p class="docker-result-count" aria-live="polite"></p>
-      <div class="docker-app-grid">${apps.map(a=>`<article class="docker-app-card" data-app-category="${this.esc(a.category)}" data-app-profile="${this.esc(a.profile||'both')}"><small>${this.esc(a.category)} · ${this.esc(a.complexity||'review')} setup</small><h3>${this.esc(a.name)}</h3><p>${this.esc(a.description)}</p>${a.risk&&a.risk!=='review'?`<p class="docker-app-warning">Attention: ${this.esc(a.risk.replaceAll('-',' '))}</p>`:''}<footer><span>${a.installed?'Installed':a.ready?'Approved':a.can_prepare?'Ready to prepare':'Manual setup'}</span>${a.url?`<a class="action-btn" href="${this.esc(a.url)}" target="_blank" rel="noopener noreferrer">OPEN</a>`:''}<button type="button" class="action-btn" data-install="${this.esc(a.id)}" data-repository="${this.esc(a.repository)}" data-risk="${this.esc(a.risk||'review')}" ${this.readOnly && (a.installed||a.ready||a.can_prepare)?'disabled title="Enable Docker management after reviewing the image approval policy"':''}>${a.installed?'Update / reinstall':a.ready?'Install':a.can_prepare?'Prepare & install':'Configure'}</button></footer></article>`).join('')}</div>`;
+      <div class="docker-app-grid">${apps.map(a=>`<article class="docker-app-card" data-app-name="${this.esc([a.name,a.id,a.description,a.category].join(' ').toLowerCase())}" data-app-state="${this.esc(a.setup_state||'manual')}" data-reviewed="${a.reviewed_template?'true':'false'}" data-app-category="${this.esc(a.category)}" data-app-profile="${this.esc(a.profile||'both')}"><small>${this.esc(a.category)} · ${this.esc(a.complexity||'review')} setup</small><h3>${this.esc(a.name)}</h3><p>${this.esc(a.description)}</p>${a.risk&&a.risk!=='review'?`<p class="docker-app-warning">Attention: ${this.esc(a.risk.replaceAll('-',' '))}</p>`:''}<details class="docker-app-details"><summary>Requirements &amp; installation</summary><p>${this.esc(a.reason||'Review the application requirements before deployment')}</p>${a.template?`<p><strong>Reviewed image:</strong> ${this.esc(a.template.image_tag)}</p><p><strong>LAN ports:</strong> ${this.esc(a.template.ports?.join(', ')||'None')}</p><p><strong>Named volumes:</strong> ${this.esc(a.template.volumes?.join(', ')||'None')}</p><p>${this.esc(a.template.description||'')}</p>`:'<p>Consult the application documentation for ports, volumes, environment variables, databases and resource requirements. No one-click installer has been approved for this entry.</p>'}</details><footer><span>${a.installed?'Installed':a.ready?'Ready to install':a.can_prepare?'Prepare approved image':a.reviewed_template?'Requires management approval':'Manual setup required'}</span>${a.url?`<a class="action-btn" href="${this.esc(a.url)}" target="_blank" rel="noopener noreferrer">OPEN</a>`:''}<button type="button" class="action-btn" data-install="${this.esc(a.id)}" data-repository="${this.esc(a.repository)}" data-risk="${this.esc(a.risk||'review')}" data-install-action="${a.installed?(a.reviewed_template?'update':'manage'):a.ready?'install':a.can_prepare?'prepare':'manual'}" data-can-prepare="${a.can_prepare?'true':'false'}" ${this.readOnly?'disabled title="Enable Docker management before installing applications"':''}>${a.installed?(a.reviewed_template?'Update / reinstall':'Manage'):a.ready?'Install':a.can_prepare?'Prepare & install':'Configure manually'}</button></footer></article>`).join('')}</div>`;
     const updateFilters=()=>{
       let visible=0;
       root.querySelectorAll('[data-app-category]').forEach(card=>{
         const matchCategory=this.category==='All'||card.dataset.appCategory===this.category;
         const matchProfile=this.profile==='all'||card.dataset.appProfile===this.profile||card.dataset.appProfile==='both';
-        card.hidden=!(matchCategory&&matchProfile);
+        const mode=this.setupFilter||'all';
+        const matchState=mode==='all'||(mode==='reviewed'&&card.dataset.reviewed==='true')||(mode==='manual'&&card.dataset.reviewed!=='true')||(mode==='installed'&&card.dataset.appState==='installed');
+        const matchSearch=!this.search||card.dataset.appName.includes(this.search.toLowerCase());
+        card.hidden=!(matchCategory&&matchProfile&&matchState&&matchSearch);
         if(!card.hidden)visible++;
       });
       root.querySelector('.docker-result-count').textContent=`${visible} apps shown`;
       root.querySelectorAll('[data-profile]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.profile===this.profile)));
       root.querySelectorAll('[data-category]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.category===this.category)));
+      root.querySelectorAll('[data-state]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.state===(this.setupFilter||'all'))));
     };
     root.querySelectorAll('[data-category]').forEach(b=>b.addEventListener('click',()=>{this.category=b.dataset.category;updateFilters();}));
     root.querySelectorAll('[data-profile]').forEach(b=>b.addEventListener('click',()=>{this.profile=b.dataset.profile;updateFilters();}));
+    root.querySelectorAll('[data-state]').forEach(b=>b.addEventListener('click',()=>{this.setupFilter=b.dataset.state;updateFilters();}));
+    root.querySelector('#docker-app-search')?.addEventListener('input',e=>{this.search=e.target.value.trim();updateFilters();});
     updateFilters();
     root.querySelectorAll('[data-install]').forEach(b=>b.addEventListener('click',async()=>{
-      if(b.textContent==='Configure'){
+      if(b.dataset.installAction==='manage'){await this.renderView('managed_stacks');return;}
+      if(b.dataset.installAction==='manual'){
         const repository=b.dataset.repository||'';
         const risk=b.dataset.risk||'review';
         if(!window.confirm('Open custom Compose setup for '+b.dataset.install+'? This application does not have a tested one-click template. Category risks: '+risk+'. Review its official installation requirements before deployment.'))return;
@@ -173,16 +185,19 @@ export default class ApplicationsAddon {
         const tag=this.page.querySelector('#docker-image-tag');
         if(name)name.value=b.dataset.install.slice(0,40);
         if(tag)tag.placeholder=repository+':VERSION';
+        const editor=this.page.querySelector('#docker-editor');
+        if(editor){const hint=document.createElement('p');hint.className='docker-setup-notice';hint.textContent='Manual configuration: '+b.dataset.install+' ('+risk+'). A catalogue listing is not a safe installation template. Confirm dependencies, published ports, volumes and appropriate image tags from official documentation before deploying.';editor.prepend(hint);}
         this.core.showToast('Choose a supported version, verify required ports and volumes, then prepare its digest.','info');
         return;
       }
       if(!window.confirm('Install approved app '+b.dataset.install+'? This will create persistent Docker data and publish the reviewed application port on your router LAN.'))return;
-      const needsPrepare=b.textContent.includes('Prepare')||b.textContent.includes('Update');
+      const needsPrepare=b.dataset.installAction==='prepare'||b.dataset.installAction==='update';
+      const originalLabel=b.textContent;
       b.dataset.needsPrepare=needsPrepare?'true':'false';
       b.disabled=true;
       b.textContent=needsPrepare?'PREPARING…':'INSTALLING…';
       try{
-        if(b.textContent.includes('Prepare')||b.dataset.needsPrepare==='true'){
+        if(b.dataset.needsPrepare==='true'){
           await this.rpc('prepare_app',{id:b.dataset.install});
           b.dataset.needsPrepare='false';
           this.core.showToast('Image digest approved; deploying…','info');
@@ -205,13 +220,55 @@ export default class ApplicationsAddon {
           parent?.prepend(box);
         }
       }
-      catch(e){this.core.showToast('Install failed: '+e.message,'error');b.disabled=false;b.textContent='RETRY INSTALL';}
+      catch(e){this.core.showToast('Install failed: '+e.message,'error');b.disabled=false;b.textContent=originalLabel;}
     }));
   }
-  renderManaged(root,names) {
-    root.innerHTML=`<div class="docker-intro"><h2>Managed Compose Stacks</h2><p>Deploy only approved, pinned images. Host networking, arbitrary mounts and privileged containers are prohibited.</p></div>
-      ${this.readOnly?'<p class="docker-note">Deployment controls are disabled until non-root permissions are verified on OpenWrt.</p>':'<button type="button" class="action-btn" id="docker-create">Create stack</button><div id="docker-editor"></div>'}
-      <div class="docker-stack-list">${names.map(n=>`<article class="docker-stack"><strong>${this.esc(n)}</strong> ${this.readOnly?'':`<button class="action-btn" data-action="start" data-name="${this.esc(n)}">Start</button><button class="action-btn" data-action="stop" data-name="${this.esc(n)}">Stop</button><button class="action-btn" data-action="remove" data-name="${this.esc(n)}">Remove containers</button><button class="action-btn" data-export-stack="${this.esc(n)}">Export configuration</button>`}</article>`).join('')||'<p>No managed stacks yet.</p>'}</div>`;
+  stackStateLabel(state) {
+    return ({running:'Running',stopped:'Stopped',unhealthy:'Unhealthy',partial:'Partially running',
+      not_deployed:'Not deployed',unknown:'Status unavailable'})[state]||'Status unavailable';
+  }
+  stackStateClass(state) {
+    return ['running','stopped','unhealthy','partial','not_deployed'].includes(state)?state:'unknown';
+  }
+  stackLaunchLink(stack) {
+    if(stack.state!=='running'||!stack.url)return '';
+    const verified=stack.url_kind==='reviewed';
+    return `<a class="action-btn docker-open-app" href="${this.esc(stack.url)}" target="_blank" rel="noopener noreferrer" title="${verified?'Open reviewed application web address':'Open the published LAN HTTP port; this application may require HTTPS or a custom path'}">${verified?'Open App':'Open Web Port'}</a>`;
+  }
+  async renderDashboardWidget(wrapper) {
+    if(!wrapper?.isConnected)return;
+    wrapper.classList.add('docker-dashboard-widget');
+    wrapper.innerHTML='<div class="docker-dashboard-heading"><h2>Running Applications</h2><a href="#/docker" class="action-btn">Manage Apps</a></div><p>Checking managed Docker containers…</p>';
+    try {
+      const result=await this.rpc('managed_stacks');
+      if(!wrapper.isConnected)return;
+      const stacks=(result.managed_stacks||[]).map(s=>typeof s==='string'?{name:s,state:'unknown'}:s);
+      const running=stacks.filter(s=>s.state==='running');
+      const needsAttention=stacks.filter(s=>['partial','unhealthy'].includes(s.state));
+      wrapper.innerHTML=`<div class="docker-dashboard-heading"><h2>Running Applications <span class="docker-dashboard-count">${running.length}</span></h2><a href="#/docker" class="action-btn">Manage Apps</a></div>
+        ${running.length?`<div class="docker-dashboard-grid">${running.map(s=>`<div class="docker-dashboard-entry"><strong>${this.esc(s.name)}</strong><span class="docker-stack-status docker-status-running">Running</span>${this.stackLaunchLink(s)}</div>`).join('')}</div>`:'<p>No managed applications currently running.</p>'}
+        ${needsAttention.length?`<p class="docker-dashboard-warning">${needsAttention.length} application(s) need attention. See Managed Stacks for details.</p>`:''}`;
+    }catch(error){
+      if(wrapper.isConnected)wrapper.innerHTML=`<div class="docker-dashboard-heading"><h2>Running Applications</h2><a href="#/docker" class="action-btn">Manage Apps</a></div><p role="status">Docker status unavailable: ${this.esc(error.message)}</p>`;
+    }
+  }
+  renderManaged(root,stacks) {
+    const entries=stacks.map(stack=>typeof stack==='string'?{name:stack,state:'unknown'}:stack);
+    root.innerHTML=`<div class="docker-intro"><h2>Managed Compose Stacks</h2><p>Monitor live container state, launch available web apps, and manage Docker Compose projects. Port links are only shown for running containers with a published router LAN address.</p></div>
+      <div class="docker-stack-toolbar">
+        ${this.readOnly?'<p class="docker-note">Monitoring is available. Enable Docker management to change containers or create stacks.</p>':'<button type="button" class="action-btn" id="docker-create">Create stack</button><div id="docker-editor"></div>'}
+        <button type="button" class="action-btn" id="docker-refresh-managed">Refresh status</button>
+      </div>
+      <div class="docker-stack-list">${entries.map(s=>`<article class="docker-stack docker-stack-status-row">
+        <div class="docker-stack-summary"><strong>${this.esc(s.name)}</strong>
+          <span class="docker-stack-status docker-status-${this.stackStateClass(s.state)}">${this.stackStateLabel(s.state)}</span>
+          ${Number.isInteger(s.total_containers)&&s.total_containers>0?`<small>${Number(s.running_containers||0)} of ${s.total_containers} containers running</small>`:''}
+        </div>
+        <div class="docker-stack-actions">
+          ${this.stackLaunchLink(s)}
+          ${this.readOnly?'':`<button class="action-btn" data-action="start" data-name="${this.esc(s.name)}">Start</button><button class="action-btn" data-action="stop" data-name="${this.esc(s.name)}">Stop</button><button class="action-btn" data-action="remove" data-name="${this.esc(s.name)}">Remove containers</button><button class="action-btn" data-export-stack="${this.esc(s.name)}">Export configuration</button>`}
+        </div></article>`).join('')||'<p>No managed stacks yet.</p>'}</div>`;
+    root.querySelector('#docker-refresh-managed')?.addEventListener('click',()=>this.renderView('managed_stacks'));
     root.querySelector('#docker-create')?.addEventListener('click',()=>this.showEditor(root));
     root.querySelectorAll('[data-export-stack]').forEach(button=>button.addEventListener('click',async()=>{
       const name=button.dataset.exportStack;
@@ -220,7 +277,7 @@ export default class ApplicationsAddon {
       try{
         const result=await this.rpc('stack_config',{name});
         if(result.contains_secrets&&!window.confirm('This stack includes environment variables that may contain credentials. Continue with local JSON export?'))return;
-        const text=JSON.stringify(result.config,null,2)+'\n';
+        const text=JSON.stringify(result.config,null,2)+'\\n';
         const blob=new Blob([text],{type:'application/json'});
         const url=URL.createObjectURL(blob);
         try{
@@ -236,10 +293,12 @@ export default class ApplicationsAddon {
 
     root.querySelectorAll('[data-action]').forEach(b=>b.addEventListener('click',async()=>{
       if(!window.confirm(b.dataset.action+' '+b.dataset.name+'?'))return;
+      b.disabled=true;
       try{await this.rpc('stack_action',{name:b.dataset.name,action:b.dataset.action});await this.renderView('managed_stacks');}
-      catch(e){this.core.showToast(e.message,'error');}
+      catch(e){this.core.showToast(e.message,'error');b.disabled=false;}
     }));
   }
+
   showEditor(root) {
     const target=root.querySelector('#docker-editor');
     if(!target)return;

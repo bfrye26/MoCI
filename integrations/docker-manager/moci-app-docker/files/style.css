@@ -69,3 +69,45 @@
 .docker-credential input{width:100%;margin-top:12px}
 .docker-management-mode{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 @media(max-width:700px){.docker-quick-setup{grid-template-columns:1fr}}
+
+/* Setup readiness and application-specific installer guidance. */
+.docker-search-label{display:flex;flex-direction:column;gap:8px;margin:15px 0;color:var(--steel-muted);font-size:12px;font-weight:600}
+.docker-search-label input{max-width:600px;width:100%;min-height:40px;padding:10px 12px;border:1px solid var(--glass-border);border-radius:7px;background:var(--theme-input);color:var(--starship-steel)}
+.docker-app-details{margin:9px 0 12px;font-size:12px;line-height:1.5;color:var(--steel-muted)}
+.docker-app-details summary{cursor:pointer;color:var(--primary-accent);font-weight:600;padding:6px 0}
+.docker-app-details p{margin:7px 0;overflow-wrap:anywhere}
+.docker-app-details strong{color:var(--starship-steel)}
+.docker-setup-notice{padding:11px 13px;border-left:3px solid var(--warning-amber);background:var(--theme-surface);color:var(--steel-muted);line-height:1.55}
+.docker-app-card footer button:disabled{opacity:.56;cursor:not-allowed}
+:root[data-theme="cloud"] .docker-search-label input{color:#24344b;background:#fff;border-color:#c4d4e7}
+:root[data-theme="cloud"] .docker-app-details summary{color:#225a9d}
+:root[data-theme="cloud"] .docker-app-details strong{color:#24344b}
+:root[data-theme="cloud"] .docker-setup-notice{color:#3e5269;background:#fff7e8}
+
+/* Managed app runtime visibility and quick launch actions */
+.docker-stack-toolbar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:14px 0}
+.docker-stack-toolbar .docker-note{flex-basis:100%}
+.docker-stack-status-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px}
+.docker-stack-summary,.docker-stack-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px}
+.docker-stack-summary small{font-size:11px;color:var(--steel-muted)}
+.docker-stack-status{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:5px 9px;border:1px solid var(--glass-border);font-size:11px;font-weight:700;white-space:nowrap}
+.docker-stack-status::before{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor}
+.docker-status-running{color:var(--success-green)}
+.docker-status-stopped,.docker-status-not_deployed,.docker-status-unknown{color:var(--steel-muted)}
+.docker-status-unhealthy,.docker-status-partial{color:var(--warning-amber)}
+.docker-open-app{display:inline-flex;text-decoration:none;white-space:nowrap;color:var(--primary-accent)}
+.docker-dashboard-widget{background:var(--theme-surface);border:1px solid var(--glass-border);border-radius:10px;padding:16px;color:var(--starship-steel)}
+.docker-dashboard-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.docker-dashboard-heading h2{margin:0;font-size:16px}
+.docker-dashboard-count{color:var(--steel-muted);font-size:13px}
+.docker-dashboard-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.docker-dashboard-entry{border:1px solid var(--glass-border);border-radius:8px;padding:12px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.docker-dashboard-entry strong{min-width:100%;font-size:13px}
+.docker-dashboard-entry .docker-open-app{margin-left:auto}
+.docker-dashboard-warning{margin-top:12px;color:var(--warning-amber)}
+:root[data-theme="cloud"] .docker-dashboard-widget{background:#fff;border-color:#dce5f0;color:#24344b}
+:root[data-theme="cloud"] .docker-dashboard-entry{border-color:#dce5f0}
+:root[data-theme="cloud"] .docker-status-running{color:#247448}
+:root[data-theme="cloud"] .docker-status-stopped,:root[data-theme="cloud"] .docker-status-unknown,:root[data-theme="cloud"] .docker-status-not_deployed{color:#526780}
+:root[data-theme="cloud"] .docker-status-partial,:root[data-theme="cloud"] .docker-status-unhealthy{color:#965a19}
+@media(max-width:700px){.docker-stack-status-row{align-items:stretch}.docker-stack-actions{width:100%}}

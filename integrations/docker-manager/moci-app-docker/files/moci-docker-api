@@ -25,6 +25,21 @@ MAX_SPEC=16384
 NAME=re.compile(r'^[a-z][a-z0-9-]{0,39}$')
 IMAGE=re.compile(r'^[A-Za-z0-9][A-Za-z0-9._/-]*@sha256:[0-9a-f]{64}$')
 CUSTOM_TAG=re.compile(r'^(?:(?:docker\.io|ghcr\.io|lscr\.io|quay\.io|registry\.gitlab\.com)/)?[a-z0-9][a-z0-9._/-]{2,95}:[A-Za-z0-9][A-Za-z0-9._-]{0,79}$')
+
+# Explicit public registries. A string that looks like a hostname must
+# never silently become an arbitrary Docker registry or router-side SSRF target.
+APPROVED_REGISTRIES={'docker.io','ghcr.io','lscr.io','quay.io',
+                     'registry.gitlab.com','docker.n8n.io','registry.rocket.chat'}
+
+def public_image_tag(value):
+    if not isinstance(value,str) or not CUSTOM_TAG.fullmatch(value):
+        return False
+    repository=value.rsplit(':',1)[0]
+    parts=repository.split('/')
+    first=parts[0]
+    if '.' in first or ':' in first or first=='localhost':
+        return first in APPROVED_REGISTRIES and len(parts)>=2
+    return True
 IDENT=re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$|^[a-f0-9]{12,64}$')
 READ_METHODS=['status','containers','stacks','images','volumes','networks','storage','logs','container_stats','catalog','managed_stacks','diagnostics']
 WRITE_METHODS=['stack_config','deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action','set_deployments']
@@ -104,6 +119,13 @@ def lan_ip():
     return ip
 
 def catalog():
+    """Describe installation capability for every catalogue entry, not only pinned apps.
+
+    A catalogue listing is not an approved or installable application. Only
+    explicitly reviewed templates with a pinned, allowlisted immutable digest
+    can enter the direct installation path. All other entries retain a manual
+    guided-setup workflow and visible requirements.
+    """
     with open(ROOT+'/app-catalog.json',encoding='utf-8') as f:
         data=json.load(f)
     if data.get('schema')!=1 or not isinstance(data.get('apps'),list):
@@ -111,23 +133,152 @@ def catalog():
     approved=policy()
     pinned=pins()
     templates=template_specs()
+    deploy_enabled=writes_enabled()
     apps=[]
     for app in data['apps'][:100]:
         appid=app.get('id')
         if not isinstance(appid,str) or not NAME.fullmatch(appid): continue
         image=pinned.get(appid)
-        ready=bool(writes_enabled() and appid in templates and app.get('template_available') and app.get('risk') in ('review',None) and image in approved and image.split('@')[0]==app.get('repository')) if image else False
-        can_prepare=bool(writes_enabled() and appid in templates and app.get('risk') in ('review',None) and app.get('template_available'))
+        template=templates.get(appid)
+        reviewed=(isinstance(template,dict) and app.get('template_available') is True
+                  and app.get('risk') in ('review',None)
+                  and template.get('repository')==app.get('repository')
+                  and isinstance(template.get('image'),str))
+        approved_image=bool(reviewed and image and image in approved
+                            and image.split('@',1)[0]==app.get('repository'))
         installed=os.path.isfile(STACKS+'/'+appid+'/compose.json')
+        ready=bool(deploy_enabled and approved_image)
+        can_prepare=bool(deploy_enabled and reviewed and not approved_image)
+        # Do not conflate read-only mode, incomplete templates, or already
+        # running containers with installation approval.
+        if installed: state='installed'
+        elif not deploy_enabled: state='disabled'
+        elif approved_image: state='ready'
+        elif reviewed: state='prepare'
+        else: state='manual'
         url=None
-        if appid in templates and installed:
-            raw_url=templates[appid].get('path')
+        if reviewed and installed:
+            raw_url=template.get('path')
             if isinstance(raw_url,str) and re.fullmatch(r'http://ROUTER_IP:[0-9]{4,5}/?',raw_url):
                 try:url=raw_url.replace('ROUTER_IP',lan_ip())
                 except ValueError:pass
-        apps.append({k:app.get(k) for k in ('id','name','description','category','repository','profile','complexity','risk') } |
-                    {'ready':ready,'can_prepare':can_prepare,'installed':installed,'url':url})
-    return {'catalog':apps}
+        if not deploy_enabled:
+            reason='Enable local Docker management to deploy applications'
+        elif reviewed and not approved_image:
+            reason='Prepare and approve the reviewed image digest before installation'
+        elif reviewed:
+            reason='Reviewed image and immutable digest approved'
+        else:
+            risk=app.get('risk')
+            if risk in ('router-critical','security-critical','privileged','docker-socket'):
+                reason='Advanced security-sensitive application: review its official installation and access requirements'
+            elif risk in ('resource-heavy','sensitive-data'):
+                reason='Requires a reviewed Compose configuration, storage and application-specific setup'
+            else:
+                reason='No reviewed one-click template; use the guided Compose workflow'
+        summary={k:app.get(k) for k in
+                 ('id','name','description','category','repository','profile','complexity','risk')}
+        summary.update({'ready':ready,'can_prepare':can_prepare,'installed':installed,
+                        'url':url,'setup_state':state,'reviewed_template':reviewed,
+                        'reason':reason,'read_only':not deploy_enabled})
+        if reviewed:
+            summary['template']={'description':str(template.get('description',''))[:400],
+                                 'image_tag':template.get('image'),
+                                 'ports':template.get('ports',[]),
+                                 'volumes':template.get('volumes',[]),
+                                 'needs_write_access':template.get('needs_write_access') is True,
+                                 'tmpfs':template.get('tmpfs',[])}
+        apps.append(summary)
+    return {'catalog':apps,'total':len(apps),'read_only':not deploy_enabled}
+
+def managed_stacks():
+    """Return live Docker state for stacks created by MoCI.
+
+    Derive URLs only from the router's LAN address and ports actually published
+    by a running managed container. Never use container labels as an external
+    destination, and never advertise a stopped container as openable.
+    """
+    if not os.path.isdir(STACKS):
+        return {'managed_stacks':[]}
+
+    names=[name for name in sorted(os.listdir(STACKS))
+           if NAME.fullmatch(name) and os.path.isfile(STACKS+'/'+name+'/compose.json')
+           and not os.path.islink(STACKS+'/'+name+'/compose.json')][:100]
+    try:
+        containers=docker('GET','/containers/json?all=1')
+        if not isinstance(containers,list):
+            raise ValueError('Invalid Docker inventory')
+        inventory_ok=True
+    except (OSError,ValueError,TimeoutError):
+        containers=[]
+        inventory_ok=False
+
+    projects={}
+    for container in containers[:500]:
+        if not isinstance(container,dict):continue
+        labels=container.get('Labels') or {}
+        if not isinstance(labels,dict) or labels.get('com.moci.managed')!='true':
+            continue
+        project=labels.get('com.docker.compose.project')
+        if isinstance(project,str) and project.startswith('moci-'):
+            projects.setdefault(project,[]).append(container)
+
+    try:
+        ip=lan_ip()
+    except ValueError:
+        ip=None
+    try:
+        templates=template_specs()
+    except (OSError,ValueError,TypeError):
+        templates={}
+
+    result=[]
+    for name in names:
+        project=projects.get('moci-'+name,[])
+        total=len(project)
+        active=[c for c in project if c.get('State')=='running']
+        running=len(active)
+        unhealthy=any('unhealthy' in str(c.get('Status','')).lower() for c in active)
+        if not inventory_ok:state='unknown'
+        elif total==0:state='not_deployed'
+        elif unhealthy:state='unhealthy'
+        elif running==total:state='running'
+        elif running:state='partial'
+        else:state='stopped'
+
+        ports=set()
+        if ip and active:
+            for container in active:
+                for item in container.get('Ports') or []:
+                    if not isinstance(item,dict) or item.get('Type')!='tcp' or item.get('IP')!=ip:
+                        continue
+                    port=item.get('PublicPort')
+                    if type(port) is int and 1024<=port<=65535:
+                        ports.add(port)
+
+        url=None
+        url_kind=None
+        # A reviewed template declares its web scheme and preferred port.
+        template=templates.get(name)
+        if state=='running' and ports and isinstance(template,dict):
+            location=template.get('path')
+            if isinstance(location,str):
+                match=re.fullmatch(r'(https?)://ROUTER_IP:([0-9]{4,5})/?',location)
+                if match and int(match.group(2)) in ports:
+                    url=location.replace('ROUTER_IP',ip)
+                    url_kind='reviewed'
+        # Manually configured stacks do not have a verified web homepage.
+        # Offer their actual LAN HTTP port as an explicit, labelled fallback.
+        if state=='running' and ports and not url:
+            url='http://'+ip+':'+str(min(ports))+'/'
+            url_kind='port'
+
+        result.append({'name':name,'state':state,'running':state=='running',
+                       'running_containers':running,'total_containers':total,
+                       'url':url,'url_kind':url_kind,
+                       'published_ports':sorted(ports)})
+    return {'managed_stacks':result}
+
 
 def spec_validate(spec, app_id=None, advanced=False):
     if not isinstance(spec,dict) or set(spec)!={'services'}:
@@ -214,6 +365,17 @@ def spec_validate(spec, app_id=None, advanced=False):
             approved_ports=[lan_ip()+':'+x for x in approved_template.get('ports',[])]
             if sorted(ports)!=sorted(approved_ports) or sorted(volumes)!=sorted(approved_template.get('volumes',[])):
                 raise ValueError('Application service differs from approved template')
+            approved_tmpfs=approved_template.get('tmpfs',[])
+            if approved_tmpfs:
+                # Only the reviewed IT Tools image is allowed the Nginx scratch
+                # mounts; never expose arbitrary tmpfs paths through Compose RPC.
+                expected=[
+                    '/var/cache/nginx:uid=65534,gid=65534,mode=1777,size=16m',
+                    '/var/run:uid=65534,gid=65534,mode=1777,size=4m',
+                    '/tmp:uid=65534,gid=65534,mode=1777,size=16m']
+                if app_id!='it-tools' or approved_tmpfs!=expected:
+                    raise ValueError('Unapproved application scratch storage')
+                managed['tmpfs']=approved_tmpfs
             if approved_template.get('needs_write_access') is True:
                 # Explicitly reviewed application requires writeable rootfs;
                 # never allow this through arbitrary custom Compose.
@@ -221,9 +383,23 @@ def spec_validate(spec, app_id=None, advanced=False):
                 managed.pop('user')
                 profile_user=approved_template.get('run_as_user')
                 if profile_user is not None:
-                    if not isinstance(profile_user,str) or not re.fullmatch(r'[1-9][0-9]{0,4}:[1-9][0-9]{0,4}',profile_user):
+                    # The OpenSpeedTest upstream image edits root-owned /etc/nginx
+                    # config on start, and crond needs a fixed capability set.
+                    # Root UID is allowed for THIS reviewed app only.
+                    if app_id=='openspeedtest' and profile_user=='0:0':
+                        managed['user']='0:0'
+                    elif isinstance(profile_user,str) and re.fullmatch(r'[1-9][0-9]{0,4}:[1-9][0-9]{0,4}',profile_user):
+                        managed['user']=profile_user
+                    else:
                         raise ValueError('Invalid approved app user')
-                    managed['user']=profile_user
+            profile_caps=approved_template.get('cap_add',[])
+            if profile_caps:
+                # No arbitrary capability additions for custom Compose;
+                # immutable image digest and exact approved app template required.
+                limited=['CHOWN','DAC_OVERRIDE','FOWNER','SETGID','SETUID']
+                if app_id!='openspeedtest' or profile_caps!=limited or managed.get('user')!='0:0' or managed.get('read_only') is not False:
+                    raise ValueError('Unapproved application capabilities')
+                managed['cap_add']=profile_caps
         safe[name]=managed
     return {'services':safe,'volumes':{key:{} for key in sorted(named_volumes)}}
 
@@ -544,7 +720,7 @@ def run(method,args):
         return {'prepared':True,'id':app_id}
     if method=='prepare_custom':
         tag=args.get('image')
-        if not isinstance(tag,str) or len(tag)>150 or not CUSTOM_TAG.fullmatch(tag):
+        if not isinstance(tag,str) or len(tag)>150 or not public_image_tag(tag):
             raise ValueError('Invalid image tag')
         result=subprocess.run(['/usr/sbin/moci-docker-policy','prepare-custom',tag],
             stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=175,check=False)
@@ -570,8 +746,7 @@ def run(method,args):
         except Exception:
             return {'available':False,'message':'Docker Engine unavailable','read_only':True}
     if method=='catalog':return catalog()
-    if method=='managed_stacks':
-        return {'managed_stacks':[n for n in sorted(os.listdir(STACKS)) if NAME.fullmatch(n) and os.path.isfile(STACKS+'/'+n+'/compose.json')][:100]} if os.path.isdir(STACKS) else {'managed_stacks':[]}
+    if method=='managed_stacks':return managed_stacks()
     if method=='stack_config':
         name=args.get('name')
         if not isinstance(name,str) or not NAME.fullmatch(name):

@@ -27,9 +27,14 @@
         "8081:80"
       ],
       "volumes": [],
-      "description": "Self-hosted tools served on LAN TCP port 8081.",
+      "description": "IT Tools over LAN TCP 8081. Nginx runs without host privileges and uses tightly scoped in-memory writable directories; the container root filesystem remains read-only.",
       "path": "http://ROUTER_IP:8081/",
-      "needs_write_access": false
+      "needs_write_access": false,
+      "tmpfs": [
+        "/var/cache/nginx:uid=65534,gid=65534,mode=1777,size=16m",
+        "/var/run:uid=65534,gid=65534,mode=1777,size=4m",
+        "/tmp:uid=65534,gid=65534,mode=1777,size=16m"
+      ]
     },
     "openspeedtest": {
       "image": "openspeedtest/latest:latest",
@@ -39,9 +44,17 @@
         "3002:3001"
       ],
       "volumes": [],
-      "description": "LAN speed test on TCP 3000 and HTTPS on 3001.",
+      "description": "OpenSpeedTest LAN throughput test (HTTP 3000, HTTPS 3002). The upstream entrypoint edits Nginx configuration and runs crond; this reviewed profile requires a writable rootfs, root startup UID and a small fixed set of Linux capabilities. Only deploy trusted immutable image digests on a private LAN.",
       "path": "http://ROUTER_IP:3000/",
-      "needs_write_access": false
+      "needs_write_access": true,
+      "run_as_user": "0:0",
+      "cap_add": [
+        "CHOWN",
+        "DAC_OVERRIDE",
+        "FOWNER",
+        "SETGID",
+        "SETUID"
+      ]
     },
     "cyberchef": {
       "image": "mpepping/cyberchef:latest",

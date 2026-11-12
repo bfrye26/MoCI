@@ -102,8 +102,23 @@ def prepare_app(name):
 # Only selected public registry hostnames can be targeted from the browser.
 # Arbitrary registry URLs could turn the router into a privileged SSRF proxy.
 CUSTOM_TAG=re.compile(r'^(?:(?:docker\.io|ghcr\.io|lscr\.io|quay\.io|registry\.gitlab\.com)/)?[a-z0-9][a-z0-9._/-]{2,95}:[A-Za-z0-9][A-Za-z0-9._-]{0,79}$')
+
+# Explicit public registries. A string that looks like a hostname must
+# never silently become an arbitrary Docker registry or router-side SSRF target.
+APPROVED_REGISTRIES={'docker.io','ghcr.io','lscr.io','quay.io',
+                     'registry.gitlab.com','docker.n8n.io','registry.rocket.chat'}
+
+def public_image_tag(value):
+    if not isinstance(value,str) or not CUSTOM_TAG.fullmatch(value):
+        return False
+    repository=value.rsplit(':',1)[0]
+    parts=repository.split('/')
+    first=parts[0]
+    if '.' in first or ':' in first or first=='localhost':
+        return first in APPROVED_REGISTRIES and len(parts)>=2
+    return True
 def prepare_custom(image_tag):
-    if not isinstance(image_tag,str) or not CUSTOM_TAG.fullmatch(image_tag):
+    if not public_image_tag(image_tag):
         fatal('Image must be a public registry repository with a valid immutable-release tag')
     repository=image_tag.rsplit(':',1)[0]
     pull=subprocess.run(['/usr/bin/docker','pull',image_tag],capture_output=True,
