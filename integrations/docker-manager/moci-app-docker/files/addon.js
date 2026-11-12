@@ -68,7 +68,7 @@ export default class ApplicationsAddon {
           '<article class="docker-check"><span class="'+(check.ok?'docker-check-ok':'docker-check-fail')+'">'+(check.ok?'OK':'CHECK')+'</span><strong>'+this.esc(check.name)+'</strong><p>'+this.esc(check.detail)+'</p></article>').join('')+'</div>';
         return;
       }
-      if(view==='managed_stacks') return this.renderManaged(root,result.managed_stacks||[]);
+      if(view==='managed_stacks') return this.renderManaged(root,result.managed_stacks||[],result.lan_firewall);
       const rows=result[view]||[];
       const data=rows.map(v=>typeof v==='string'?{Name:v}:v);
       if(!data.length){root.innerHTML='<p class="docker-empty">Nothing to display yet.</p>';return;}
@@ -208,7 +208,11 @@ export default class ApplicationsAddon {
           this.core.showToast('Image digest approved; deploying…','info');
         }
         const installed=await this.rpc('install_catalog',{id:b.dataset.install,...(sensitive?{confirmation:'INSTALL SENSITIVE APP'}:{})});
-        this.core.showToast('Deployment completed','success');
+        if(installed.firewall && installed.firewall.ready===false){
+          this.core.showToast('Installed, but LAN firewall access is NOT confirmed: '+(installed.firewall.message||'Check Docker Diagnostics'), 'error');
+        }else{
+          this.core.showToast('Application deployed. Verify the web page and Docker logs.','success');
+        }
         await this.renderView('managed_stacks');
         if(installed.initial_credentials){
           const info=installed.initial_credentials;
@@ -257,9 +261,9 @@ export default class ApplicationsAddon {
       if(wrapper.isConnected)wrapper.innerHTML=`<div class="docker-dashboard-heading"><h2>Running Applications</h2><a href="#/docker" class="action-btn">Manage Apps</a></div><p role="status">Docker status unavailable: ${this.esc(error.message)}</p>`;
     }
   }
-  renderManaged(root,stacks) {
+  renderManaged(root,stacks,lanFirewall=null) {
     const entries=stacks.map(stack=>typeof stack==='string'?{name:stack,state:'unknown'}:stack);
-    root.innerHTML=`<div class="docker-intro"><h2>Managed Compose Stacks</h2><p>Monitor live container state, launch available web apps, and manage Docker Compose projects. Port links are only shown for running containers with a published router LAN address.</p></div>
+    root.innerHTML=`<div class="docker-intro"><h2>Managed Compose Stacks</h2><p>Monitor live container state, launch available web apps, and manage Docker Compose projects. Port links represent Docker-published addresses, not a verified LAN connectivity test. A running container can still have an unreachable web page.</p></div>${lanFirewall?.state && lanFirewall.state!=='configured'?`<p class="docker-note docker-lan-warning" role="status"><strong>LAN access needs attention:</strong> ${this.esc(lanFirewall.detail||'Docker firewall integration is not confirmed.')}</p>`:''}${lanFirewall?.state==='configured'?`<p class="docker-lan-ok">LAN firewall automation is configured. Verify app readiness and reachability individually.</p>`:''}
       <div class="docker-stack-toolbar">
         ${this.readOnly?'<p class="docker-note">Monitoring is available. Enable Docker management to change containers or create stacks.</p>':'<button type="button" class="action-btn" id="docker-create">Create stack</button><div id="docker-editor"></div>'}
         <button type="button" class="action-btn" id="docker-refresh-managed">Refresh status</button>
