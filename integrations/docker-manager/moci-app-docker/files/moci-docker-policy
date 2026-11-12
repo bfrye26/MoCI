@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+"""Root-only policy management for MoCI Docker RC testing.
+
+No arbitrary tags, credentials, host mounts, or policy bypasses.
+Images must be content-addressed Docker digests. Policy updates are atomic.
+"""
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
+
+ROOT=Path('/etc/moci-docker')
+IMAGE_RE=re.compile(r'^[A-Za-z0-9][A-Za-z0-9._/-]*@sha256:[0-9a-f]{64}$')
+ID_RE=re.compile(r'^[a-z][a-z0-9-]{0,39}$')
+APPROVAL=ROOT/'enable-deployments'
+
+def fatal(msg):
+    raise SystemExit('moci-docker-policy: '+msg)
+
+def load(name):
+    with (ROOT/name).open(encoding='utf-8') as file:
+        return json.load(file)
+
+def safe_save(name, data):
+    ROOT.mkdir(mode=0o700,parents=True,exist_ok=True)
+    fd,temp=tempfile.mkstemp(prefix='.moci-policy-',dir=str(ROOT))
+    try:
+        with os.fdopen(fd,'w',encoding='utf-8') as file:
+            os.fchmod(file.fileno(),0o600)
+            json.dump(data,file,indent=2,sort_keys=True)
+            file.write('\n')
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(temp,ROOT/name)
+    finally:
+        if os.path.exists(temp):
+            os.unlink(temp)
+
+def validate_image(image):
+    if not IMAGE_RE.fullmatch(image):
+        fatal('image must be a complete repository@sha256:<64 hexadecimal characters> reference')
+    return image
+
+def image_exists(image):
+    result=subprocess.run(['/usr/bin/docker','image','inspect',image],stdout=subprocess.DEVNULL,
+                          stderr=subprocess.DEVNULL,timeout=15,check=False)
+    return result.returncode==0
+
+def main(args):
+    if os.geteuid()!=0:
+        fatal('run as root on an isolated test router')
+    if not args or args[0]=='help':
+        print('Usage: moci-docker-policy status | allow <repo@sha256:digest> | pin <app-id> <repo@sha256:digest> | enable | disable')
+        return
+    op=args[0]
+    if op=='status' and len(args)==1:
+        print('Writes:', 'enabled' if APPROVAL.exists() and APPROVAL.read_text().strip()=='enabled' else 'disabled')
+        print('Allowed image digests:',len(load('allowed-images.json').get('images',[])))
+        print('Pinned applications:',len(load('app-pins.json')))
+        return
+    if op=='allow' and len(args)==2:
+        image=validate_image(args[1])
+        if not image_exists(image):
+            fatal('digest not present locally. Pull verified digest with: docker pull '+image)
+        data=load('allowed-images.json')
+        entries=data.get('images')
+        if not isinstance(entries,list):
+            fatal('invalid allowlist format')
+        data['images']=sorted(set(entries+[image]))
+        if len(data['images'])>100:
+            fatal('allowlist limit exceeded')
+        safe_save('allowed-images.json',data)
+        print('Approved digest:',image)
+        return
+    if op=='pin' and len(args)==3:
+        name,image=args[1],validate_image(args[2])
+        if not ID_RE.fullmatch(name):
+            fatal('invalid app ID')
+        apps=load('app-catalog.json').get('apps',[])
+        entry=next((app for app in apps if app.get('id')==name),None)
+        if not entry or not entry.get('template_available'):
+            fatal('app does not have a reviewed template')
+        if entry.get('complexity')!='easy' or entry.get('risk') not in ('review',None):
+            fatal('app is not approved for simple installation')
+        if image.split('@',1)[0]!=entry.get('repository'):
+            fatal('image repository does not match catalogue entry')
+        if image not in load('allowed-images.json').get('images',[]):
+            fatal('digest must be allowed before pinning')
+        pins=load('app-pins.json')
+        if not isinstance(pins,dict):
+            fatal('invalid pins format')
+        pins[name]=image
+        safe_save('app-pins.json',pins)
+        print('Pinned',name,'to',image)
+        return
+    if op=='enable' and len(args)==1:
+        # Direct root action only; no ubus endpoint for altering this policy.
+        fd=os.open(str(APPROVAL),os.O_CREAT|os.O_WRONLY|os.O_TRUNC,0o600)
+        with os.fdopen(fd,'w',encoding='ascii') as file:
+            os.fchmod(file.fileno(),0o600)
+            file.write('enabled\n')
+        print('RC deployment gate enabled. DO NOT USE ON PRODUCTION ROUTERS.')
+        return
+    if op=='disable' and len(args)==1:
+        APPROVAL.unlink(missing_ok=True)
+        print('RC deployment gate disabled')
+        return
+    fatal('invalid command or number of arguments')
+
+if __name__=='__main__':
+    main(sys.argv[1:])
