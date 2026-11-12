@@ -63,9 +63,9 @@ CONFIG_PACKAGE_wireguard-tools=y
 CONFIG_PACKAGE_luci-proto-wireguard=y
 CONFIG_PACKAGE_luci-app-sqm=y
 CONFIG_PACKAGE_luci-app-ddns=y
-# UPnP IGD and NAT-PMP/PCP are installed but disabled by default.
+# UPnP IGD and NAT-PMP/PCP installed but disabled; use MoCI's escaped native UI.
+# Do NOT preinstall luci-app-upnp while GHSA-8v49-6387-7f89 remains unresolved.
 CONFIG_PACKAGE_miniupnpd-nftables=y
-CONFIG_PACKAGE_luci-app-upnp=y
 CONFIG_PACKAGE_luci-app-samba4=y
 # Business-ready diagnostics and resilience, available but not auto-enabled.
 CONFIG_PACKAGE_luci-app-statistics=y
@@ -89,7 +89,7 @@ CONFIG_PACKAGE_dnsmasq-full=y
 CONFIG_PACKAGE_dnsmasq=n
 CONFIG
 make defconfig
-for p in moci moci-app-docker docker-compose dockerd samba4-server uhttpd-mod-ubus luci-ssl wpad-mbedtls luci-app-statistics luci-app-nlbwmon luci-app-mwan3 luci-app-banip luci-app-acme miniupnpd-nftables luci-app-upnp; do
+for p in moci moci-app-docker docker-compose dockerd samba4-server uhttpd-mod-ubus luci-ssl wpad-mbedtls luci-app-statistics luci-app-nlbwmon luci-app-mwan3 luci-app-banip luci-app-acme miniupnpd-nftables; do
   grep -q "^CONFIG_PACKAGE_${p}=y$" .config || { echo "Missing package after defconfig: $p" >&2; exit 1; }
 done
 make download -j"${JOBS:-2}"
