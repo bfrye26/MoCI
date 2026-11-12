@@ -96,9 +96,13 @@ export default class UpnpModule {
     root.appendChild(indicators);
     if(status.behindNat)root.append(this.el('p','This router is behind another NAT device (as in VirtualBox). UPnP here cannot automatically open ports on the upstream router.','upnp-warning'));
 
-    if(!status.service && cfg.enabled==='1')root.append(this.el('p',
-      'UPnP is enabled in the configuration, but the daemon is not running. Check System > Startup > miniupnpd > Details for the actual startup error before relying on port mapping.',
-      'upnp-warning upnp-runtime-warning'));
+    if(!status.service && cfg.enabled==='1'){
+      const warning=this.el('div',undefined,'upnp-warning upnp-runtime-warning');
+      warning.append(this.el('p','Automatic port mapping is enabled in configuration, but miniupnpd is not running. Its startup error needs to be checked before port mapping can work.'));
+      const diagnostics=this.el('a','OPEN SERVICE DIAGNOSTICS','action-btn upnp-diagnostic-link');
+      diagnostics.href='#/system/startup';
+      warning.append(diagnostics);root.append(warning);
+    }
     const form=this.el('form',undefined,'profiles-create upnp-form');
     const settings=this.el('div',undefined,'upnp-controls-grid');
     const protocols=this.el('section',undefined,'upnp-controls-card');
