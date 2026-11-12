@@ -32,6 +32,11 @@ CONFIG_EFI_IMAGES=y
 CONFIG_TARGET_ROOTFS_EXT4FS=y
 CONFIG_TARGET_ROOTFS_PARTSIZE=8192
 CONFIG_PACKAGE_luci=y
+# Secure web management and full hostapd for PPSK/dynamic VLAN.
+CONFIG_PACKAGE_luci-ssl=y
+CONFIG_PACKAGE_luci-app-uhttpd=y
+CONFIG_PACKAGE_wpad-basic-mbedtls=n
+CONFIG_PACKAGE_wpad-mbedtls=y
 CONFIG_PACKAGE_moci=y
 CONFIG_PACKAGE_moci-app-docker=y
 CONFIG_PACKAGE_dockerd=y
@@ -69,12 +74,18 @@ CONFIG_PACKAGE_luci-app-lldpd=y
 CONFIG_PACKAGE_luci-app-nut=y
 CONFIG_PACKAGE_luci-app-pbr=y
 CONFIG_PACKAGE_luci-app-snmpd=y
+# Business diagnostics and operational safeguards (not enabled by default).
+CONFIG_PACKAGE_luci-app-watchcat=y
+CONFIG_PACKAGE_luci-app-vnstat2=y
+CONFIG_PACKAGE_luci-app-smartdns=y
+CONFIG_PACKAGE_ethtool=y
+CONFIG_PACKAGE_irqbalance=y
 CONFIG_PACKAGE_uhttpd-mod-ubus=y
 CONFIG_PACKAGE_dnsmasq-full=y
 CONFIG_PACKAGE_dnsmasq=n
 CONFIG
 make defconfig
-for p in moci moci-app-docker docker-compose dockerd samba4-server uhttpd-mod-ubus luci-app-statistics luci-app-nlbwmon luci-app-mwan3 luci-app-banip luci-app-acme; do
+for p in moci moci-app-docker docker-compose dockerd samba4-server uhttpd-mod-ubus luci-ssl wpad-mbedtls luci-app-statistics luci-app-nlbwmon luci-app-mwan3 luci-app-banip luci-app-acme; do
   grep -q "^CONFIG_PACKAGE_${p}=y$" .config || { echo "Missing package after defconfig: $p" >&2; exit 1; }
 done
 make download -j"${JOBS:-2}"
