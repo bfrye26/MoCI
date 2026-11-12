@@ -12,6 +12,7 @@ async function buildJS() {
 		'moci/js/core.js',
 		'moci/js/modules/dashboard.js',
 		'moci/js/modules/network.js',
+		'moci/js/modules/upnp.js',
 		'moci/js/modules/system.js',
 		'moci/js/modules/addons.js',
 		'moci/js/modules/advanced.js',
@@ -81,4 +82,4 @@ async function build() {
 	console.log('\nBuild complete! Output in dist/');
 }
 
-build().catch(console.error);
+build().catch(error => { console.error(error); process.exitCode = 1; });
