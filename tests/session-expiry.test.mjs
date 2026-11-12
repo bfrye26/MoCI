@@ -58,4 +58,9 @@ const response=data=>({ok:true,status:200,json:async()=>data});
  c.startApplication();c.startApplication();
  assert.equal(listeners,1);assert.equal(attached,1);assert.equal(routes,2);
 }
+{
+ const c=core();let calls=0;
+ globalThis.fetch=async()=>response({result:[++calls===1?6:4]});
+ await c.ubusCall('uci','get');assert.equal(c.sessionId,null);assert.equal(c.logins,1);
+}
 console.log('Session expiry, ACL denial, offline probe, concurrency and relogin checks passed.');

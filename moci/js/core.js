@@ -500,7 +500,7 @@ export class OpenWrtCore {
 						params:[requestSession,'session','access',{}]})
 				});
 				const data = response.ok ? await response.json() : null;
-				const expired = response.status === 401 || data?.result?.[0] === 6 || data?.error?.code === -32002;
+				const expired = response.status === 401 || [4,6].includes(data?.result?.[0]) || data?.error?.code === -32002;
 				if (expired && this.sessionId === requestSession) {
 					this.stopPolling();
 					sessionStorage.removeItem('ubus_session');
