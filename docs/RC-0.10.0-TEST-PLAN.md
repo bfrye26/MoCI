@@ -53,7 +53,23 @@ rm -f /etc/moci-docker/enable-deployments
 /etc/init.d/rpcd restart
 ```
 
-The shipped `allowed-images.json` has an empty `images` list and `app-pins.json` is empty. Digest policies must be maintained locally by a trusted administrator with verified image digests, and the Docker engine must be able to pull those images. No registry digest is fabricated in the firmware.
+The shipped `allowed-images.json` has an empty `images` list and `app-pins.json` is empty. No registry digest is fabricated in the firmware.
+
+The new root-only policy helper is installed at `/usr/sbin/moci-docker-policy` in freshly rebuilt firmware. Use the following **only on an isolated test VM**:
+
+```sh
+moci-docker-policy status
+# Research and verify the actual digest from its trusted image publisher.
+docker pull example/reviewed@sha256:REPLACE_WITH_REAL_64_HEX_DIGEST
+moci-docker-policy allow example/reviewed@sha256:REPLACE_WITH_REAL_64_HEX_DIGEST
+# 'pin' works only for catalogue entries with reviewed easy/low-risk templates.
+moci-docker-policy pin APP_ID example/reviewed@sha256:REPLACE_WITH_REAL_64_HEX_DIGEST
+moci-docker-policy enable
+# Test approved deployments and managed containers in MoCI Applications.
+moci-docker-policy disable
+```
+
+The `REPLACE_WITH_REAL_64_HEX_DIGEST` text is deliberately a placeholder, not an actual digest. The image reference must use a real 64-character sha256 digest obtained and verified by the administrator. For a custom Compose stack, allow the image and enter a digest-pinned JSON spec via the managed stack editor; this currently binds service ports to loopback only.
 
 The `deploy` RPC expects a validated JSON service spec. The current implementation restricts published ports to loopback, so network-accessible application setup needs more dedicated policy work. Existing stack controls also remain gated.
 
@@ -63,6 +79,7 @@ The `deploy` RPC expects a validated JSON service spec. The current implementati
 - [ ] All six themes pass desktop and narrow-view tests, including the Docker add-on.
 - [ ] Clean install and unattended reboot work, without missing Python libraries.
 - [ ] Actual template-by-template application installation, persistence, restart, upgrades and removal tested with pinned digests.
+- [ ] Validate the on-device policy helper and negative permission tests on a clean x86-64 image.
 - [ ] Device-specific disk selection, boot media protection, filesystem expansion and recovery verified.
 - [ ] Docker authorization reviewed; reject non-root privilege escalation and unauthorized RPC requests.
 - [ ] WAN firewall exposure, DHCP, DNS, storage, and backup tests pass on physical test hardware.
