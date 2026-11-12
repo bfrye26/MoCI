@@ -8,6 +8,7 @@ export default class SystemModule {
 		this.firmwareFile = null;
 		this.servicePending = new Map();
 		this.serviceFeedback = new Map();
+		this.serviceBootNames = null;
 
 		this.core.registerRoute('/system', (path, subPaths) => {
 			const pageElement = document.getElementById('system-page');
@@ -88,7 +89,7 @@ export default class SystemModule {
 		const delegations = {
 			'cron-table': { edit: id => this.editCronEntry(id), delete: id => this.deleteCronEntry(id) },
 			'ssh-keys-table': { delete: id => this.deleteSSHKey(id) },
-			'services-table': { toggle: id => this.toggleService(id) }
+			'services-table': { toggle: id => this.toggleService(id), inspect: id => this.inspectService(id) }
 		};
 
 		for (const [tableId, handlers] of Object.entries(delegations)) {
@@ -455,10 +456,40 @@ export default class SystemModule {
 		return Object.values(instances).some(instance=>instance?.running===true);
 	}
 
-	serviceAutostart(info) {
+	serviceAutostart(info,name) {
+		if(this.serviceBootNames instanceof Set)return this.serviceBootNames.has(name)?'ENABLED':'DISABLED';
 		if(typeof info?.autostart==='boolean')return info.autostart?'ENABLED':'DISABLED';
 		return 'UNKNOWN';
 	}
+
+	async loadBootServiceNames(force=false){
+		if(!force && this.serviceBootNames!==null)return;
+		try{
+			const [status,result]=await this.core.ubusCall('file','exec',{
+				command:'/usr/libexec/moci-service-inspect',params:['list']
+			},{timeout:10000});
+			if(status!==0 || result?.code!==0 || typeof result?.stdout!=='string')
+				throw new Error('Service boot-status helper is not available');
+			this.serviceBootNames=new Set(result.stdout.split(/\r?\n/).filter(n=>/^[A-Za-z0-9_-]{1,64}$/.test(n)));
+		}catch{
+			this.serviceBootNames=false;
+		}
+	}
+
+	serviceHint(name){
+		const hints={
+			'ddns':'Dynamic DNS needs at least one enabled, configured provider before it can run.',
+			'gpio_switch':'GPIO switch controls require supported physical GPIO hardware; this VM may not provide it.',
+			'irqbalance':'IRQ balancing may exit when no eligible interrupts or CPU topology is available.',
+			'miniupnpd':'Check Network > UPnP & Port Mapping. Enabled UCI settings do not prove the daemon started.',
+			'moci-wifi-scheduler':'Wi-Fi scheduling needs a configured wireless interface.',
+			'banip':'BanIP only runs after its configuration and sources are valid.',
+			'acme':'ACME is an on-demand certificate task, not a continuously running daemon.',
+			'firewall':'Firewall rule application is not a persistent daemon.'
+		};
+		return hints[name]||'A successful init command does not guarantee a persistent daemon. Inspect the service and logs for details.';
+	}
+
 
 	async serviceSnapshot(name=null) {
 		const args={verbose:true};
@@ -471,6 +502,7 @@ export default class SystemModule {
 
 	async loadStartup() {
 		await this.core.loadResource('services-table',4,'services',async()=>{
+			await this.loadBootServiceNames();
 			const result=await this.serviceSnapshot();
 			const services=Object.entries(result).map(([name,info])=>({
 				name,info,running:this.serviceIsRunning(info),pending:this.servicePending.get(name),
@@ -487,19 +519,54 @@ export default class SystemModule {
 				else if(feedback && feedback.expected===running)this.serviceFeedback.delete(name);
 				const note=feedback && !pending && (feedback.kind==='completed'||feedback.expected!==running)?
 					`<small class="service-status-note">${this.core.escapeHtml(feedback.message)}</small>`:'';
+				const advice=!running && !pending && !feedback && ['ddns','gpio_switch','irqbalance','miniupnpd','moci-wifi-scheduler'].includes(name) ?
+					`<small class="service-status-note">${this.core.escapeHtml(this.serviceHint(name))}</small>` :'';
 				const operation=pending?(pending.action==='start'?'STARTING…':'STOPPING…'):(running?'STOP':this.serviceIsOneShot(name)?'RUN':'START');
 				return `<tr>
 					<td>${this.core.escapeHtml(name)}</td>
-					<td>${badge}${note}</td>
-					<td>${this.core.escapeHtml(this.serviceAutostart(service.info))}</td>
+					<td>${badge}${note}${advice}</td>
+					<td>${this.core.escapeHtml(this.serviceAutostart(service.info,name))}</td>
 					<td><div class="action-buttons">
 						<button class="action-btn" type="button" data-action="toggle"
 							data-id="${this.core.escapeHtml(name)}" ${pending?'disabled aria-busy="true"':''}
 							style="font-size:11px;padding:4px 8px">${operation}</button>
+						<button class="action-btn" type="button" data-action="inspect"
+							data-id="${this.core.escapeHtml(name)}" style="font-size:11px;padding:4px 8px">DETAILS</button>
 					</div></td>
 				</tr>`;
 			});
 		});
+	}
+
+	async inspectService(name) {
+		if(!/^[A-Za-z0-9_-]{1,64}$/.test(name))return;
+		const table=document.getElementById('services-table');
+		const button=[...(table?.querySelectorAll('[data-action="inspect"]')||[])].find(b=>b.dataset.id===name);
+		const row=button?.closest('tr');
+		if(!row)return;
+		const next=row.nextElementSibling;
+		if(next?.classList.contains('service-inspection-row')){
+			next.remove();return;
+		}
+		const details=document.createElement('tr');
+		details.className='service-inspection-row';
+		const cell=document.createElement('td');cell.colSpan=4;
+		const title=document.createElement('strong');title.textContent='Diagnostics: '+name;
+		const output=document.createElement('pre');
+		output.textContent='Checking init status and recent logs…';
+		cell.append(title,output);details.append(cell);
+		row.insertAdjacentElement('afterend',details);
+		try{
+			const [status,result]=await this.core.ubusCall('file','exec',{
+				command:'/usr/libexec/moci-service-inspect',params:['inspect',name]
+			},{timeout:18000});
+			if(status!==0 || result?.code!==0)
+				throw new Error('Diagnostic helper unavailable or denied. Update the MoCI service helper and RPC permissions.');
+			const logs=String(result.stdout||'').slice(0,4200);
+			output.textContent=this.serviceHint(name)+'\n\n'+(logs||'No service diagnostics returned.');
+		}catch(error){
+			output.textContent=this.serviceHint(name)+'\n\nDiagnostics unavailable: '+String(error.message||error);
+		}
 	}
 
 	async waitForServiceState(name,expected) {
@@ -552,7 +619,7 @@ export default class SystemModule {
 			if(verified){
 				this.core.showToast('Service '+name+' '+(action==='start'?'started':'stopped')+' and verified','success');
 			}else{
-				const message='Init script succeeded, but procd did not confirm the service '+(action==='start'?'running':'stopped')+'. Review logread -e '+name;
+				const message='Init script returned successfully, but no running procd process was confirmed. '+this.serviceHint(name);
 				this.serviceFeedback.set(name,{expected:action==='start',message});
 				this.core.showToast(name+': status unconfirmed. Check System Logs.','info');
 			}
