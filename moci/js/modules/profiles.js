@@ -85,7 +85,34 @@ export default class SecurityProfilesModule{
       const status=this.make('p',traffic?'Internet forwarding enabled':'Isolated from WAN','profiles-description');
       const remove=this.make('button','REMOVE PROFILE','action-btn danger');remove.type='button';
       remove.addEventListener('click',()=>this.remove(name,section));
-      panel.append(title,status,remove);current.append(panel);
+      const allowForm=this.make('form',undefined,'profiles-allow-form');
+      const destInput=this.make('input');
+      destInput.placeholder='LAN device IPv4 (e.g. 192.168.50.100)';
+      destInput.required=true;destInput.maxLength=15;destInput.setAttribute('aria-label','Destination LAN device IPv4');
+      const portInput=this.make('input');portInput.type='number';portInput.min='1';portInput.max='65535';
+      portInput.placeholder='443';portInput.value='443';portInput.required=true;
+      portInput.setAttribute('aria-label','Destination TCP/UDP port');
+      const labelInput=this.make('input');labelInput.placeholder='Rule label (e.g. documents)';
+      labelInput.pattern='[a-z][a-z0-9]{1,19}';labelInput.maxLength=20;labelInput.required=true;
+      labelInput.setAttribute('aria-label','Rule identifier');
+      const grant=this.make('button','ALLOW DEVICE','action-btn');grant.type='submit';
+      allowForm.append(labelInput,destInput,portInput,grant);
+      allowForm.addEventListener('submit',e=>{
+        e.preventDefault();
+        this.allowLanDevice(name,zone.name,labelInput.value,destInput.value,portInput.value);
+      });
+      const grants=this.make('div',undefined,'profiles-grants');
+      for(const [id,rule] of Object.entries(this.firewall)){
+        if(!id.startsWith('moci_allow_'+name+'_')||rule['.type']!=='rule')continue;
+        const line=this.make('div',undefined,'profiles-entry');
+        line.append(this.make('span',rule.dest_ip+':'+(rule.dest_port||'all')+' · '+rule.name));
+        const revoke=this.make('button','REVOKE','action-btn danger');
+        revoke.type='button';
+        revoke.addEventListener('click',()=>this.revokeLanDevice(id));
+        line.append(revoke);grants.append(line);
+      }
+      const subhead=this.make('h4','Allowed LAN services');
+      panel.append(title,status,subhead,allowForm,grants,remove);current.append(panel);
     }
     root.append(current);
   }
@@ -133,13 +160,51 @@ export default class SecurityProfilesModule{
     }catch(e){this.core.showToast('Profile not confirmed: '+e.message,'error');}
     finally{this.busy=false;}
   }
+  privateIPv4(ip){
+    const parts=String(ip).split('.');
+    if(parts.length!==4||!parts.every(n=>/^\d{1,3}$/.test(n)&&Number(n)<=255))return false;
+    const a=parts.map(Number);
+    return a[0]===10||(a[0]===172&&a[1]>=16&&a[1]<=31)||(a[0]===192&&a[1]===168);
+  }
+  async allowLanDevice(profile,zone,label,ip,port){
+    if(this.busy||!SLUG.test(profile)||!SLUG.test(label)||!this.privateIPv4(ip)
+      ||!/^\d{1,5}$/.test(String(port))||Number(port)<1||Number(port)>65535){
+      this.core.showToast('Invalid LAN rule. Use a private IP, valid label and TCP/UDP port.','error');return;
+    }
+    const id='moci_allow_'+profile+'_'+label;
+    if(this.firewall[id]){
+      this.core.showToast('LAN access rule already exists','error');return;
+    }
+    if(!window.confirm('Allow the '+profile+' security profile to connect to '+ip+':'+port+' on the LAN?'))return;
+    this.busy=true;
+    try{
+      await this.add('rule',id);
+      await this.set('firewall',id,{name:'MoCI '+profile+' '+label,src:zone,dest:'lan',
+        dest_ip:ip,dest_port:String(port),proto:'tcp udp',target:'ACCEPT'});
+      await this.apply();
+      this.core.showToast('Allowed LAN device added','success');await this.show();
+    }catch(e){this.core.showToast('Access change not confirmed: '+e.message,'error');}
+    finally{this.busy=false;}
+  }
+  async revokeLanDevice(id){
+    if(this.busy||!/^moci_allow_[a-z0-9_]{1,55}$/.test(id)||!this.firewall[id])return;
+    if(!window.confirm('Revoke this LAN access exception?'))return;
+    this.busy=true;
+    try{
+      await this.call('uci','delete',{config:'firewall',section:id});
+      await this.apply();
+      this.core.showToast('LAN exception removed','success');await this.show();
+    }catch(e){this.core.showToast('Access change failed: '+e.message,'error');}
+    finally{this.busy=false;}
+  }
   async remove(name,section){
     if(this.busy||!SLUG.test(name))return;
     if(!window.confirm('Delete security profile '+name+' and its MoCI-owned firewall rules? Network interfaces and DHCP configuration will be preserved.'))return;
     if(!window.confirm('Confirm removal of '+name+' firewall isolation?'))return;
     this.busy=true;
     try{
-      for(const key of [section,'moci_'+name+'_dns','moci_'+name+'_dhcp','moci_'+name+'_wan']){
+      const ownedRules=Object.keys(this.firewall).filter(key=>key.startsWith('moci_allow_'+name+'_'));
+      for(const key of [section,'moci_'+name+'_dns','moci_'+name+'_dhcp','moci_'+name+'_wan',...ownedRules]){
         if(this.firewall[key])await this.call('uci','delete',{config:'firewall',section:key});
       }
       await this.apply();
