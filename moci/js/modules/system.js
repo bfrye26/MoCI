@@ -6,6 +6,8 @@ export default class SystemModule {
 		this.cronRaw = '';
 		this.sshKeysRaw = '';
 		this.firmwareFile = null;
+		this.servicePending = new Map();
+		this.serviceFeedback = new Map();
 
 		this.core.registerRoute('/system', (path, subPaths) => {
 			const pageElement = document.getElementById('system-page');
@@ -55,7 +57,8 @@ export default class SystemModule {
 			},
 			'parse-keys-btn': () => this.parseSSHKeyInput(),
 			'refresh-syslog-btn': () => this.loadLog('syslog'),
-			'refresh-klog-btn': () => this.loadLog('klog')
+			'refresh-klog-btn': () => this.loadLog('klog'),
+			'refresh-startup-btn': () => this.loadStartup()
 		};
 
 		for (const [id, handler] of Object.entries(buttons)) {
@@ -440,57 +443,114 @@ export default class SystemModule {
 		}
 	}
 
+	serviceIsRunning(info) {
+		// An instance being present means it is registered with procd, not
+		// necessarily that its process is running. Use the verbose status.
+		const instances=info?.instances;
+		if(!instances||typeof instances!=='object')return false;
+		return Object.values(instances).some(instance=>instance?.running===true);
+	}
+
+	serviceAutostart(info) {
+		if(typeof info?.autostart==='boolean')return info.autostart?'ENABLED':'DISABLED';
+		return 'UNKNOWN';
+	}
+
+	async serviceSnapshot(name=null) {
+		const args={verbose:true};
+		if(name)args.name=name;
+		const [status,result]=await this.core.ubusCall('service','list',args,{timeout:10000});
+		if(status!==0||!result||typeof result!=='object')
+			throw new Error('OpenWrt procd service status is unavailable (ubus '+status+')');
+		return result;
+	}
+
 	async loadStartup() {
-		await this.core.loadResource('services-table', 4, 'services', async () => {
-			const [status, result] = await this.core.ubusCall('service', 'list', {});
-			if (status !== 0 || !result) throw new Error('No data');
-
-			const services = Object.entries(result).map(([name, info]) => ({
-				name,
-				running: info.instances && Object.keys(info.instances).length > 0
-			}));
-
-			this.core.renderTable(
-				'#services-table',
-				services,
-				4,
-				'No services found',
-				s => `<tr>
-				<td>${this.core.escapeHtml(s.name)}</td>
-				<td>${s.running ? this.core.renderBadge('success', 'RUNNING') : this.core.renderBadge('error', 'STOPPED')}</td>
-				<td>${this.core.renderBadge('info', 'N/A')}</td>
-				<td>
-					<div class="action-buttons">
-						<button class="action-btn" data-action="toggle" data-id="${this.core.escapeHtml(s.name)}" style="font-size:11px;padding:4px 8px">
-							${s.running ? 'STOP' : 'START'}
-						</button>
-					</div>
-				</td>
-			</tr>`
-			);
+		await this.core.loadResource('services-table',4,'services',async()=>{
+			const result=await this.serviceSnapshot();
+			const services=Object.entries(result).map(([name,info])=>({
+				name,info,running:this.serviceIsRunning(info),pending:this.servicePending.get(name),
+				feedback:this.serviceFeedback.get(name)
+			})).sort((a,b)=>a.name.localeCompare(b.name));
+			this.core.renderTable('#services-table',services,4,'No procd services found',service=>{
+				const {name,running,pending,feedback}=service;
+				let badge=running?this.core.renderBadge('success','RUNNING'):
+					this.core.renderBadge('error','STOPPED');
+				if(pending)badge=this.core.renderBadge('info',pending.action==='start'?'STARTING…':'STOPPING…');
+				else if(feedback && feedback.expected!==running)badge=this.core.renderBadge('info','UNCONFIRMED');
+				else if(feedback && feedback.expected===running)this.serviceFeedback.delete(name);
+				const note=feedback && !pending && feedback.expected!==running?
+					`<small class="service-status-note">${this.core.escapeHtml(feedback.message)}</small>`:'';
+				const operation=pending?(pending.action==='start'?'STARTING…':'STOPPING…'):(running?'STOP':'START');
+				return `<tr>
+					<td>${this.core.escapeHtml(name)}</td>
+					<td>${badge}${note}</td>
+					<td>${this.core.escapeHtml(this.serviceAutostart(service.info))}</td>
+					<td><div class="action-buttons">
+						<button class="action-btn" type="button" data-action="toggle"
+							data-id="${this.core.escapeHtml(name)}" ${pending?'disabled aria-busy="true"':''}
+							style="font-size:11px;padding:4px 8px">${operation}</button>
+					</div></td>
+				</tr>`;
+			});
 		});
 	}
 
-	async toggleService(name) {
-		if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
-			this.core.showToast('Invalid service name', 'error');
-			return;
+	async waitForServiceState(name,expected) {
+		// A successful init script is not proof the daemon started. Confirm via
+		// procd's verbose process state with a bounded retry window.
+		for(let attempt=0;attempt<8;attempt++){
+			try {
+				const snapshot=await this.serviceSnapshot(name);
+				if(snapshot[name] && this.serviceIsRunning(snapshot[name])===expected)return true;
+			} catch(error) {
+				if(attempt===7)throw error;
+			}
+			if(attempt<7)await new Promise(resolve=>setTimeout(resolve,1500));
 		}
-		try {
-			const [status, result] = await this.core.ubusCall('service', 'list', {});
-			const info = result?.[name];
-			const running = info?.instances && Object.keys(info.instances).length > 0;
-			const action = running ? 'stop' : 'start';
+		return false;
+	}
 
-			await this.core.ubusCall('file', 'exec', {
-				command: `/etc/init.d/${name}`,
-				params: [action]
-			});
-			const pastTense = action === 'stop' ? 'stopped' : `${action}ed`;
-			this.core.showToast(`Service ${name} ${pastTense}`, 'success');
-			this.loadStartup();
-		} catch {
-			this.core.showToast(`Failed to toggle service ${name}`, 'error');
+	async toggleService(name) {
+		if(!/^[a-zA-Z0-9_-]{1,64}$/.test(name)){
+			this.core.showToast('Invalid service name','error');return;
+		}
+		if(this.servicePending.has(name))return;
+		let action=null;
+		try {
+			const snapshot=await this.serviceSnapshot(name);
+			if(!snapshot[name])throw new Error('Service is no longer registered with procd');
+			const running=this.serviceIsRunning(snapshot[name]);
+			action=running?'stop':'start';
+			const critical=new Set(['network','firewall','rpcd','uhttpd','dropbear','dnsmasq','odhcpd','dockerd','ubus','system']);
+			if(action==='stop' && critical.has(name) &&
+				!window.confirm('Stopping '+name+' may disconnect the router, SSH or internet. Continue?'))return;
+			this.serviceFeedback.delete(name);
+			this.servicePending.set(name,{action});
+			await this.loadStartup();
+			const [status,result]=await this.core.ubusCall('file','exec',{
+				command:'/etc/init.d/'+name,params:[action]
+			},{timeout:30000});
+			if(status!==0)throw new Error('OpenWrt rejected '+action+' ('+status+'). Check administrator permissions.');
+			if(!result || result.code!==0){
+				const reason=String(result?.stderr||result?.stdout||'').trim().slice(0,240);
+				throw new Error(reason||'Init script returned '+String(result?.code??'no exit code'));
+			}
+			const verified=await this.waitForServiceState(name,action==='start');
+			if(verified){
+				this.core.showToast('Service '+name+' '+(action==='start'?'started':'stopped')+' and verified','success');
+			}else{
+				const message='Init script succeeded, but procd did not confirm the service '+(action==='start'?'running':'stopped')+'. Review logread -e '+name;
+				this.serviceFeedback.set(name,{expected:action==='start',message});
+				this.core.showToast(name+': status unconfirmed. Check System Logs.','info');
+			}
+		}catch(error){
+			const message=String(error?.message||'Unknown service control error').slice(0,260);
+			if(action)this.serviceFeedback.set(name,{expected:action==='start',message});
+			this.core.showToast('Service '+name+': '+message,'error');
+		}finally{
+			this.servicePending.delete(name);
+			try{await this.loadStartup();}catch(error){console.warn('Could not refresh service status:',error);}
 		}
 	}
 
