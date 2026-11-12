@@ -26,7 +26,7 @@ NAME=re.compile(r'^[a-z][a-z0-9-]{0,39}$')
 IMAGE=re.compile(r'^[A-Za-z0-9][A-Za-z0-9._/-]*@sha256:[0-9a-f]{64}$')
 IDENT=re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$|^[a-f0-9]{12,64}$')
 READ_METHODS=['status','containers','stacks','images','volumes','networks','storage','logs','catalog','managed_stacks','diagnostics']
-WRITE_METHODS=['deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action']
+WRITE_METHODS=['deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action']
 # Deployments are opt-in: secure default for a router control plane.
 # The root administrator must explicitly create this local-only enable file.
 WRITES_ENABLED=False
@@ -225,15 +225,68 @@ def deploy(name,raw,app_id=None):
             if os.path.exists(tmp): os.unlink(tmp)
     return {'deployed':True,'name':name}
 
+def docker_json(method,path,payload=None):
+    if method not in ('POST','DELETE'):
+        raise ValueError('Unsupported Docker method')
+    conn=UnixHTTP()
+    try:
+        body=json.dumps(payload).encode('utf-8') if payload is not None else None
+        headers={'Host':'docker'}
+        if body is not None:headers['Content-Type']='application/json'
+        conn.request(method,'/v1.41'+path,body=body,headers=headers)
+        res=conn.getresponse()
+        raw=res.read(MAX_REPLY+1)
+        if len(raw)>MAX_REPLY or res.status>=400:
+            raise ValueError('Docker operation refused')
+        return json.loads(raw) if raw else {'ok':True}
+    finally:conn.close()
+
+def managed_volume_action(name,action):
+    if not isinstance(name,str) or not re.fullmatch(r'moci-[a-z][a-z0-9-]{1,40}',name):
+        raise ValueError('Volumes must use moci- prefix')
+    if action=='create':
+        return docker_json('POST','/volumes/create',{'Name':name,
+          'Labels':{'com.moci.managed':'true'}})
+    if action=='remove':
+        info=docker('GET','/volumes/'+urllib.parse.quote(name,safe=''))
+        if (info.get('Labels') or {}).get('com.moci.managed')!='true':
+            raise ValueError('Volume is not MoCI-managed')
+        return docker_json('DELETE','/volumes/'+urllib.parse.quote(name,safe=''))
+    raise ValueError('Unsupported volume action')
+
+def managed_network_action(name,action):
+    if not isinstance(name,str) or not re.fullmatch(r'moci-[a-z][a-z0-9-]{1,40}',name):
+        raise ValueError('Networks must use moci- prefix')
+    if action=='create':
+        return docker_json('POST','/networks/create',{'Name':name,'Driver':'bridge',
+          'Internal':True,'CheckDuplicate':True,
+          'Labels':{'com.moci.managed':'true'}})
+    if action=='remove':
+        value=docker('GET','/networks/'+urllib.parse.quote(name,safe=''))
+        if (value.get('Labels') or {}).get('com.moci.managed')!='true':
+            raise ValueError('Network is not MoCI-managed')
+        return docker_json('DELETE','/networks/'+urllib.parse.quote(name,safe=''))
+    raise ValueError('Unsupported network action')
+
+def managed_image_action(image_id,action):
+    if action!='remove':
+        raise ValueError('Unsupported image action')
+    if not isinstance(image_id,str) or not re.fullmatch(r'sha256:[a-f0-9]{64}',image_id):
+        raise ValueError('Invalid image identifier')
+    # Docker refuses removal if images are used by active containers.
+    return docker_json('DELETE','/images/'+urllib.parse.quote(image_id,safe=''))
+
 def managed_container_action(cid,action):
-    if action not in ('start','stop','restart'):
+    if action not in ('start','stop','restart','remove'):
         raise ValueError('Unknown container action')
     container=ident(cid)
     details=docker('GET','/containers/'+container+'/json')
     labels=(details.get('Config') or {}).get('Labels') or {}
     if labels.get('com.moci.managed')!='true':
         raise ValueError('Only MoCI-managed containers can be controlled')
-    # Docker API requires POST. No arbitrary Docker endpoints are exposed.
+    # Docker API requires POST for lifecycle controls, DELETE for managed removal.
+    if action=='remove':
+        return docker_json('DELETE','/containers/'+container+'?v=0&force=0')
     return docker_no_reply('POST','/containers/'+container+'/'+action+'?t=10')
 
 def docker_no_reply(method,path):
@@ -318,6 +371,12 @@ def run(method,args):
         return {'prepared':True,'digest':match.group(1)}
     if method=='container_action':
         return managed_container_action(args.get('id'),args.get('action'))
+    if method=='volume_action':
+        return managed_volume_action(args.get('name'),args.get('action'))
+    if method=='network_action':
+        return managed_network_action(args.get('name'),args.get('action'))
+    if method=='image_action':
+        return managed_image_action(args.get('id'),args.get('action'))
     if method=='diagnostics':return diagnostics()
     if method=='status':
         try:
@@ -408,7 +467,7 @@ def run(method,args):
                 'data_preserved':action=='remove'}
     raise ValueError('Unknown method')
 
-METHODS={k:({} if k not in ('logs','deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action') else {'logs':{'id':'str'},'deploy':{'name':'str','spec':'str'},'prepare_app':{'id':'str'},'prepare_custom':{'image':'str'},'install_catalog':{'id':'str'},'stack_action':{'name':'str','action':'str'},'container_action':{'id':'str','action':'str'}}[k]) for k in READ_METHODS+WRITE_METHODS}
+METHODS={k:({} if k not in ('logs','deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action') else {'logs':{'id':'str'},'deploy':{'name':'str','spec':'str'},'prepare_app':{'id':'str'},'prepare_custom':{'image':'str'},'install_catalog':{'id':'str'},'stack_action':{'name':'str','action':'str'},'container_action':{'id':'str','action':'str'},'volume_action':{'name':'str','action':'str'},'network_action':{'name':'str','action':'str'},'image_action':{'id':'str','action':'str'}}[k]) for k in READ_METHODS+WRITE_METHODS}
 if __name__=='__main__':
     if len(sys.argv)==2 and sys.argv[1]=='list':
         print(json.dumps(METHODS))
