@@ -144,11 +144,10 @@ def collect():
             details['Id']=container['Id']
             containers.append(details)
         except (KeyError,RuntimeError):continue
-    # Obtain the actual br-lan address, not an untrusted browser-provided IP.
-    info=call('/sbin/ip','-4','-j','addr','show','br-lan').stdout
-    addr=json.loads(info)
-    ips=[item.get('local','') for entry in addr for item in entry.get('addr_info',[])
-         if item.get('family')=='inet']
+    # Query netifd: BusyBox ip on OpenWrt does not reliably support -j.
+    info=json.loads(call('/bin/ubus','call','network.interface.lan','status').stdout)
+    ips=[entry.get('address') for entry in info.get('ipv4-address',[])
+         if isinstance(entry,dict) and entry.get('address')]
     if len(ips)!=1:raise ValueError('No unambiguous IPv4 LAN address')
     return plan(networks,containers,ips[0])
 
