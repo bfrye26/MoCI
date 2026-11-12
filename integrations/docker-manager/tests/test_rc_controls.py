@@ -80,5 +80,31 @@ class ReleaseCandidateSecurity(unittest.TestCase):
         self.assertFalse(result[1]["ready"])
 
 
+    def test_resource_operations_are_strictly_managed(self):
+        with self.assertRaisesRegex(ValueError, "moci-"):
+            api.managed_volume_action("root-volume","remove")
+        with self.assertRaisesRegex(ValueError, "moci-"):
+            api.managed_network_action("bridge","remove")
+        with self.assertRaisesRegex(ValueError, "Invalid image"):
+            api.managed_image_action("not-an-image","remove")
+        with patch.object(api,"docker",return_value={"Labels": {}}):
+            with self.assertRaisesRegex(ValueError, "not MoCI-managed"):
+                api.managed_volume_action("moci-office","remove")
+            with self.assertRaisesRegex(ValueError, "not MoCI-managed"):
+                api.managed_network_action("moci-office","remove")
+
+    def test_managed_container_remove_checks_label(self):
+        name="a"*12
+        with patch.object(api, "docker",return_value={"Config":{"Labels":{"com.moci.managed":"true"}}}):
+            with patch.object(api, "docker_json",return_value={"ok":True}) as mock:
+                self.assertEqual(api.managed_container_action(name,"remove"),{"ok":True})
+        mock.assert_called_once_with("DELETE","/containers/"+name+"?v=0&force=0")
+
+    def test_invalid_custom_images_rejected_before_process(self):
+        with patch.object(api,"writes_enabled",return_value=True):
+            for value in ["../../etc/shadow", "evil\nimage", "", "repo name:latest"]:
+                with self.assertRaises(ValueError):
+                    api.run("prepare_custom",{"image":value}) if value else api.run("prepare_custom",{"image":None})
+
 if __name__ == "__main__":
     unittest.main()
