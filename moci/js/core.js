@@ -392,34 +392,46 @@ export class OpenWrtCore {
 	}
 
 	async login(username, password) {
-		const response = await fetch('/ubus', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				jsonrpc: '2.0',
-				id: 1,
-				method: 'call',
-				params: [
-					'00000000000000000000000000000000',
-					'session',
-					'login',
-					{
-						username,
-						password
-					}
-				]
-			})
-		});
-
-		const data = await response.json();
-
-		if (data.result && data.result[1] && data.result[1].ubus_rpc_session) {
-			this.sessionId = data.result[1].ubus_rpc_session;
-			sessionStorage.setItem('ubus_session', this.sessionId);
-
+		let response;
+		try {
+			response = await fetch('/ubus', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					jsonrpc: '2.0',
+					id: 1,
+					method: 'call',
+					params: [
+						'00000000000000000000000000000000',
+						'session',
+						'login',
+						{ username, password }
+					]
+				})
+			});
+		} catch (error) {
+			console.error('MoCI cannot reach authenticated /ubus endpoint:', error);
+			throw new Error('Cannot connect to /ubus. Check uhttpd, the HTTPS certificate, and any HTTP-to-HTTPS redirect. LuCI is available at /cgi-bin/luci/.');
+		}
+		if (!response.ok) {
+			throw new Error(`/ubus returned HTTP ${response.status}. Check uhttpd-mod-ubus and the router web server settings.`);
+		}
+		let data;
+		try {
+			data = await response.json();
+		} catch {
+			throw new Error('The /ubus endpoint returned a non-JSON response. Confirm the ubus_prefix is /ubus and uhttpd-mod-ubus is installed.');
+		}
+		if (!Array.isArray(data.result) || data.result[0] !== 0 || !data.result[1]?.ubus_rpc_session) {
+			throw new Error('The router rejected the login. Check the username, password and rpcd session permissions.');
+		}
+		this.sessionId = data.result[1].ubus_rpc_session;
+		sessionStorage.setItem('ubus_session', this.sessionId);
+		try {
 			await this.initSession();
-		} else {
-			throw new Error('Login failed');
+		} catch (error) {
+			console.error('MoCI authenticated but failed to initialize:', error);
+			throw new Error('Authentication succeeded, but MoCI did not finish loading: ' + error.message);
 		}
 	}
 
@@ -459,7 +471,7 @@ export class OpenWrtCore {
 				await this.login(username, password);
 			} catch (err) {
 				console.error('Login error:', err);
-				this.showToast('Login failed: ' + err.message, 'error');
+				this.showToast('MoCI: ' + err.message, 'error');
 			}
 		};
 	}
