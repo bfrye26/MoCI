@@ -8,8 +8,8 @@ export default class ApplicationsAddon {
     this.profile = 'all';
   }
   async rpc(method, args={}) {
-    const write = ['deploy','prepare_app','install_catalog','stack_action','container_action'].includes(method);
-    const [status, data] = await this.core.ubusCall('moci-docker', method, args, {timeout:write?150000:25000});
+    const write = ['deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action'].includes(method);
+    const [status, data] = await this.core.ubusCall('moci-docker', method, args, {timeout:write?240000:25000});
     if (status !== 0 || !data || data.error) throw new Error(data?.error || 'The requested operation failed');
     return data;
   }
@@ -123,7 +123,36 @@ export default class ApplicationsAddon {
   showEditor(root) {
     const target=root.querySelector('#docker-editor');
     if(!target)return;
-    target.innerHTML=`<div class="docker-compose"><label>Stack name<input id="docker-name" maxlength="40" placeholder="service-name"></label><label>Compose services JSON<textarea id="docker-spec" rows="10" spellcheck="false" placeholder='{"services":{"service":{"image":"repo@sha256:..."}}}'></textarea></label><button id="docker-deploy" class="action-btn">Deploy reviewed stack</button></div>`;
+    target.innerHTML=`<div class="docker-compose">
+      <h3>Create managed Docker stack</h3>
+      <p>Approved images are pinned to immutable digests. Custom images use a restricted, administrator-approved public registry.</p>
+      <label>Image to prepare (repository:tag)
+        <input id="docker-image-tag" maxlength="150" placeholder="ghcr.io/vendor/app:v1.2.3">
+      </label>
+      <button id="docker-prepare" type="button" class="action-btn">Prepare custom image</button>
+      <p id="docker-prepared-result" aria-live="polite"></p>
+      <label>Stack name<input id="docker-name" maxlength="40" placeholder="service-name"></label>
+      <label>Compose services JSON<textarea id="docker-spec" rows="10" spellcheck="false" placeholder='{"services":{"service":{"image":"repo@sha256:..."}}}'></textarea></label>
+      <button id="docker-deploy" type="button" class="action-btn">Deploy managed stack</button>
+      <p>Compose allows up to eight unprivileged services, approved digests, named volumes and ports bound only to the router LAN or loopback.</p>
+    </div>`;
+    const prepareButton=target.querySelector('#docker-prepare');
+    prepareButton.addEventListener('click',async()=>{
+      const tag=target.querySelector('#docker-image-tag').value.trim();
+      if(!tag||!window.confirm('Download and approve public Docker image '+tag+'? This image will become available for managed Compose stacks.'))return;
+      prepareButton.disabled=true;prepareButton.textContent='PREPARING IMAGE…';
+      try{
+        const response=await this.rpc('prepare_custom',{image:tag});
+        const result=target.querySelector('#docker-prepared-result');
+        result.textContent=response.digest;
+        const spec=target.querySelector('#docker-spec');
+        if(!spec.value.trim()){
+          spec.value=JSON.stringify({services:{app:{image:response.digest}}},null,2);
+        }
+        this.core.showToast('Image digest prepared','success');
+      }catch(e){this.core.showToast('Image preparation failed: '+e.message,'error');}
+      finally{prepareButton.disabled=false;prepareButton.textContent='Prepare custom image';}
+    });
     target.querySelector('#docker-deploy').addEventListener('click',async()=>{
       const name=target.querySelector('#docker-name').value.trim(),spec=target.querySelector('#docker-spec').value;
       if(!window.confirm('Deploy stack '+name+'?'))return;
