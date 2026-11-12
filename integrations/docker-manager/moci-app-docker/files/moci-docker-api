@@ -117,7 +117,15 @@ def catalog():
         image=pinned.get(appid)
         ready=bool(writes_enabled() and appid in templates and app.get('template_available') and app.get('risk') in ('review',None) and image in approved and image.split('@')[0]==app.get('repository')) if image else False
         can_prepare=bool(writes_enabled() and appid in templates and app.get('risk') in ('review',None) and app.get('template_available'))
-        apps.append({k:app.get(k) for k in ('id','name','description','category','repository','profile','complexity','risk') } | {'ready':ready,'can_prepare':can_prepare})
+        installed=os.path.isfile(STACKS+'/'+appid+'/compose.json')
+        url=None
+        if appid in templates and installed:
+            raw_url=templates[appid].get('path')
+            if isinstance(raw_url,str) and re.fullmatch(r'http://ROUTER_IP:[0-9]{4,5}/?',raw_url):
+                try:url=raw_url.replace('ROUTER_IP',lan_ip())
+                except ValueError:pass
+        apps.append({k:app.get(k) for k in ('id','name','description','category','repository','profile','complexity','risk') } |
+                    {'ready':ready,'can_prepare':can_prepare,'installed':installed,'url':url})
     return {'catalog':apps}
 
 def spec_validate(spec, app_id=None):
