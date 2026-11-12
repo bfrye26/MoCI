@@ -242,7 +242,7 @@ export default class SecurityProfilesModule{
   }
   async setQuietHours(profile,zone,start,end,days){
     if(this.busy||!SLUG.test(profile)||!/^moci_[a-z0-9]{2,20}$/.test(zone)||
-      !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(start)||!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(end)||
+      !/^([01]\d|2[0-3]):[0-5]\d$/.test(start)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(end)||
       start===end||!Array.isArray(days)||!days.length||days.some(d=>!Number.isInteger(d)||d<0||d>6)){
       this.core.showToast('Invalid quiet hours or weekday selection','error');return;
     }
