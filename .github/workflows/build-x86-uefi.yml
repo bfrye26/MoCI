@@ -1,6 +1,19 @@
 name: OpenWrt x86-64 UEFI firmware (experimental)
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - develop/docker-manager
+    paths:
+      - '.github/workflows/build-x86-uefi.yml'
+      - 'firmware/**'
+      - 'moci/**'
+      - 'integrations/docker-manager/**'
+      - 'Makefile'
+      - 'rpcd-acl.json'
+concurrency:
+  group: moci-uefi-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
