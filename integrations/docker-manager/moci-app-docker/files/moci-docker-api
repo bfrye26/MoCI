@@ -463,6 +463,22 @@ def initialize_approved_volume(app_id,spec):
     if result.returncode:
         raise ValueError('Approved volume initialization failed')
 
+def sync_docker_firewall():
+    """Update only managed Compose firewall rules, preserving LAN/WAN policy."""
+    path='/usr/sbin/moci-docker-firewall'
+    if not os.path.isfile(path):
+        return {'ready':False,'message':'Docker firewall synchronization helper missing'}
+    try:
+        result=subprocess.run([path,'sync'],capture_output=True,text=True,
+                              timeout=30,check=False)
+        if result.returncode:
+            return {'ready':False,'message':'Docker LAN firewall check failed'}
+        detail=json.loads(result.stdout)
+        return {'ready':True,'bridges':detail.get('bridges',0),
+                'rules':detail.get('rules',0)}
+    except (OSError,ValueError,subprocess.TimeoutExpired):
+        return {'ready':False,'message':'Docker LAN firewall synchronization unavailable'}
+
 def deploy(name,raw,app_id=None,advanced=False):
     if not isinstance(name,str) or not NAME.fullmatch(name) or not isinstance(raw,str) or len(raw.encode())>MAX_SPEC:
         raise ValueError('Invalid stack deployment')
@@ -512,7 +528,7 @@ def deploy(name,raw,app_id=None,advanced=False):
                 raise failure
         finally:
             if os.path.exists(tmp): os.unlink(tmp)
-    return {'deployed':True,'name':name}
+    return {'deployed':True,'name':name,'firewall':sync_docker_firewall()}
 
 def docker_json(method,path,payload=None):
     if method not in ('POST','DELETE'):
@@ -635,6 +651,9 @@ def diagnostics():
         report('LAN interface',False,'No private br-lan IPv4 address')
     report('Deployment approval',writes_enabled(),
            'Explicitly enabled' if writes_enabled() else 'Read-only by default')
+    report('Docker LAN firewall reconciler',
+           os.path.isfile('/usr/sbin/moci-docker-firewall'),
+           'Automatic LAN-only forwarding available' if os.path.isfile('/usr/sbin/moci-docker-firewall') else 'Missing auto-firewall helper')
     return {'diagnostics':checks,'ready':all(x['ok'] for x in checks
             if x['name'] not in ('Deployment approval','Stacks directory'))}
 
@@ -875,7 +894,7 @@ def run(method,args):
         else:
             compose(name,{'start':['up','-d','--wait'],'stop':['stop']}[action])
         return {'ok':True,'name':name,'action':action,
-                'data_preserved':action=='remove'}
+                'data_preserved':action=='remove','firewall':sync_docker_firewall()}
     raise ValueError('Unknown method')
 
 METHODS={'set_deployments':{'enabled':'bool','confirmation':'str'}}
