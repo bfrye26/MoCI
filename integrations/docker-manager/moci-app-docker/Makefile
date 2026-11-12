@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 PKG_NAME:=moci-app-docker
-PKG_VERSION:=0.10.0
-PKG_RELEASE:=6
+PKG_VERSION:=0.11.0
+PKG_RELEASE:=1
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=MoCI contributors
 include $(INCLUDE_DIR)/package.mk
@@ -13,6 +13,11 @@ define Package/moci-app-docker
   TITLE:=Native Docker and Homelab Applications for MoCI
   PKGARCH:=all
   DEPENDS:=+moci +dockerd +docker-compose +python3
+endef
+
+define Package/moci-app-docker/conffiles
+/etc/moci-docker/allowed-images.json
+/etc/moci-docker/app-pins.json
 endef
 
 define Build/Compile
