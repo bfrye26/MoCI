@@ -30,7 +30,9 @@ class ReviewedAppProfileTests(unittest.TestCase):
             with patch.object(api,'ROOT',root), patch.object(api,'policy',return_value={image}), patch.object(api,'lan_ip',return_value='192.168.50.1'):
                 spec=api.spec_validate(app,app_id='uptime-kuma')
                 self.assertFalse(spec['services']['app']['read_only'])
-                self.assertNotIn('user',spec['services']['app'])
+                self.assertEqual(spec['services']['app']['user'],'0:0')
+                self.assertEqual(spec['services']['app']['cap_drop'],['ALL'])
+                self.assertEqual(spec['services']['app']['security_opt'],['no-new-privileges:true'])
                 self.assertEqual(spec['volumes'],{'uptime-kuma-data':{}})
                 locked=api.spec_validate(app)
                 self.assertTrue(locked['services']['app']['read_only'])
