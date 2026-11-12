@@ -585,10 +585,12 @@ export class OpenWrtCore {
 	}
 
 	formatMemory(mem) {
-		const total = (mem.total / 1024 / 1024).toFixed(0);
-		const free = (mem.free / 1024 / 1024).toFixed(0);
-		const used = total - free;
-		const percent = ((used / total) * 100).toFixed(0);
+		const totalBytes = Math.max(1,Number(mem.total)||1);
+		// "available" excludes reclaimable cache; free alone exaggerates RAM pressure.
+		const availableBytes = Math.max(0,Math.min(totalBytes,Number(mem.available ?? mem.free ?? 0)));
+		const total = Math.round(totalBytes / 1024 / 1024);
+		const used = Math.round((totalBytes - availableBytes) / 1024 / 1024);
+		const percent = Math.round((1 - availableBytes / totalBytes) * 100);
 		return `${used}MB / ${total}MB (${percent}%)`;
 	}
 
