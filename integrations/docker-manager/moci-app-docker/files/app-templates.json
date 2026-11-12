@@ -543,6 +543,45 @@
       "environment": {
         "NODE_ENV": "production"
       }
+    },
+    "filestash": {
+      "repository": "machines/filestash",
+      "image": "machines/filestash:latest",
+      "ports": [
+        "8334:8334"
+      ],
+      "volumes": [
+        "filestash-state:/app/data/state"
+      ],
+      "needs_write_access": true,
+      "mem_limit": "512m",
+      "reviewed_risk": "sensitive-data",
+      "description": "Private file-protocol frontend on LAN port 8334 with persistent state. First visit requires a new administrator password and backend/storage configuration. This lightweight recipe does not include optional Collabora/WOPI; no router host files are mounted.",
+      "path": "http://ROUTER_IP:8334/"
+    },
+    "backrest": {
+      "repository": "garethgeorge/backrest",
+      "image": "garethgeorge/backrest:latest",
+      "ports": [
+        "9898:9898"
+      ],
+      "volumes": [
+        "backrest-data:/data",
+        "backrest-config:/config",
+        "backrest-cache:/cache",
+        "backrest-repos:/repos"
+      ],
+      "needs_write_access": true,
+      "mem_limit": "768m",
+      "reviewed_risk": "sensitive-data",
+      "environment": {
+        "BACKREST_DATA": "/data",
+        "BACKREST_CONFIG": "/config/config.json",
+        "XDG_CACHE_HOME": "/cache",
+        "TZ": "Etc/UTC"
+      },
+      "description": "Restic backup orchestration with private managed data/config/cache and repository volumes; GUI at LAN port 9898. Only the managed /repos volume is writable as a backup target. The app cannot access router host paths or NAS shares without separate audited storage setup. Create administrator access on first launch.",
+      "path": "http://ROUTER_IP:9898/"
     }
   }
 }
