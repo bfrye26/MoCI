@@ -41,6 +41,8 @@ jobs:
           node --check moci/js/modules/vpn-policies.js
           node --check moci/js/modules/dashboard.js
           node --check integrations/docker-manager/moci-app-docker/files/addon.js
+      - name: Check privileged read-only diagnostic helper syntax
+        run: sh -n files/moci-service-inspect
       - name: Test real service status and start/stop failure handling
         run: node tests/service-controls.test.mjs
       - name: Build frontend package
