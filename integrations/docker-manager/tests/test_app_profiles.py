@@ -72,7 +72,7 @@ class ReviewedAppProfileTests(unittest.TestCase):
                     with patch.object(api,'pins',return_value={'gotify':image}):
                         with patch.object(api,'template_specs',return_value={'gotify':template}):
                             with patch.object(api,'lan_ip',return_value='192.168.50.1'):
-                                with patch.object(api,'deploy',return_value={'deployed':True}) as deploy:
+                                with patch.object(api,'deploy',side_effect=lambda *args,**kwargs:{'deployed':True}) as deploy:
                                     first=api.run('install_catalog',{'id':'gotify'})
                                     password=first['initial_credentials']['password']
                                     self.assertGreaterEqual(len(password),32)
