@@ -5,6 +5,7 @@ const SERVICES = [
   ['pbr','Policy-Based Routing','Routing','pbr'],
   ['network','Interfaces, VLANs & Routes','Routing','network'],
   ['firewall','Zones, NAT & Traffic Rules','Security','firewall'],
+  ['upnpd','UPnP & Port Mapping (Raw Rules)','Network','upnpd'],
   ['banip','BanIP Threat Blocking','Security','banip'],
   ['acme','ACME Certificates','Security','acme'],
   ['dropbear','SSH Administration','Security','dropbear'],
