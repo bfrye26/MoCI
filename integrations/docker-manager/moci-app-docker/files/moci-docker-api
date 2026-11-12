@@ -25,6 +25,21 @@ MAX_SPEC=16384
 NAME=re.compile(r'^[a-z][a-z0-9-]{0,39}$')
 IMAGE=re.compile(r'^[A-Za-z0-9][A-Za-z0-9._/-]*@sha256:[0-9a-f]{64}$')
 CUSTOM_TAG=re.compile(r'^(?:(?:docker\.io|ghcr\.io|lscr\.io|quay\.io|registry\.gitlab\.com)/)?[a-z0-9][a-z0-9._/-]{2,95}:[A-Za-z0-9][A-Za-z0-9._-]{0,79}$')
+
+# Explicit public registries. A string that looks like a hostname must
+# never silently become an arbitrary Docker registry or router-side SSRF target.
+APPROVED_REGISTRIES={'docker.io','ghcr.io','lscr.io','quay.io',
+                     'registry.gitlab.com','docker.n8n.io','registry.rocket.chat'}
+
+def public_image_tag(value):
+    if not isinstance(value,str) or not CUSTOM_TAG.fullmatch(value):
+        return False
+    repository=value.rsplit(':',1)[0]
+    parts=repository.split('/')
+    first=parts[0]
+    if '.' in first or ':' in first or first=='localhost':
+        return first in APPROVED_REGISTRIES and len(parts)>=2
+    return True
 IDENT=re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$|^[a-f0-9]{12,64}$')
 READ_METHODS=['status','containers','stacks','images','volumes','networks','storage','logs','container_stats','catalog','managed_stacks','diagnostics']
 WRITE_METHODS=['stack_config','deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action','set_deployments']
@@ -590,7 +605,7 @@ def run(method,args):
         return {'prepared':True,'id':app_id}
     if method=='prepare_custom':
         tag=args.get('image')
-        if not isinstance(tag,str) or len(tag)>150 or not CUSTOM_TAG.fullmatch(tag):
+        if not isinstance(tag,str) or len(tag)>150 or not public_image_tag(tag):
             raise ValueError('Invalid image tag')
         result=subprocess.run(['/usr/sbin/moci-docker-policy','prepare-custom',tag],
             stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=175,check=False)
