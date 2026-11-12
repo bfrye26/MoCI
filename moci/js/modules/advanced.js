@@ -31,6 +31,15 @@ const SERVICES = [
   ['system','Time, Logging & System','Services','system'],
   ['rpcd','RPC Service','Services','rpcd']
 ].map(([id,title,group,config])=>({id,title,group,config}));
+const GROUPS=[
+  {id:'network',name:'Network & Wi-Fi',group:'Network',description:'DNS, DHCP, wireless services, dynamic DNS and LAN optimization',primary:'#/network'},
+  {id:'routing',name:'Internet & Routing',group:'Routing',description:'Interfaces, routing rules, Multi-WAN and failover',primary:'#/network/routes'},
+  {id:'security',name:'Security & VPN',group:'Security',description:'Firewall policies, threat protection, certificates and VPN services',primary:'#/profiles'},
+  {id:'monitoring',name:'Monitoring',group:'Monitoring',description:'Network history, metrics, watchdogs, SNMP and troubleshooting',primary:'#/network/diagnostics'},
+  {id:'services',name:'Services & Storage',group:'Services',description:'File sharing, UPS services and additional local services',primary:'#/system/mounts'},
+  {id:'system',name:'System Administration',group:'System',description:'System settings, service configuration and advanced administration',primary:'#/system'},
+  {id:'additional',name:'Other Configurations',group:'Additional',description:'Less common installed UCI configuration files',primary:'#/advanced'}
+];
 const CURATED_CONFIGS=new Set(SERVICES.map(item=>item.config));
 const SERVICE_RELOAD=Object.freeze({
   banip:'banip',acme:'acme',lldpd:'lldpd',sqm:'sqm',ddns:'ddns',
@@ -46,8 +55,9 @@ export default class AdvancedModule {
     this.active=null;
     this.routeReady=false;
     this.discovered=false;
+    this.availableConfigs=null;
     this.busy=false;
-    this.core.registerRoute('/advanced',(_path,parts)=>this.show(parts[0]||'overview'));
+    this.core.registerRoute('/advanced',(_path,parts)=>this.show(parts[0]||'overview',parts[1]));
   }
   element(tag,cls,text) {
     const el=document.createElement(tag);
@@ -61,6 +71,8 @@ export default class AdvancedModule {
     try{
       const {configs=[]}=await this.rpc('uci','configs',{});
       if(!Array.isArray(configs))return;
+      this.availableConfigs=new Set(configs.filter(config=>typeof config==='string'));
+
       const known=new Set(SERVICES.map(s=>s.config));
       for(const name of configs){
         if(typeof name!=='string'||!/^[a-z][a-z0-9_-]{0,47}$/.test(name)||known.has(name))continue;
@@ -74,41 +86,91 @@ export default class AdvancedModule {
       console.warn('UCI discovery unavailable:',error.message);
     }
   }
-  async show(id) {
+  visibleServices(group) {
+    const list=SERVICES.filter(item=>!this.availableConfigs||this.availableConfigs.has(item.config));
+    return group?list.filter(item=>item.group===group):list;
+  }
+  async show(id,detail) {
     this.page=document.getElementById('advanced-page');
     if(!this.page)return;
     this.page.classList.remove('hidden');
     await this.discoverConfigs();
-    if(!this.routeReady) {this.routeReady=true;this.renderLinks();}
-    const item=SERVICES.find(s=>s.id===id);
-    if(!item) {this.active=null;this.overview();return;}
+    if(!this.routeReady){this.routeReady=true;this.renderLinks();}
+    this.active=null;
+    if(id==='group'){
+      const group=GROUPS.find(entry=>entry.id===detail);
+      if(group){this.renderGroup(group);return;}
+    }
+    if(id==='overview'){this.overview();return;}
+    const item=this.visibleServices().find(entry=>entry.id===id);
+    if(!item){this.overview();return;}
     this.active=item;
     await this.load();
   }
   renderLinks() {
     const nav=this.page.querySelector('#advanced-links');
+    if(!nav)return;
     nav.replaceChildren();
-    const overview=this.element('a','action-btn','OVERVIEW');
+    const overview=this.element('a','action-btn','ALL CATEGORIES');
     overview.href='#/advanced';nav.appendChild(overview);
-    for(const item of SERVICES){
-      const link=this.element('a','action-btn',item.title);
-      link.href='#/advanced/'+item.id;
+    for(const group of GROUPS) {
+      const count=this.visibleServices(group.group).length;
+      if(!count)continue;
+      const link=this.element('a','action-btn',group.name);
+      link.href='#/advanced/group/'+group.id;
+      link.title=group.description;
       nav.appendChild(link);
     }
   }
   overview() {
     const pane=this.page.querySelector('#advanced-content');
-    pane.replaceChildren(this.element('p','advanced-note','Native OpenWrt configuration. Select a service to inspect, edit, add, or remove UCI sections. Review the confirmation and timed rollback before applying connection-critical settings.'));
+    pane.replaceChildren(this.element('p','advanced-note','Choose the function you want to manage. Common everyday controls remain in Network, Security, Applications and System. The categories below provide access to native OpenWrt configuration files only where needed. Changes to connectivity-critical settings have a timed rollback.'));
+
+    const shortcuts=this.element('div','advanced-shortcuts');
+    for(const [label,route] of [['Network devices & DHCP','#/network/dhcp'],
+      ['Firewall & NAT','#/network/firewall'],['Security profiles','#/profiles'],
+      ['Applications','#/docker'],['Backups & firmware','#/system/backup']]){
+      const link=this.element('a','action-btn',label);
+      link.href=route;shortcuts.appendChild(link);
+    }
+    pane.appendChild(shortcuts);
     const grid=this.element('div','advanced-grid');
-    for(const item of SERVICES){
+    for(const group of GROUPS) {
+      const count=this.visibleServices(group.group).length;
+      if(!count)continue;
       const card=this.element('a','advanced-card');
-      card.href='#/advanced/'+item.id;
-      card.append(this.element('small','',item.group),this.element('h3','',item.title),
-        this.element('p','','View and manage /etc/config/'+item.config));
+      card.href='#/advanced/group/'+group.id;
+      card.append(this.element('small','',count+' installed configuration'+(count===1?'':'s')),
+        this.element('h3','',group.name),
+        this.element('p','',group.description));
       grid.appendChild(card);
     }
-    pane.appendChild(grid);
+    if(!grid.childElementCount)pane.appendChild(this.element('p','advanced-note','No configuration files are available to this account.'));
+    else pane.appendChild(grid);
   }
+  renderGroup(group) {
+    const pane=this.page.querySelector('#advanced-content');
+    pane.replaceChildren();
+    const heading=this.element('h3','',group.name);
+    const description=this.element('p','advanced-note',group.description+'. Choose a tool for direct UCI configuration, or use the simplified controls in its primary workspace.');
+    const toolbar=this.element('div','advanced-shortcuts');
+    const back=this.element('a','action-btn','All categories');
+    back.href='#/advanced';
+    const primary=this.element('a','action-btn','Open main workspace');
+    primary.href=group.primary;
+    toolbar.append(back,primary);
+    const grid=this.element('div','advanced-grid');
+    for(const item of this.visibleServices(group.group)){
+      const card=this.element('a','advanced-card');
+      card.href='#/advanced/'+item.id;
+      card.append(this.element('small','',item.group),
+        this.element('h3','',item.title),
+        this.element('p','','Manage /etc/config/'+item.config));
+      grid.appendChild(card);
+    }
+    pane.append(heading,description,toolbar,grid);
+  }
+
   async rpc(object,method,args={}) {
     const result=await this.core.ubusCall(object,method,args,{timeout:25000});
     if(!Array.isArray(result)||result[0]!==0)throw new Error(object+'.'+method+' failed'+(result?.[0]!==undefined?' (code '+result[0]+')':''));
