@@ -8,7 +8,8 @@ export default class ApplicationsAddon {
     this.profile = 'all';
   }
   async rpc(method, args={}) {
-    const [status, data] = await this.core.ubusCall('moci-docker', method, args);
+    const write = ['deploy','install_catalog','stack_action','container_action'].includes(method);
+    const [status, data] = await this.core.ubusCall('moci-docker', method, args, {timeout:write?150000:25000});
     if (status !== 0 || !data || data.error) throw new Error(data?.error || 'The requested operation failed');
     return data;
   }
@@ -85,9 +86,11 @@ export default class ApplicationsAddon {
     root.querySelectorAll('[data-profile]').forEach(b=>b.addEventListener('click',()=>{this.profile=b.dataset.profile;updateFilters();}));
     updateFilters();
     root.querySelectorAll('[data-install]').forEach(b=>b.addEventListener('click',async()=>{
-      if(!window.confirm('Install approved app '+b.dataset.install+'?'))return;
-      try{await this.rpc('install_catalog',{id:b.dataset.install});this.core.showToast('Installation completed','success');await this.renderView('managed_stacks');}
-      catch(e){this.core.showToast(e.message,'error');}
+      if(!window.confirm('Install approved app '+b.dataset.install+'? This will create persistent Docker data and publish the reviewed application port on your router LAN.'))return;
+      b.disabled=true;
+      b.textContent='INSTALLING…';
+      try{await this.rpc('install_catalog',{id:b.dataset.install});this.core.showToast('Deployment completed','success');await this.renderView('managed_stacks');}
+      catch(e){this.core.showToast('Install failed: '+e.message,'error');b.disabled=false;b.textContent='RETRY INSTALL';}
     }));
   }
   renderManaged(root,names) {
