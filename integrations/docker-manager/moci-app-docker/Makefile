@@ -12,7 +12,7 @@ define Package/moci-app-docker
   SUBMENU:=MoCI Add-ons
   TITLE:=Native Docker and Homelab Applications for MoCI
   PKGARCH:=all
-  DEPENDS:=+moci +dockerd +docker-compose +python3
+  DEPENDS:=+moci +dockerd +docker-compose +python3 +python3-email +python3-urllib
 endef
 
 define Package/moci-app-docker/conffiles
@@ -55,3 +55,4 @@ define Package/moci-app-docker/postinst
 endef
 
 $(eval $(call BuildPackage,moci-app-docker))
+

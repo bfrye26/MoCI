@@ -6,6 +6,8 @@ on:
       - 'moci/**'
       - 'tests/service-controls.test.mjs'
       - 'tests/docker-store-contract.py'
+      - 'tests/docker-firewall-reconcile.py'
+      - 'tests/release-interface-contract.mjs'
       - '.github/workflows/docker-store-contract.yml'
   workflow_dispatch:
 jobs:
@@ -28,6 +30,10 @@ jobs:
           python -m py_compile tests/docker-store-contract.py
       - name: Check all catalogue entries and install-security contracts
         run: python tests/docker-store-contract.py
+      - name: Test firewall drift, ownership, rollback and locking
+        run: python tests/docker-firewall-reconcile.py
+      - name: Check release interfaces and package dependencies
+        run: node tests/release-interface-contract.mjs
       - name: Check MoCI frontend and Docker add-on JavaScript
         run: |
           node --check moci/js/core.js
@@ -54,3 +60,4 @@ jobs:
           test -s dist/moci/js/modules/upnp.js
       - name: Validate read-only Docker LAN diagnostics
         run: sh -n scripts/diagnose-docker-lan.sh
+
