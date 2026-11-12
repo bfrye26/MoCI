@@ -12,6 +12,7 @@ export class OpenWrtCore {
 		this.addons = new Map();
 		this.addonManifests = new Map();
 		this.addonRouteMap = new Map();
+		this.helpOpen = false;
 		this.appearanceThemes = new Set(['obsidian', 'cloud', 'ocean', 'terminal', 'amethyst', 'copper']);
 		this.applyTheme(this.getSavedTheme());
 	}
@@ -68,6 +69,7 @@ export class OpenWrtCore {
 
 	async handleRouteChange() {
 		if (!this.sessionId) return;
+		this.refreshHelp();
 
 		const hash = window.location.hash.slice(1) || '/dashboard';
 		const [basePath, ...subPaths] = hash.split('/').filter(Boolean);
@@ -257,8 +259,61 @@ export class OpenWrtCore {
 		}
 	}
 
+	getHelpContent() {
+		const hash=(window.location.hash||'#/dashboard').slice(2).split('/');
+		const section=hash[0]||'dashboard';
+		const tab=hash[1]||'';
+		const topics={
+			dashboard:['Network health','The dashboard shows router CPU, memory and interface activity. WAN availability depends on a working upstream default route.','Check WAN routes and DNS when online status disagrees with real connectivity.','Avoid exposing the administration interface directly to the WAN.'],
+			network:['Network & firewall','Interfaces, device bridges, DHCP, DNS, firewall zones and VPNs all change how traffic crosses your router.','Keep one known-good management address before editing a LAN bridge or VLAN.','Back up settings before changing DHCP, routing or firewall.'],
+			system:['System administration','Manage the router clock, services, packages, SSH, backups, firmware upgrades and storage.','Create a backup before upgrading firmware or modifying storage.','Use a trusted source for packages and verify that the release matches your architecture.'],
+			addons:['Add-ons','MoCI add-ons extend the interface and can request sensitive access to OpenWrt configuration and services.','Review package permissions and origins before installation.','Remove add-ons you no longer use.'],
+			docker:['Docker Applications','Applications runs on Docker Engine. The Docker daemon and management socket have root-equivalent privileges.','Use reviewed images and separate persistent data volumes from the firmware filesystem.','Avoid publishing container administration ports directly onto the WAN.'],
+			advanced:['Advanced OpenWrt','The Advanced workspace edits service-specific OpenWrt UCI sections. Connectivity-sensitive edits should use rollback/confirmation.','A service may require restarting to activate a committed setting.','Device and protocol-specific options are not always interchangeable.']
+		};
+		const [title,description,...items]=topics[section]||topics.advanced;
+		const hints={
+			interfaces:'Interfaces bind IP addresses to devices, bridges and routing protocols.',
+			firewall:'Firewall zones control forwarding, masquerading and traffic rules.',
+			wireless:'Wireless isolation and per-SSID credentials depend on driver and hostapd support.',
+			vpn:'WireGuard tunnels need appropriate addresses, keys, allowed IPs and routes.',
+			dhcp:'DHCP leases and reservations must not conflict with statically configured addresses.',
+			dns:'DNS forwarding affects name resolution and privacy for LAN clients.',
+			mounts:'Use persistent filesystems for Docker volumes and shared data.',
+			upgrade:'Verify firmware checksums and preserve a recovery image.'
+		};
+		if(tab&&hints[tab])items.unshift(hints[tab]);
+		return {title:section.charAt(0).toUpperCase()+section.slice(1)+' help',description,items};
+	}
+	refreshHelp() {
+		if(!this.helpOpen)return;
+		const details=this.getHelpContent();
+		const title=document.getElementById('moci-help-title');
+		const description=document.getElementById('moci-help-description');
+		const list=document.getElementById('moci-help-topics');
+		if(title)title.textContent=details.title;
+		if(description)description.textContent=details.description;
+		if(list) {
+			list.replaceChildren();
+			for(const item of details.items) {
+				const li=document.createElement('li');
+				li.textContent=item;
+				list.appendChild(li);
+			}
+		}
+	}
+	setHelpOpen(open) {
+		this.helpOpen=Boolean(open);
+		const panel=document.getElementById('moci-help-panel');
+		const toggle=document.getElementById('moci-help-toggle');
+		panel?.classList.toggle('hidden',!this.helpOpen);
+		if(toggle)toggle.setAttribute('aria-expanded',String(this.helpOpen));
+		this.refreshHelp();
+	}
 	attachEventListeners() {
 		document.getElementById('logout-btn')?.addEventListener('click', () => this.logout());
+		document.getElementById('moci-help-toggle')?.addEventListener('click', () => this.setHelpOpen(!this.helpOpen));
+		document.getElementById('moci-help-close')?.addEventListener('click', () => this.setHelpOpen(false));
 		this.applyTheme(this.getSavedTheme());
 		document.getElementById('moci-theme-select')?.addEventListener('change', event => {
 			this.setTheme(event.target.value);
