@@ -186,7 +186,8 @@ def catalog():
                                  'image_tag':template.get('image'),
                                  'ports':template.get('ports',[]),
                                  'volumes':template.get('volumes',[]),
-                                 'needs_write_access':template.get('needs_write_access') is True}
+                                 'needs_write_access':template.get('needs_write_access') is True,
+                                 'tmpfs':template.get('tmpfs',[])}
         apps.append(summary)
     return {'catalog':apps,'total':len(apps),'read_only':not deploy_enabled}
 
@@ -364,6 +365,17 @@ def spec_validate(spec, app_id=None, advanced=False):
             approved_ports=[lan_ip()+':'+x for x in approved_template.get('ports',[])]
             if sorted(ports)!=sorted(approved_ports) or sorted(volumes)!=sorted(approved_template.get('volumes',[])):
                 raise ValueError('Application service differs from approved template')
+            approved_tmpfs=approved_template.get('tmpfs',[])
+            if approved_tmpfs:
+                # Only the reviewed IT Tools image is allowed the Nginx scratch
+                # mounts; never expose arbitrary tmpfs paths through Compose RPC.
+                expected=[
+                    '/var/cache/nginx:uid=65534,gid=65534,mode=1777,size=16m',
+                    '/var/run:uid=65534,gid=65534,mode=1777,size=4m',
+                    '/tmp:uid=65534,gid=65534,mode=1777,size=16m']
+                if app_id!='it-tools' or approved_tmpfs!=expected:
+                    raise ValueError('Unapproved application scratch storage')
+                managed['tmpfs']=approved_tmpfs
             if approved_template.get('needs_write_access') is True:
                 # Explicitly reviewed application requires writeable rootfs;
                 # never allow this through arbitrary custom Compose.
