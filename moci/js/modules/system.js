@@ -60,7 +60,7 @@ export default class SystemModule {
 			'parse-keys-btn': () => this.parseSSHKeyInput(),
 			'refresh-syslog-btn': () => this.loadLog('syslog'),
 			'refresh-klog-btn': () => this.loadLog('klog'),
-			'refresh-startup-btn': () => this.loadStartup()
+			'refresh-startup-btn': () => {this.serviceBootNames=null;this.serviceContext=null;return this.loadStartup();}
 		};
 
 		for (const [id, handler] of Object.entries(buttons)) {
@@ -446,7 +446,7 @@ export default class SystemModule {
 	}
 
 	serviceIsOneShot(name) {
-		return new Set(['acme','firewall','urandom_seed']).has(name);
+		return new Set(['acme','firewall','urandom_seed','system','packet_steering','ucitrack','sqm','luci_statistics','nut-cgi']).has(name);
 	}
 
 	serviceIsRunning(info) {
@@ -613,6 +613,16 @@ export default class SystemModule {
 		}
 	}
 
+	async waitForApplicationState(name,expected) {
+		if(name!=='banip')return false;
+		for(let attempt=0;attempt<5;attempt++){
+			const context=await this.loadServiceContext(true);
+			if((context.BANIP_STATE==='active')===expected)return true;
+			if(attempt<4)await new Promise(resolve=>setTimeout(resolve,1200));
+		}
+		return false;
+	}
+
 	async waitForServiceState(name,expected) {
 		// A successful init script is not proof the daemon started. Confirm via
 		// procd's verbose process state with a bounded retry window.
@@ -636,10 +646,15 @@ export default class SystemModule {
 		if(this.servicePending.has(name))return;
 		let action=null;
 		try {
+			if(name==='banip'||name==='nut-server')await this.loadServiceContext(true);
+			if(this.serviceNeedsSetup(name)){
+				this.core.showToast(name+': '+this.serviceHint(name),'info');
+				return;
+			}
 			const snapshot=await this.serviceSnapshot(name);
 			if(!snapshot[name])throw new Error('Service is no longer registered with procd');
 			const running=this.serviceIsRunning(snapshot[name]);
-			action=running?'stop':'start';
+			action=name==='banip' && this.serviceContext?.BANIP_STATE==='active'?'stop':running?'stop':'start';
 			const critical=new Set(['network','firewall','rpcd','uhttpd','dropbear','dnsmasq','odhcpd','dockerd','ubus','system']);
 			if(action==='stop' && critical.has(name) &&
 				!window.confirm('Stopping '+name+' may disconnect the router, SSH or internet. Continue?'))return;
@@ -659,7 +674,9 @@ export default class SystemModule {
 				this.core.showToast(name+': init command completed (no daemon expected)','success');
 				return;
 			}
-			const verified=await this.waitForServiceState(name,action==='start');
+			const verified=name==='banip'
+				?await this.waitForApplicationState('banip',action==='start')
+				:await this.waitForServiceState(name,action==='start');
 			if(verified){
 				this.core.showToast('Service '+name+' '+(action==='start'?'started':'stopped')+' and verified','success');
 			}else{
