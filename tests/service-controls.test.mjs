@@ -88,4 +88,27 @@ assert.equal(vm.serviceIsOneShot('dropbear'),false);
   assert.equal(state.toasts.at(-1)[1],'success');
   assert.ok(!state.calls.some(c=>c[0]==='verify'));
 }
+{
+  const module=Object.create(SystemModule.prototype);
+  module.serviceBootNames=null;
+  module.core={ubusCall:async (obj,method,args)=>{
+    assert.equal(obj,'file');
+    assert.equal(method,'exec');
+    assert.equal(args.command,'/usr/libexec/moci-service-inspect');
+    return [0,{code:0,stdout:'cron\ndropbear\nminiupnpd\n'}];
+  }};
+  await module.loadBootServiceNames();
+  assert.equal(module.serviceAutostart({},'cron'),'ENABLED');
+  assert.equal(module.serviceAutostart({},'notinstalled'),'DISABLED');
+  assert.equal(module.serviceBootNames.has('miniupnpd'),true);
+  assert.match(module.serviceHint('miniupnpd'),/UPnP/);
+  assert.match(module.serviceHint('gpio_switch'),/GPIO/);
+}
+{
+  const module=Object.create(SystemModule.prototype);
+  module.serviceBootNames=null;
+  module.core={ubusCall:async()=>[6,{code:1}]};
+  await module.loadBootServiceNames();
+  assert.equal(module.serviceAutostart({},'cron'),'UNKNOWN');
+}
 console.log('System service controls: verified process status, bounded action feedback and errors');
