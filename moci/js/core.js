@@ -834,7 +834,7 @@ export class OpenWrtCore {
 
 	injectAddonCSS(id, manifest) {
 		if (!manifest.css) return;
-		if (/(?:^|\\/)\\.\\.(?:\\/|$)/.test(manifest.css) || manifest.css.startsWith('/') || manifest.css.includes('\\\\'))
+		if (/(?:^|\/)\.\.(?:\/|$)/.test(manifest.css) || manifest.css.startsWith('/') || manifest.css.includes('\\'))
 			return;
 		if (document.querySelector(`link[data-addon="${id}"]`)) return;
 		const link = document.createElement('link');
