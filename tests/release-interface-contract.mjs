@@ -57,6 +57,16 @@ for (const packageName of [
   assert(firmware.includes('CONFIG_PACKAGE_'+packageName+'=y'),
     'Firmware does not request '+packageName);
 }
+const packageHelper=read('files/moci-pkg-call');
+const systemModule=read('moci/js/modules/system.js');
+for(const op of ['list-all-installed','search-general','install-general','remove-general']){
+  assert(packageHelper.includes('    '+op+')'),'Missing package helper operation '+op);
+  assert(systemModule.includes(op),'System software UI missing '+op);
+  const expected='/usr/libexec/moci-pkg-call '+op+(op==='list-all-installed'?'':' *');
+  const area=op==='install-general'||op==='remove-general' ? uciACL.moci.write.file : uciACL.moci.read.file;
+  assert(Object.prototype.hasOwnProperty.call(area,expected),'Missing package ACL '+expected);
+}
+assert(!systemModule.includes("path: '/usr/lib/opkg/status'"),'Legacy opkg package view still used');
 assert(makefile.includes('+uhttpd-mod-ubus'),'MoCI login dependency missing');
 assert(appMakefile.includes('+python3-email') && appMakefile.includes('+python3-urllib'),
   'Docker RPC Python dependencies missing');
