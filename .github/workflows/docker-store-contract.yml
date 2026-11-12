@@ -52,3 +52,5 @@ jobs:
           test -s dist/moci/js/core.js
           test -s dist/moci/index.html
           test -s dist/moci/js/modules/upnp.js
+      - name: Validate read-only Docker LAN diagnostics
+        run: sh -n scripts/diagnose-docker-lan.sh
