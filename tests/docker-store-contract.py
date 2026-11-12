@@ -50,7 +50,7 @@ class DockerStoreContract(unittest.TestCase):
 
     def test_reviewed_templates_match_listings_and_repositories(self):
         catalog_by_id={a['id']:a for a in CATALOG}
-        self.assertEqual(len(TEMPLATES),8)
+        self.assertEqual(len(TEMPLATES),16)
         for name,template in TEMPLATES.items():
             self.assertIn(name,catalog_by_id)
             self.assertTrue(catalog_by_id[name]['template_available'])
@@ -76,8 +76,8 @@ class DockerStoreContract(unittest.TestCase):
         with patch.dict(API['catalog'].__globals__,{'writes_enabled':lambda:True}):
             apps=API['catalog']()['catalog']
         reviewed=[a for a in apps if a['can_prepare']]
-        self.assertEqual(len(reviewed),8)
-        self.assertEqual(len([a for a in apps if a['setup_state']=='manual']),65)
+        self.assertEqual(len(reviewed),16)
+        self.assertEqual(len([a for a in apps if a['setup_state']=='manual']),57)
         self.assertTrue(all(a['reviewed_template'] for a in reviewed))
         self.assertTrue(all(not a['ready'] for a in apps))
 
@@ -195,6 +195,63 @@ class DockerStoreContract(unittest.TestCase):
                          'GF_SECURITY_ADMIN_PASSWORD')
         self.assertEqual(TEMPLATES['memos']['run_as_user'],'10001:10001')
         self.assertEqual(TEMPLATES['grafana']['run_as_user'],'472:472')
+
+    def test_sixteen_candidate_templates_have_unique_host_ports_and_volume_owners(self):
+        host_ports=set()
+        catalog={app['id']:app for app in CATALOG}
+        self.assertEqual(len(TEMPLATES),16)
+        for name,template in TEMPLATES.items():
+            self.assertTrue(catalog[name]['template_available'])
+            self.assertEqual(catalog[name]['repository'],template['repository'])
+            self.assertIn(template['needs_write_access'],(True,False))
+            for port in template.get('ports',[]):
+                host=int(port.split(':')[0])
+                self.assertGreaterEqual(host,1024)
+                self.assertNotIn(host,host_ports,(name,port))
+                host_ports.add(host)
+            mounts={value.split(':',1)[1] for value in template.get('volumes',[])}
+            inits=template.get('volume_initializers',[])
+            if template.get('volume_initializer'):inits=inits+[template['volume_initializer']]
+            for item in inits:
+                self.assertIn(item['path'],mounts)
+                self.assertTrue(1<=item['uid']<=65534)
+                self.assertTrue(1<=item['gid']<=65534)
+        self.assertEqual(TEMPLATES['homarr']['generated_secret_env'],'SECRET_ENCRYPTION_KEY')
+        self.assertEqual(TEMPLATES['homepage']['environment']['HOMEPAGE_ALLOWED_HOSTS'],'ROUTER_IP:3333')
+
+    def test_reviewed_environment_is_not_browser_editable(self):
+        digest='ghcr.io/gethomepage/homepage@sha256:'+('e'*64)
+        original={'image':digest,'ports':['192.168.50.1:3333:3000'],
+                  'volumes':['homepage-config:/app/config'],
+                  'environment':{'HOMEPAGE_ALLOWED_HOSTS':'192.168.50.1:3333',
+                                 'PUID':'1000','PGID':'1000'}}
+        policy={'policy':lambda:{digest},
+                'pins':lambda:{'homepage':digest},
+                'template_specs':lambda:TEMPLATES,
+                'lan_ip':lambda:'192.168.50.1'}
+        with patch.dict(API['spec_validate'].__globals__,policy):
+            good=API['spec_validate']({'services':{'app':dict(original)}},app_id='homepage')
+            self.assertEqual(good['services']['app']['environment']['HOMEPAGE_ALLOWED_HOSTS'],
+                             '192.168.50.1:3333')
+            evil=dict(original,environment=dict(original['environment'],TRUST_ALL='yes'))
+            with self.assertRaisesRegex(ValueError,'environment differs'):
+                API['spec_validate']({'services':{'app':evil}},app_id='homepage')
+            evil=dict(original,command=['rm','-rf','/'])
+            with self.assertRaisesRegex(ValueError,'command differs'):
+                API['spec_validate']({'services':{'app':evil}},app_id='homepage')
+
+    def test_homarr_generated_encryption_secret_is_required(self):
+        digest='ghcr.io/homarr-labs/homarr@sha256:'+('e'*64)
+        base={'image':digest,'ports':['192.168.50.1:7575:7575'],
+              'volumes':['homarr-appdata:/appdata']}
+        policy={'policy':lambda:{digest},'pins':lambda:{'homarr':digest},
+                'template_specs':lambda:TEMPLATES,'lan_ip':lambda:'192.168.50.1'}
+        with patch.dict(API['spec_validate'].__globals__,policy):
+            with self.assertRaisesRegex(ValueError,'Invalid generated'):
+                API['spec_validate']({'services':{'app':base}},app_id='homarr')
+            base['environment']={'SECRET_ENCRYPTION_KEY':'f'*64}
+            approved=API['spec_validate']({'services':{'app':base}},app_id='homarr')
+            self.assertEqual(approved['services']['app']['environment']['SECRET_ENCRYPTION_KEY'],'f'*64)
 
     def test_docker_firewall_only_publishes_managed_running_lan_tcp_ports(self):
         fw=runpy.run_path(str(BASE/'moci-docker-firewall'))
