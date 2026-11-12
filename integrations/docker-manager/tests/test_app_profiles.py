@@ -52,5 +52,19 @@ class ReviewedAppProfileTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,'Unapproved'):
                     api.spec_validate(spec,app_id='other')
 
+    def test_prepare_uses_fixed_root_owned_helper(self):
+        import subprocess
+        with patch.object(api,'writes_enabled',return_value=True):
+            with patch.object(api.subprocess,'run',return_value=subprocess.CompletedProcess(args=[],returncode=0)) as runner:
+                output=api.run('prepare_app',{'id':'uptime-kuma'})
+        self.assertEqual(output['id'],'uptime-kuma')
+        args=runner.call_args.args[0]
+        self.assertEqual(args,['/usr/sbin/moci-docker-policy','prepare','uptime-kuma'])
+
+    def test_prepare_rejects_untrusted_id(self):
+        with patch.object(api,'writes_enabled',return_value=True):
+            with self.assertRaisesRegex(ValueError,'Invalid application ID'):
+                api.run('prepare_app',{'id':'../../bin/sh'})
+
 if __name__=='__main__':
     unittest.main()
