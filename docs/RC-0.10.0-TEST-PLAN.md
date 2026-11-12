@@ -4,7 +4,7 @@
 
 ## Proven on the user's Hyper-V test system (Nov. 11, 2026)
 
-- OpenWrt 25.12.2 x86-64 UEFI firmware compiles, installs from the custom Debian ISO, and boots.
+- OpenWrt 25.12.6 x86-64 UEFI firmware compiles, installs from the custom Debian ISO, and boots.
 - LAN `br-lan` is reachable at `192.168.50.1` after swapping the initial Hyper-V adapter mapping.
 - Docker Engine 27.3.1 is operational.
 - Missing `python3-email` and `python3-urllib` dependencies were identified and fixed in source. Previously built images need these installed manually or a firmware rebuild.
