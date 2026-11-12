@@ -1774,3 +1774,23 @@ body {
 :root[data-theme="cloud"] ::-webkit-scrollbar-thumb {background:#b4c1d1}
 @media(max-width:900px){.theme-picker{margin-left:0}.theme-picker span{display:none}.theme-picker select{max-width:122px}}
 @media(prefers-reduced-motion:reduce){:root[data-theme] *, :root[data-theme] *::before,:root[data-theme] *::after {transition-duration:.01ms!important}}
+
+/* Native advanced management workspace */
+.advanced-intro,.advanced-note {color:var(--steel-muted);line-height:1.65;margin:10px 0 16px}
+.advanced-nav {display:flex;gap:8px;flex-wrap:wrap;max-height:148px;overflow-y:auto;padding:4px 0 14px;margin-bottom:20px;border-bottom:1px solid var(--glass-border)}
+.advanced-nav .action-btn {display:inline-flex;align-items:center;text-decoration:none;font-size:11px;padding:8px 12px;white-space:nowrap}
+.advanced-grid {display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+.advanced-card {display:flex;flex-direction:column;gap:8px;text-decoration:none;background:var(--glass-bg);border:1px solid var(--glass-border);color:var(--starship-steel);border-radius:10px;padding:18px;min-height:130px}
+.advanced-card:hover,.advanced-card:focus-visible {border-color:var(--primary-accent);background:var(--theme-hover)}
+.advanced-card h3 {font-size:15px;margin:0;color:var(--starship-steel)}
+.advanced-card small {font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--primary-accent)}
+.advanced-card p {font-size:12px;line-height:1.5;color:var(--steel-muted)}
+.advanced-section {padding:20px;margin-bottom:18px}
+.advanced-section h4 {margin-bottom:12px;font-size:15px;overflow-wrap:anywhere}
+.advanced-fields {display:grid;grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:15px}
+.advanced-field {display:flex;flex-direction:column;gap:7px;font-size:12px;overflow-wrap:anywhere;color:var(--steel-muted)}
+.advanced-field input,.advanced-field textarea {color:var(--starship-steel);background:var(--theme-input);border:1px solid var(--glass-border);border-radius:6px;padding:9px;min-width:0}
+.advanced-field input:focus,.advanced-field textarea:focus {outline:2px solid var(--theme-outline);outline-offset:1px}
+.advanced-toolbar {display:flex;gap:10px;flex-wrap:wrap;margin:18px 0}
+.advanced-toolbar .danger {color:var(--alert-red)}
+@media(max-width:640px){.advanced-fields,.advanced-grid{grid-template-columns:minmax(0,1fr)}.advanced-section{padding:14px}}
