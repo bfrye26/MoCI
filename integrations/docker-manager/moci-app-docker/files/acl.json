@@ -14,7 +14,8 @@
           "logs",
           "catalog",
           "managed_stacks",
-          "diagnostics"
+          "diagnostics",
+          "container_stats"
         ]
       }
     }
