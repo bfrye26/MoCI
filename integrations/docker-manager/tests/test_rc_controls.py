@@ -55,8 +55,24 @@ class ReleaseCandidateSecurity(unittest.TestCase):
     def test_unauthorized_writes_fail_closed(self):
         with patch.object(api, "writes_enabled", return_value=False):
             for method in api.WRITE_METHODS:
+                if method=='set_deployments': continue
                 with self.assertRaisesRegex(ValueError, "disabled"):
                     api.run(method, {})
+
+    def test_management_mode_requires_exact_confirmation(self):
+        with self.assertRaisesRegex(ValueError, 'not confirmed'):
+            api.run('set_deployments',{'enabled':True,'confirmation':'enable'})
+        with self.assertRaisesRegex(ValueError, 'Invalid deployment mode'):
+            api.run('set_deployments',{'enabled':'true','confirmation':'ENABLE LOCAL DOCKER MANAGEMENT'})
+        with patch.object(api,'writes_enabled',return_value=True):
+            with patch.object(api.subprocess,'run') as runner:
+                runner.return_value.returncode=0
+                out=api.run('set_deployments',{
+                    'enabled':True,'confirmation':'ENABLE LOCAL DOCKER MANAGEMENT'})
+        self.assertTrue(out['enabled'])
+        runner.assert_called_once()
+        self.assertEqual(runner.call_args.args[0],
+                         ['/usr/sbin/moci-docker-policy','enable'])
 
     def test_catalog_does_not_claim_unsupported_app_ready(self):
         catalog = {"schema": 1, "apps": [
