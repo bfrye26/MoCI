@@ -1,1 +1,41 @@
 .docker-hero{display:flex;justify-content:space-between;align-items:center;gap:20px;background:var(--steel-dark,#20232b);padding:22px;border-radius:12px;margin:16px 0}.docker-hero p{opacity:.7;margin:5px 0 0}.docker-hero span{font-size:12px;opacity:.7}.docker-nav,.docker-filters{display:flex;gap:9px;flex-wrap:wrap;margin:16px 0}.docker-intro{margin:20px 0}.docker-intro h2{font-size:20px}.docker-intro p{opacity:.72;max-width:760px}.docker-app-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin:14px 0}.docker-app-card{border:1px solid rgba(150,150,150,.3);border-radius:12px;padding:18px;display:flex;flex-direction:column;min-height:190px}.docker-app-card small{opacity:.65}.docker-app-card h3{margin:12px 0 4px}.docker-app-card p{opacity:.7;flex:1}.docker-app-card footer{display:flex;justify-content:space-between;gap:10px;align-items:center;font-size:12px}.docker-app-card[hidden]{display:none}.docker-app-card button:disabled{opacity:.45;cursor:not-allowed}.docker-scroll{overflow:auto}.docker-log{max-height:340px;overflow:auto;padding:15px;border-radius:8px;background:#141720;color:#e0e4eb;white-space:pre-wrap;overflow-wrap:anywhere}.docker-compose{display:grid;gap:14px;padding:20px;border:1px solid #555;border-radius:10px;margin:16px 0}.docker-compose label{display:grid;gap:7px}.docker-compose input,.docker-compose textarea{width:100%;padding:10px;border-radius:6px;background:#181c24;color:#f7f7f7;border:1px solid #777}.docker-stack{padding:15px;border-bottom:1px solid #555;display:flex;align-items:center;gap:10px;flex-wrap:wrap}.docker-note,.docker-empty{padding:16px;border:1px solid #555;border-radius:8px;margin:15px 0}
+
+/* App Store themes inherit the main MoCI palette, not hard-coded dark UI. */
+.docker-hero,.docker-app-card,.docker-note,.docker-empty,.docker-compose,.docker-stack{
+  color:var(--starship-steel);border-color:var(--glass-border);
+}
+.docker-hero{background:var(--glass-bg)}
+.docker-app-card,.docker-compose{background:var(--theme-surface)}
+.docker-log{background:var(--theme-input);color:var(--starship-steel);border:1px solid var(--glass-border)}
+.docker-compose input,.docker-compose textarea{background:var(--theme-input);color:var(--starship-steel);border:1px solid var(--glass-border)}
+.docker-app-warning{color:var(--warning-amber)}
+.docker-result-count{color:var(--steel-muted)}
+:root[data-theme="cloud"] .docker-hero{
+  background:linear-gradient(115deg,#eff5ff 0%,#ffffff 100%);
+  border:1px solid #d5e2f1;border-radius:12px;
+}
+:root[data-theme="cloud"] .docker-hero strong{color:#1a3b67}
+:root[data-theme="cloud"] .docker-hero p,
+:root[data-theme="cloud"] .docker-hero span,
+:root[data-theme="cloud"] .docker-app-card small,
+:root[data-theme="cloud"] .docker-intro p,
+:root[data-theme="cloud"] .docker-app-card p{color:#5a708c;opacity:1}
+:root[data-theme="cloud"] .docker-app-card{
+  background:#fff;border:1px solid #dce5f0;
+  box-shadow:0 3px 12px rgba(35,66,104,.045);
+}
+:root[data-theme="cloud"] .docker-app-card:hover{border-color:#87addb;box-shadow:0 6px 18px rgba(35,66,104,.09)}
+:root[data-theme="cloud"] .docker-app-card h3{color:#213a58}
+:root[data-theme="cloud"] .docker-nav,
+:root[data-theme="cloud"] .docker-filters{gap:8px}
+:root[data-theme="cloud"] .docker-nav .action-btn,
+:root[data-theme="cloud"] .docker-filters .action-btn{
+  color:#315373;background:#f5f8fd;border:1px solid #d0deeb;
+}
+:root[data-theme="cloud"] .docker-filters [aria-pressed="true"]{
+  background:#e6f0ff;border-color:#6d9acb;color:#1557a8;
+}
+:root[data-theme="cloud"] .docker-log{background:#f1f5fb;color:#283a54}
+:root[data-theme="cloud"] .docker-stack,
+:root[data-theme="cloud"] .docker-note,
+:root[data-theme="cloud"] .docker-empty{border-color:#dce5f0;color:#526780}
