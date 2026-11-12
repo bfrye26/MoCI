@@ -77,4 +77,15 @@ assert.equal(vm.serviceAutostart({}),'UNKNOWN');
   assert.deepEqual(command[2].params,['stop']);
   assert.equal(state.toasts.at(-1)[1],'success');
 }
+assert.equal(vm.serviceIsOneShot('acme'),true);
+assert.equal(vm.serviceIsOneShot('firewall'),true);
+assert.equal(vm.serviceIsOneShot('dropbear'),false);
+{
+  const {module,state}=makeServiceCore({running:false,verified:false});
+  await module.toggleService('acme');
+  assert.equal(module.serviceFeedback.get('acme').kind,'completed');
+  assert.match(state.toasts.at(-1)[0],/no daemon expected/);
+  assert.equal(state.toasts.at(-1)[1],'success');
+  assert.ok(!state.calls.some(c=>c[0]==='verify'));
+}
 console.log('System service controls: verified process status, bounded action feedback and errors');
