@@ -139,7 +139,7 @@ def spec_validate(spec):
         for p in ports:
             if not isinstance(p,str) or not re.fullmatch(r'[0-9.]{7,15}:[0-9]{4,5}:[0-9]{1,5}',p):
                 raise ValueError('Only explicit LAN IPv4 TCP ports allowed')
-            if p.split(':',1)[0] not in ('127.0.0.1',lan_ip()):
+            if p.split(':',1)[0]!='127.0.0.1' and p.split(':',1)[0]!=lan_ip():
                 raise ValueError('Ports can bind only to loopback or LAN interface')
             port=int(p.split(':')[1])
             if not 1024<=port<=65535 or port in ports_used:
