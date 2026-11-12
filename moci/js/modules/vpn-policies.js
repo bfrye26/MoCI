@@ -161,6 +161,99 @@ export default class VpnPoliciesModule{
       card.append(remove);root.append(card);
     }
     this.renderChain(root,tunnels);
+    this.renderInbound(root);
+  }
+  renderInbound(root){
+    root.append(this.el('h3','Inbound WireGuard VPN servers'));
+    root.append(this.el('p','Create separate inbound WireGuard interfaces for remote users. Each server receives its own firewall security zone, private subnet and external UDP port. Assign peer public keys and allowed client addresses through the native VPN peer editor.','profiles-description'));
+    const managed=Object.entries(this.network).filter(([id,v])=>id.startsWith('moci_wgsrv_')&&v?.['.type']==='interface'&&v.proto==='wireguard');
+    const form=this.el('form',undefined,'profiles-create');
+    const name=this.el('input');name.required=true;name.pattern='[a-z][a-z0-9]{1,16}';name.placeholder='staff';
+    const subnet=this.el('input');subnet.required=true;subnet.placeholder='10.45.0.1/24';
+    const port=this.el('input');port.type='number';port.min='1024';port.max='65535';port.required=true;port.value='51821';
+    const internet=this.el('input');internet.type='checkbox';
+    form.append(this.createLabel('Server name',name),this.createLabel('Server interface address (CIDR)',subnet),
+      this.createLabel('Inbound UDP port',port));
+    const wan=this.el('label',undefined,'profiles-check');
+    wan.append(internet,this.el('span','Permit remote users to reach the internet through the router'));
+    form.append(wan);
+    const button=this.el('button','CREATE INBOUND VPN SERVER','action-btn');button.type='submit';form.append(button);
+    form.addEventListener('submit',async event=>{
+      event.preventDefault();if(this.busy)return;
+      const slug=name.value.trim().toLowerCase(),address=subnet.value.trim(),listen=Number(port.value);
+      if(!/^[a-z][a-z0-9]{1,16}$/.test(slug)||
+        !validCIDR(address)||!Number.isInteger(listen)||listen<1024||listen>65535){
+        this.core.showToast('Invalid VPN subnet, name or UDP port. Use a private address such as 10.45.0.1/24.','error');return;
+      }
+      if(Object.values(this.network).some(v=>v?.proto==='wireguard'&&Number(v.listen_port)===listen)){
+        this.core.showToast('A WireGuard listener already uses this UDP port','error');return;
+      }
+      const iface='moci_wgsrv_'+slug;
+      if(this.network[iface]){
+        this.core.showToast('Server name already exists','error');return;
+      }
+      if(!window.confirm('Create inbound VPN '+iface+' on UDP '+listen+'? It will use a separate REJECT-by-default security zone.')){
+        return;
+      }
+      this.busy=true;button.disabled=true;
+      try{
+        const keys=await this.rpc('moci','wgGenKey');
+        if(!/^[A-Za-z0-9+/]{43}=$/.test(keys.private_key||''))throw new Error('WireGuard key generation failed');
+        await this.add('network','interface',iface);
+        await this.set('network',iface,{
+          proto:'wireguard',private_key:keys.private_key,listen_port:String(listen),
+          addresses:[address],moci_inbound:'1'});
+        const zone='moci_wgzone_'+slug;
+        await this.add('firewall','zone',zone);
+        await this.set('firewall',zone,{name:'moci_remote_'+slug,network:[iface],
+          input:'REJECT',output:'ACCEPT',forward:'REJECT'});
+        const ingress='moci_wgport_'+slug;
+        await this.add('firewall','rule',ingress);
+        await this.set('firewall',ingress,{
+          name:'MoCI VPN '+slug+' UDP',src:'wan',proto:'udp',
+          dest_port:String(listen),target:'ACCEPT'});
+        if(internet.checked){
+          const forward='moci_wginternet_'+slug;
+          await this.add('firewall','forwarding',forward);
+          await this.set('firewall',forward,{src:'moci_remote_'+slug,dest:'wan'});
+        }
+        await this.apply();
+        this.core.showToast('Inbound VPN server created. Add peers using Network → VPN.','success');
+        await this.show();
+      }catch(e){this.core.showToast('VPN server was not confirmed: '+e.message,'error');}
+      finally{this.busy=false;button.disabled=false;}
+    });
+    root.append(form);
+    if(!managed.length)root.append(this.el('p','No inbound servers created.','profiles-description'));
+    for(const [iface,values] of managed){
+      const slug=iface.replace('moci_wgsrv_','');
+      const card=this.el('article',undefined,'stat-card profiles-entry');
+      card.append(this.el('strong',iface+' · UDP '+values.listen_port),
+        this.el('p',(values.addresses||[]).toString()+' · Private key stored in OpenWrt UCI, not displayed.','profiles-description'));
+      const remove=this.el('button','REMOVE VPN SERVER','action-btn danger');remove.type='button';
+      remove.addEventListener('click',async()=>{
+        if(!window.confirm('Remove inbound VPN '+iface+' and disconnect all connected users?')){
+          return;
+        }
+        if(!window.confirm('Final confirmation: remove the WireGuard interface, its peers and managed firewall rules?')){
+          return;
+        }
+        this.busy=true;remove.disabled=true;
+        try{
+          for(const peer of Object.keys(this.network).filter(n=>this.network[n]?.['.type']==='wireguard_'+iface)){
+            await this.uci('delete',{config:'network',section:peer});
+          }
+          await this.uci('delete',{config:'network',section:iface});
+          for(const section of ['moci_wgzone_'+slug,'moci_wgport_'+slug,'moci_wginternet_'+slug]){
+            if(this.firewall[section])await this.uci('delete',{config:'firewall',section});
+          }
+          await this.apply();
+          this.core.showToast('Inbound VPN removed','success');await this.show();
+        }catch(e){this.core.showToast('Removal not confirmed: '+e.message,'error');remove.disabled=false;}
+        finally{this.busy=false;}
+      });
+      card.append(remove);root.append(card);
+    }
   }
   renderChain(root,tunnels){
     root.append(this.el('h3','Optional two-hop WireGuard chain'));
