@@ -96,6 +96,30 @@ class DockerStoreContract(unittest.TestCase):
             entry=next(a for a in API['catalog']()['catalog'] if a['id']=='uptime-kuma')
             self.assertEqual(entry['setup_state'],'installed')
 
+    def test_it_tools_tmpfs_is_narrowly_scoped_to_reviewed_image(self):
+        docker_image='corentinth/it-tools@sha256:'+('b'*64)
+        spec={'services':{'app':{
+            'image':docker_image,
+            'ports':['192.168.50.1:8081:80'],
+            'volumes':[]}}}
+        with patch.dict(API['spec_validate'].__globals__,{
+            'policy':lambda:{docker_image},
+            'pins':lambda:{'it-tools':docker_image},
+            'template_specs':lambda:TEMPLATES,
+            'lan_ip':lambda:'192.168.50.1'}):
+            validated=API['spec_validate'](spec,app_id='it-tools')
+            app=validated['services']['app']
+            self.assertTrue(app['read_only'])
+            self.assertEqual(app['user'],'65534:65534')
+            self.assertEqual(app['tmpfs'],[
+                '/var/cache/nginx:uid=65534,gid=65534,mode=1777,size=16m',
+                '/var/run:uid=65534,gid=65534,mode=1777,size=4m',
+                '/tmp:uid=65534,gid=65534,mode=1777,size=16m'])
+            # Browser-supplied Compose must not choose arbitrary tmpfs mounts.
+            spec['services']['app']['tmpfs']=['/:mode=777']
+            with self.assertRaisesRegex(ValueError,'Unsupported Compose service'):
+                API['spec_validate'](spec,advanced=True)
+
     def test_custom_image_registry_allowlist(self):
         allowed=['ghcr.io/advplyr/audiobookshelf:latest',
                  'docker.n8n.io/n8nio/n8n:1.3',
