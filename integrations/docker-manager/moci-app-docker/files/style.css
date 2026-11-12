@@ -39,3 +39,11 @@
 :root[data-theme="cloud"] .docker-stack,
 :root[data-theme="cloud"] .docker-note,
 :root[data-theme="cloud"] .docker-empty{border-color:#dce5f0;color:#526780}
+
+.docker-diagnostics{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-top:18px}
+.docker-check{background:var(--theme-surface);border:1px solid var(--glass-border);border-radius:9px;padding:15px;color:var(--starship-steel);min-height:112px}
+.docker-check strong{display:block;margin-top:8px;font-size:13px}
+.docker-check p{font-size:12px;line-height:1.5;color:var(--steel-muted);margin:7px 0 0}
+.docker-check-ok,.docker-check-fail{font-size:10px;font-weight:700;letter-spacing:.07em}
+.docker-check-ok{color:var(--success-green)}
+.docker-check-fail{color:var(--warning-amber)}
