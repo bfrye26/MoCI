@@ -61,5 +61,37 @@ class DeploymentRecovery(unittest.TestCase):
                         api.deploy('existing',json.dumps(spec))
 
 
+    def test_export_requires_management_authorization_and_flags_secrets(self):
+        with tempfile.TemporaryDirectory() as location:
+            folder=Path(location)/'app'
+            folder.mkdir()
+            (folder/'compose.json').write_text(json.dumps({'services':{'app':{
+                'image':'image@sha256:'+'a'*64,
+                'environment':{'PASSWORD':'local-only-secret'}}}}))
+            with patch.object(api,'STACKS',location):
+                with patch.object(api,'writes_enabled',return_value=False):
+                    with self.assertRaisesRegex(ValueError,'disabled'):
+                        api.run('stack_config',{'name':'app'})
+                with patch.object(api,'writes_enabled',return_value=True):
+                    result=api.run('stack_config',{'name':'app'})
+                    self.assertTrue(result['contains_secrets'])
+                    self.assertEqual(result['config']['services']['app']['environment']['PASSWORD'],
+                                     'local-only-secret')
+                    with self.assertRaises(ValueError):
+                        api.run('stack_config',{'name':'../../etc/passwd'})
+
+    def test_export_rejects_symlinked_configuration(self):
+        with tempfile.TemporaryDirectory() as location:
+            folder=Path(location)/'app'
+            folder.mkdir()
+            target=Path(location)/'target.json'
+            target.write_text('{}')
+            (folder/'compose.json').symlink_to(target)
+            with patch.object(api,'STACKS',location):
+                with patch.object(api,'writes_enabled',return_value=True):
+                    with self.assertRaisesRegex(ValueError,'not found'):
+                        api.run('stack_config',{'name':'app'})
+
+
 if __name__=='__main__':
     unittest.main()
