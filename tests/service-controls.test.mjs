@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import SystemModule from '../moci/js/modules/system.js';
 
-function makeServiceCore({running=false,execStatus=0,execCode=0,stderr='',verified=true}={}){
+function makeServiceCore({running=false,execStatus=0,execCode=0,stderr='',verified=true,name='demo'}={}){
   const state={calls:[],toasts:[],reloads:0};
   const module=Object.create(SystemModule.prototype);
   module.servicePending=new Map();
@@ -16,7 +16,7 @@ function makeServiceCore({running=false,execStatus=0,execCode=0,stderr='',verifi
     ubusCall:async (object,method,params)=>{
       state.calls.push([object,method,params]);
       if(object==='service'&&method==='list'){
-        return [0,{demo:{autostart:true,instances:{instance1:{running}}}}];
+        return [0,{[name]:{autostart:true,instances:{instance1:{running}}}}];
       }
       if(object==='file'&&method==='exec'){
         return [execStatus,{code:execCode,stderr}];
@@ -81,7 +81,7 @@ assert.equal(vm.serviceIsOneShot('acme'),true);
 assert.equal(vm.serviceIsOneShot('firewall'),true);
 assert.equal(vm.serviceIsOneShot('dropbear'),false);
 {
-  const {module,state}=makeServiceCore({running:false,verified:false});
+  const {module,state}=makeServiceCore({running:false,verified:false,name:'acme'});
   await module.toggleService('acme');
   assert.equal(module.serviceFeedback.get('acme').kind,'completed');
   assert.match(state.toasts.at(-1)[0],/no daemon expected/);
