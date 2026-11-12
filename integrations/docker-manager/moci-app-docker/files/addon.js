@@ -24,7 +24,7 @@ export default class ApplicationsAddon {
       this.page.innerHTML = `<div class="page-header"><h1>Applications</h1></div>
         <div class="docker-hero"><div><strong>Docker Engine</strong><p>${this.esc(status.available ? 'Version ' + status.version : 'Not running')}</p></div>
           <div class="docker-management-mode">
-            <span>${this.readOnly?'Monitoring only':'Approved managed operations enabled'}</span>
+            <span>${this.readOnly?'Monitoring only · deployment approval required':'Approved managed operations enabled'}</span>
             <button type="button" class="action-btn" id="docker-mode-toggle">${this.readOnly?'Enable Docker management':'Disable Docker management'}</button>
           </div>
         </div>
@@ -138,14 +138,14 @@ export default class ApplicationsAddon {
   }
   renderCatalog(root,apps) {
     const categories=['All',...new Set(apps.map(a=>a.category))];
-    root.innerHTML=`<div class="docker-intro"><h2>Applications</h2><p>Browse ${apps.length} self-hosted services for office networks and homelabs. Reviewed templates support guided installation. Other listings open a Compose setup wizard so users can configure ports, volumes and verified image versions.</p></div>
+    root.innerHTML=`<div class="docker-intro"><h2>Applications</h2><p>Browse ${apps.length} self-hosted services for office networks and homelabs. Reviewed templates support guided installation. Other listings open a Compose setup wizard so users can configure ports, volumes and verified image versions.</p>${this.readOnly?'<p class="docker-note" role="status"><strong>Docker is running, but deployments are locked.</strong> The App Store needs an administrator to enable management and approve verified application images. The 73 catalogue entries are not 73 pre-approved one-click installers. No approval is bypassed automatically.</p>':''}</div>
       <div class="docker-filters" role="group" aria-label="Application profiles">
       ${[['all','All apps'],['office','Office LAN'],['home','Homelab'],['both','Office + Homelab']].map(([id,label])=>`<button type="button" class="action-btn" data-profile="${id}" aria-pressed="${this.profile===id}">${label}</button>`).join('')}
       </div>
       <div class="docker-filters" role="group" aria-label="Application categories">
       ${categories.map(c=>`<button type="button" class="action-btn" data-category="${this.esc(c)}" aria-pressed="${this.category===c}">${this.esc(c)}</button>`).join('')}</div>
       <p class="docker-result-count" aria-live="polite"></p>
-      <div class="docker-app-grid">${apps.map(a=>`<article class="docker-app-card" data-app-category="${this.esc(a.category)}" data-app-profile="${this.esc(a.profile||'both')}"><small>${this.esc(a.category)} · ${this.esc(a.complexity||'review')} setup</small><h3>${this.esc(a.name)}</h3><p>${this.esc(a.description)}</p>${a.risk&&a.risk!=='review'?`<p class="docker-app-warning">Attention: ${this.esc(a.risk.replaceAll('-',' '))}</p>`:''}<footer><span>${a.installed?'Installed':a.ready?'Approved':a.can_prepare?'Ready to prepare':'Manual setup'}</span>${a.url?`<a class="action-btn" href="${this.esc(a.url)}" target="_blank" rel="noopener noreferrer">OPEN</a>`:''}<button type="button" class="action-btn" data-install="${this.esc(a.id)}" data-repository="${this.esc(a.repository)}" data-risk="${this.esc(a.risk||'review')}">${a.installed?'Update / reinstall':a.ready?'Install':a.can_prepare?'Prepare & install':'Configure'}</button></footer></article>`).join('')}</div>`;
+      <div class="docker-app-grid">${apps.map(a=>`<article class="docker-app-card" data-app-category="${this.esc(a.category)}" data-app-profile="${this.esc(a.profile||'both')}"><small>${this.esc(a.category)} · ${this.esc(a.complexity||'review')} setup</small><h3>${this.esc(a.name)}</h3><p>${this.esc(a.description)}</p>${a.risk&&a.risk!=='review'?`<p class="docker-app-warning">Attention: ${this.esc(a.risk.replaceAll('-',' '))}</p>`:''}<footer><span>${a.installed?'Installed':a.ready?'Approved':a.can_prepare?'Ready to prepare':'Manual setup'}</span>${a.url?`<a class="action-btn" href="${this.esc(a.url)}" target="_blank" rel="noopener noreferrer">OPEN</a>`:''}<button type="button" class="action-btn" data-install="${this.esc(a.id)}" data-repository="${this.esc(a.repository)}" data-risk="${this.esc(a.risk||'review')}" ${this.readOnly && (a.installed||a.ready||a.can_prepare)?'disabled title="Enable Docker management after reviewing the image approval policy"':''}>${a.installed?'Update / reinstall':a.ready?'Install':a.can_prepare?'Prepare & install':'Configure'}</button></footer></article>`).join('')}</div>`;
     const updateFilters=()=>{
       let visible=0;
       root.querySelectorAll('[data-app-category]').forEach(card=>{
