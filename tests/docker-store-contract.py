@@ -120,6 +120,49 @@ class DockerStoreContract(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'Unsupported Compose service'):
                 API['spec_validate'](spec,advanced=True)
 
+    def test_openspeedtest_reviewed_runtime_allows_nginx_cron_without_global_root(self):
+        speed_image='openspeedtest/latest@sha256:'+('c'*64)
+        spec={'services':{'app':{
+            'image':speed_image,
+            'ports':['192.168.50.1:3000:3000','192.168.50.1:3002:3001'],
+            'volumes':[]}}}
+        opts={'policy':lambda:{speed_image},
+              'pins':lambda:{'openspeedtest':speed_image},
+              'template_specs':lambda:TEMPLATES,
+              'lan_ip':lambda:'192.168.50.1'}
+        with patch.dict(API['spec_validate'].__globals__,opts):
+            actual=API['spec_validate'](spec,app_id='openspeedtest')['services']['app']
+            self.assertEqual(actual['user'],'0:0')
+            self.assertFalse(actual['read_only'])
+            self.assertEqual(actual['cap_drop'],['ALL'])
+            self.assertEqual(actual['cap_add'],[
+                'CHOWN','DAC_OVERRIDE','FOWNER','SETGID','SETUID'])
+            self.assertEqual(actual['security_opt'],['no-new-privileges:true'])
+            self.assertEqual(actual['ports'],spec['services']['app']['ports'])
+            # Generic compose callers cannot get the reviewed root/capability
+            # exemption, even if a matching image digest is approved.
+            requested=dict(spec['services']['app'],cap_add=['SYS_ADMIN'])
+            with self.assertRaisesRegex(ValueError,'Unsupported Compose service'):
+                API['spec_validate']({'services':{'app':requested}},advanced=True)
+            with self.assertRaisesRegex(ValueError,'custom users require advanced'):
+                API['spec_validate']({'services':{'app':dict(spec['services']['app'],user='0:0')}},advanced=False)
+
+    def test_root_and_caps_cannot_be_granted_through_another_reviewed_template(self):
+        digest='louislam/uptime-kuma@sha256:'+('d'*64)
+        spec={'services':{'app':{
+            'image':digest,
+            'ports':['192.168.50.1:3001:3001'],
+            'volumes':['uptime-kuma-data:/app/data']}}}
+        templates={key:dict(value) for key,value in TEMPLATES.items()}
+        templates['uptime-kuma']['cap_add']=['CHOWN','DAC_OVERRIDE','FOWNER','SETGID','SETUID']
+        with patch.dict(API['spec_validate'].__globals__,{
+              'policy':lambda:{digest},
+              'pins':lambda:{'uptime-kuma':digest},
+              'template_specs':lambda:templates,
+              'lan_ip':lambda:'192.168.50.1'}):
+            with self.assertRaisesRegex(ValueError,'Unapproved application capabilities'):
+                API['spec_validate'](spec,app_id='uptime-kuma')
+
     def test_custom_image_registry_allowlist(self):
         allowed=['ghcr.io/advplyr/audiobookshelf:latest',
                  'docker.n8n.io/n8nio/n8n:1.3',
