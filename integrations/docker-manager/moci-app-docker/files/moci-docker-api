@@ -26,7 +26,7 @@ NAME=re.compile(r'^[a-z][a-z0-9-]{0,39}$')
 IMAGE=re.compile(r'^[A-Za-z0-9][A-Za-z0-9._/-]*@sha256:[0-9a-f]{64}$')
 IDENT=re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$|^[a-f0-9]{12,64}$')
 READ_METHODS=['status','containers','stacks','images','volumes','networks','storage','logs','catalog','managed_stacks']
-WRITE_METHODS=['deploy','install_catalog','stack_action','container_action']
+WRITE_METHODS=['deploy','prepare_app','install_catalog','stack_action','container_action']
 # Deployments are opt-in: secure default for a router control plane.
 # The root administrator must explicitly create this local-only enable file.
 WRITES_ENABLED=False
@@ -114,7 +114,8 @@ def catalog():
         if not isinstance(appid,str) or not NAME.fullmatch(appid): continue
         image=pinned.get(appid)
         ready=bool(writes_enabled() and appid in templates and app.get('template_available') and app.get('risk') in ('review',None) and image in approved and image.split('@')[0]==app.get('repository')) if image else False
-        apps.append({k:app.get(k) for k in ('id','name','description','category','repository','profile','complexity','risk') } | {'ready':ready})
+        can_prepare=bool(writes_enabled() and appid in templates and app.get('risk') in ('review',None) and app.get('template_available'))
+        apps.append({k:app.get(k) for k in ('id','name','description','category','repository','profile','complexity','risk') } | {'ready':ready,'can_prepare':can_prepare})
     return {'catalog':apps}
 
 def spec_validate(spec, app_id=None):
@@ -225,6 +226,16 @@ def docker_no_reply(method,path):
 def run(method,args):
     if method in WRITE_METHODS and not writes_enabled():
         raise ValueError('Deployment disabled pending non-root authentication verification')
+    if method=='prepare_app':
+        app_id=args.get('id')
+        if not isinstance(app_id,str) or not NAME.fullmatch(app_id):
+            raise ValueError('Invalid application ID')
+        # CLI accepts only root-owned, reviewed templates; never arbitrary tags from browsers.
+        command=subprocess.run(['/usr/sbin/moci-docker-policy','prepare',app_id],
+                  capture_output=True,text=True,timeout=125,check=False)
+        if command.returncode:
+            raise ValueError('Application preparation failed; consult router logs')
+        return {'prepared':True,'id':app_id}
     if method=='container_action':
         return managed_container_action(args.get('id'),args.get('action'))
     if method=='status':
@@ -305,7 +316,7 @@ def run(method,args):
         return {'ok':True,'name':name,'action':action}
     raise ValueError('Unknown method')
 
-METHODS={k:({} if k not in ('logs','deploy','install_catalog','stack_action','container_action') else {'logs':{'id':'str'},'deploy':{'name':'str','spec':'str'},'install_catalog':{'id':'str'},'stack_action':{'name':'str','action':'str'},'container_action':{'id':'str','action':'str'}}[k]) for k in READ_METHODS+WRITE_METHODS}
+METHODS={k:({} if k not in ('logs','deploy','prepare_app','install_catalog','stack_action','container_action') else {'logs':{'id':'str'},'deploy':{'name':'str','spec':'str'},'prepare_app':{'id':'str'},'install_catalog':{'id':'str'},'stack_action':{'name':'str','action':'str'},'container_action':{'id':'str','action':'str'}}[k]) for k in READ_METHODS+WRITE_METHODS}
 if __name__=='__main__':
     if len(sys.argv)==2 and sys.argv[1]=='list':
         print(json.dumps(METHODS))
