@@ -837,7 +837,9 @@ def run(method,args):
         if secret_env is not None:
             # Permit only explicitly reviewed credential variables; no arbitrary
             # shell commands or free-form image-supplied secret names.
-            if app_id!='gotify' or secret_env!='GOTIFY_DEFAULTUSER_PASS':
+            credentials={'gotify':'GOTIFY_DEFAULTUSER_PASS',
+                         'grafana':'GF_SECURITY_ADMIN_PASSWORD'}
+            if credentials.get(app_id)!=secret_env:
                 raise ValueError('Unapproved initial credential profile')
             previous=STACKS+'/'+app_id+'/compose.json'
             password=None
