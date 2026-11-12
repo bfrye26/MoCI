@@ -24,7 +24,7 @@ export default class ApplicationsAddon {
       this.page.innerHTML = `<div class="page-header"><h1>Applications</h1></div>
         <div class="docker-hero"><div><strong>Docker Engine</strong><p>${this.esc(status.available ? 'Version ' + status.version : 'Not running')}</p></div><span>${this.readOnly?'Monitoring only. Administrator approval required.':'Approved managed operations enabled'}</span></div>
         <nav class="docker-nav" aria-label="Application tools">
-        ${[['catalog','App Store'],['containers','Containers'],['stacks','Compose Projects'],['managed_stacks','Managed Stacks'],['images','Images'],['volumes','Volumes'],['networks','Networks'],['storage','Storage']].map(([id,name])=>`<button type="button" class="action-btn" data-view="${id}">${name}</button>`).join('')}
+        ${[['catalog','App Store'],['containers','Containers'],['stacks','Compose Projects'],['managed_stacks','Managed Stacks'],['images','Images'],['volumes','Volumes'],['networks','Networks'],['storage','Storage'],['diagnostics','Diagnostics']].map(([id,name])=>`<button type="button" class="action-btn" data-view="${id}">${name}</button>`).join('')}
         </nav><section id="docker-content" aria-live="polite"></section>`;
       this.page.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>this.renderView(b.dataset.view)));
       await this.renderView('catalog');
@@ -38,6 +38,13 @@ export default class ApplicationsAddon {
     try {
       const result=await this.rpc(view);
       if(view==='catalog') return this.renderCatalog(root,result.catalog||[]);
+      if(view==='diagnostics'){
+        const checks=result.diagnostics||[];
+        root.innerHTML='<div class="docker-intro"><h2>Docker Diagnostics</h2><p>Preflight checks for the runtime, Compose, LAN and deployment policies.</p></div>'+
+          '<div class="docker-diagnostics">'+checks.map(check=>
+          '<article class="docker-check"><span class="'+(check.ok?'docker-check-ok':'docker-check-fail')+'">'+(check.ok?'OK':'CHECK')+'</span><strong>'+this.esc(check.name)+'</strong><p>'+this.esc(check.detail)+'</p></article>').join('')+'</div>';
+        return;
+      }
       if(view==='managed_stacks') return this.renderManaged(root,result.managed_stacks||[]);
       const rows=result[view]||[];
       const data=rows.map(v=>typeof v==='string'?{Name:v}:v);
