@@ -32,7 +32,7 @@
       "profile": "home",
       "complexity": "easy",
       "risk": "review",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "authelia",
@@ -109,7 +109,7 @@
       "profile": "both",
       "complexity": "medium",
       "risk": "review",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "collabora",
@@ -236,9 +236,9 @@
       "id": "gitea",
       "name": "Gitea",
       "category": "Development",
-      "repository": "gitea/gitea",
+      "repository": "docker.gitea.com/gitea",
       "description": "Self-hosted Git",
-      "template_available": false,
+      "template_available": true,
       "profile": "office",
       "complexity": "medium",
       "risk": "review"
@@ -307,7 +307,7 @@
       "profile": "home",
       "complexity": "medium",
       "risk": "review",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "home-assistant",
@@ -324,12 +324,12 @@
       "id": "homepage",
       "name": "Homepage",
       "category": "Dashboards",
-      "repository": "gethomepage/homepage",
+      "repository": "ghcr.io/gethomepage/homepage",
       "description": "Custom dashboard with service widgets",
       "profile": "home",
       "complexity": "easy",
       "risk": "review",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "immich",
@@ -370,7 +370,7 @@
       "category": "Media",
       "repository": "jellyfin/jellyfin",
       "description": "Media streaming",
-      "template_available": false,
+      "template_available": true,
       "profile": "home",
       "complexity": "medium",
       "risk": "review"
@@ -634,7 +634,7 @@
       "category": "Monitoring",
       "repository": "prom/prometheus",
       "description": "Metrics",
-      "template_available": false,
+      "template_available": true,
       "profile": "both",
       "complexity": "medium",
       "risk": "review"
@@ -725,7 +725,7 @@
       "profile": "home",
       "complexity": "easy",
       "risk": "review",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "uptime-kuma",
