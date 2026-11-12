@@ -1190,9 +1190,9 @@ export default class NetworkModule {
 			const isMac=value=>/^(?:[0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(String(value||''));
 			const ipValid=value=>{
 				const parts=String(value||'').split('.');
-				return parts.length===4&&parts.every(p=>/^\\d{1,3}$/.test(p)&&Number(p)<=255);
+				return parts.length===4&&parts.every(p=>/^\d{1,3}$/.test(p)&&Number(p)<=255);
 			};
-			const sameMac=(entry,mac)=>String(entry.mac||'').toLowerCase().split(/[\\s,]+/).includes(normalizeMac(mac));
+			const sameMac=(entry,mac)=>String(entry.mac||'').toLowerCase().split(/[\s,]+/).includes(normalizeMac(mac));
 
 			this.core.renderTable('#dhcp-leases-table',leases,5,'No active DHCP leases',lease=>{
 				const mac=normalizeMac(lease.macaddr);
@@ -1237,7 +1237,7 @@ export default class NetworkModule {
 		const ip=String(data.reserveIp||'');
 		const entry=String(data.reserveSection||'');
 		if(!/^(?:[0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(mac)||
-			!/^\\d{1,3}(?:\\.\\d{1,3}){3}$/.test(ip)){
+			!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(ip)){
 			this.core.showToast('Cannot reserve this device: invalid MAC or IPv4 address','error');
 			return;
 		}
