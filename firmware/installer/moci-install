@@ -175,6 +175,21 @@ configure_router() {
   fi
   chmod 600 "$hash_tmp"
   mv "$hash_tmp" "$ROOT/etc/shadow"
+  # Use a new local certificate containing the exact selected LAN IPv4 address.
+  # The private key never leaves the installed root filesystem.
+  if [[ ! -s "$ROOT/etc/uhttpd.key" || ! -s "$ROOT/etc/uhttpd.crt" ]]; then
+    umask 077
+    if ! openssl req -x509 -newkey rsa:3072 -nodes -sha256 -days 730 \
+      -subj "/CN=$HOSTNAME" \
+      -addext "subjectAltName=IP:$LAN_IP,DNS:$HOSTNAME" \
+      -keyout "$ROOT/etc/uhttpd.key" -out "$ROOT/etc/uhttpd.crt" >> "$LOG" 2>&1; then
+      cleanup
+      problem 'Unable to generate secure management certificate. Check diagnostics.'
+      return 1
+    fi
+    chmod 600 "$ROOT/etc/uhttpd.key"
+    chmod 644 "$ROOT/etc/uhttpd.crt"
+  fi
   mkdir -p "$ROOT/etc/uci-defaults"
   cat > "$ROOT/etc/uci-defaults/95-moci-installer" <<SETUP
 #!/bin/sh
@@ -231,7 +246,7 @@ perform_install() {
   record "Found OpenWrt root: $ROOT_PART"
   configure_router || return 1
   WRITTEN_DISK=''
-  message "Installation completed.\n\nRemove the installer ISO, reboot from SSD in UEFI mode and open http://$LAN_IP/moci/\n\nTest in a VM before installing on production hardware."
+  message "Installation completed.\n\nRemove the installer ISO, reboot from SSD in UEFI mode and open https://$LAN_IP/moci/\n\nA locally generated certificate requires browser trust approval. Test in a VM first."
   return 0
 }
 
