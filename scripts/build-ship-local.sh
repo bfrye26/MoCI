@@ -41,7 +41,7 @@ mode=${1:-firmware}
 jobs=${2:-20}
 case "$mode" in firmware|all|check) ;; *) echo 'Mode must be firmware, all or check' >&2; exit 2;; esac
 [[ "$jobs" =~ ^[0-9]+$ ]] && ((jobs>=1 && jobs<=64)) || exit 2
-commit='45f23be12abec6dfbd16bc71e739c4203ad375b8'
+commit='4b69f69b281f30566be005ea6ce3c6d5cfcd2120'
 branch='fix/docker-firewall-release-20261112'
 project_root="$HOME/Projects"
 original="$project_root/MoCI"
@@ -90,6 +90,8 @@ cd "$checkout"
 export PYTHONDONTWRITEBYTECODE=1
 python3 tests/docker-store-contract.py
 python3 tests/docker-firewall-reconcile.py
+node tests/session-expiry.test.mjs
+python3 -m unittest discover -s integrations/docker-manager/tests -p 'test*.py'
 node tests/service-controls.test.mjs
 node tests/release-interface-contract.mjs
 npm install --no-audit --no-fund --package-lock=false --ignore-scripts
