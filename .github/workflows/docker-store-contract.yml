@@ -23,6 +23,7 @@ jobs:
         run: |
           python -m py_compile integrations/docker-manager/moci-app-docker/files/moci-docker-api
           python -m py_compile integrations/docker-manager/moci-app-docker/files/moci-docker-policy
+          python -m py_compile integrations/docker-manager/moci-app-docker/files/moci-docker-firewall
           python -m py_compile tests/docker-store-contract.py
       - name: Check all catalogue entries and install-security contracts
         run: python tests/docker-store-contract.py
@@ -30,6 +31,7 @@ jobs:
         run: |
           node --check moci/js/core.js
           node --check moci/js/modules/network.js
+          node --check moci/js/modules/upnp.js
           node --check moci/js/modules/advanced.js
           node --check moci/js/modules/wifi-schedules.js
           node --check moci/js/modules/wifi-profiles.js
@@ -42,3 +44,4 @@ jobs:
           npm run build
           test -s dist/moci/js/core.js
           test -s dist/moci/index.html
+          test -s dist/moci/js/modules/upnp.js
