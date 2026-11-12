@@ -59,6 +59,37 @@ class ReviewedAppProfileTests(unittest.TestCase):
                     self.assertIn('CHOWN',one_shot)
                     self.assertTrue(any('source=moci-uptime-kuma_uptime-kuma-data' in arg for arg in one_shot))
 
+    def test_gotify_generates_credential_once_and_preserves_on_reinstall(self):
+        image='gotify/server@sha256:'+'a'*64
+        template={'repository':'gotify/server','ports':['8084:80'],
+                  'volumes':['gotify-data:/app/data'],
+                  'initial_password_env':'GOTIFY_DEFAULTUSER_PASS',
+                  'needs_write_access':True}
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            with patch.object(api,'STACKS',str(root)),patch.object(api,'writes_enabled',return_value=True):
+                with patch.object(api,'catalog',return_value={'catalog':[{'id':'gotify','ready':True}]}):
+                    with patch.object(api,'pins',return_value={'gotify':image}):
+                        with patch.object(api,'template_specs',return_value={'gotify':template}):
+                            with patch.object(api,'lan_ip',return_value='192.168.50.1'):
+                                with patch.object(api,'deploy',return_value={'deployed':True}) as deploy:
+                                    first=api.run('install_catalog',{'id':'gotify'})
+                                    password=first['initial_credentials']['password']
+                                    self.assertGreaterEqual(len(password),32)
+                                    spec=json.loads(deploy.call_args.args[1])
+                                    self.assertEqual(spec['services']['app']['environment']
+                                                     ['GOTIFY_DEFAULTUSER_PASS'],password)
+                                    path=root/'gotify'
+                                    path.mkdir()
+                                    (path/'compose.json').write_text(json.dumps({
+                                        'services':{'app':{'environment':{
+                                            'GOTIFY_DEFAULTUSER_PASS':password}}}}))
+                                    second=api.run('install_catalog',{'id':'gotify'})
+                                    self.assertNotIn('initial_credentials',second)
+                                    spec2=json.loads(deploy.call_args.args[1])
+                                    self.assertEqual(spec2['services']['app']['environment']
+                                                     ['GOTIFY_DEFAULTUSER_PASS'],password)
+
     def test_cannot_steal_writable_profile(self):
         image='example/safe@sha256:'+'a'*64
         templates={'schema':1,'templates':{'safe':{
