@@ -190,6 +190,95 @@ def catalog():
         apps.append(summary)
     return {'catalog':apps,'total':len(apps),'read_only':not deploy_enabled}
 
+def managed_stacks():
+    """Return live Docker state for stacks created by MoCI.
+
+    Derive URLs only from the router's LAN address and ports actually published
+    by a running managed container. Never use container labels as an external
+    destination, and never advertise a stopped container as openable.
+    """
+    if not os.path.isdir(STACKS):
+        return {'managed_stacks':[]}
+
+    names=[name for name in sorted(os.listdir(STACKS))
+           if NAME.fullmatch(name) and os.path.isfile(STACKS+'/'+name+'/compose.json')
+           and not os.path.islink(STACKS+'/'+name+'/compose.json')][:100]
+    try:
+        containers=docker('GET','/containers/json?all=1')
+        if not isinstance(containers,list):
+            raise ValueError('Invalid Docker inventory')
+        inventory_ok=True
+    except (OSError,ValueError,TimeoutError):
+        containers=[]
+        inventory_ok=False
+
+    projects={}
+    for container in containers[:500]:
+        if not isinstance(container,dict):continue
+        labels=container.get('Labels') or {}
+        if not isinstance(labels,dict) or labels.get('com.moci.managed')!='true':
+            continue
+        project=labels.get('com.docker.compose.project')
+        if isinstance(project,str) and project.startswith('moci-'):
+            projects.setdefault(project,[]).append(container)
+
+    try:
+        ip=lan_ip()
+    except ValueError:
+        ip=None
+    try:
+        templates=template_specs()
+    except (OSError,ValueError,TypeError):
+        templates={}
+
+    result=[]
+    for name in names:
+        project=projects.get('moci-'+name,[])
+        total=len(project)
+        active=[c for c in project if c.get('State')=='running']
+        running=len(active)
+        unhealthy=any('unhealthy' in str(c.get('Status','')).lower() for c in active)
+        if not inventory_ok:state='unknown'
+        elif total==0:state='not_deployed'
+        elif unhealthy:state='unhealthy'
+        elif running==total:state='running'
+        elif running:state='partial'
+        else:state='stopped'
+
+        ports=set()
+        if ip and active:
+            for container in active:
+                for item in container.get('Ports') or []:
+                    if not isinstance(item,dict) or item.get('Type')!='tcp' or item.get('IP')!=ip:
+                        continue
+                    port=item.get('PublicPort')
+                    if type(port) is int and 1024<=port<=65535:
+                        ports.add(port)
+
+        url=None
+        url_kind=None
+        # A reviewed template declares its web scheme and preferred port.
+        template=templates.get(name)
+        if state=='running' and ports and isinstance(template,dict):
+            location=template.get('path')
+            if isinstance(location,str):
+                match=re.fullmatch(r'(https?)://ROUTER_IP:([0-9]{4,5})/?',location)
+                if match and int(match.group(2)) in ports:
+                    url=location.replace('ROUTER_IP',ip)
+                    url_kind='reviewed'
+        # Manually configured stacks do not have a verified web homepage.
+        # Offer their actual LAN HTTP port as an explicit, labelled fallback.
+        if state=='running' and ports and not url:
+            url='http://'+ip+':'+str(min(ports))+'/'
+            url_kind='port'
+
+        result.append({'name':name,'state':state,'running':state=='running',
+                       'running_containers':running,'total_containers':total,
+                       'url':url,'url_kind':url_kind,
+                       'published_ports':sorted(ports)})
+    return {'managed_stacks':result}
+
+
 def spec_validate(spec, app_id=None, advanced=False):
     if not isinstance(spec,dict) or set(spec)!={'services'}:
         raise ValueError('Only services supported')
@@ -631,8 +720,7 @@ def run(method,args):
         except Exception:
             return {'available':False,'message':'Docker Engine unavailable','read_only':True}
     if method=='catalog':return catalog()
-    if method=='managed_stacks':
-        return {'managed_stacks':[n for n in sorted(os.listdir(STACKS)) if NAME.fullmatch(n) and os.path.isfile(STACKS+'/'+n+'/compose.json')][:100]} if os.path.isdir(STACKS) else {'managed_stacks':[]}
+    if method=='managed_stacks':return managed_stacks()
     if method=='stack_config':
         name=args.get('name')
         if not isinstance(name,str) or not NAME.fullmatch(name):
