@@ -1948,3 +1948,8 @@ body {
 .schedule-days{display:flex;flex-wrap:wrap;gap:12px;grid-column:1/-1;border:1px solid var(--glass-border);border-radius:8px;padding:12px 16px}
 .schedule-days legend{padding:0 7px;color:var(--steel-muted);font-size:12px}
 :root[data-theme="cloud"] .schedule-days{border-color:#dce5f0}
+
+/* StartWRT multi-password Wi-Fi profiles. Passwords never appear in text logs. */
+#wifi-profiles-content{display:grid;gap:16px}
+.wifi-security-warning{padding:14px 18px;color:var(--alert-red);border:1px solid var(--alert-red);border-radius:8px;font-size:13px;line-height:1.6}
+:root[data-theme="cloud"] .wifi-security-warning{color:#a52637;background:#fff5f4;border-color:#e8a5ae}
