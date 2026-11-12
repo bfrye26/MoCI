@@ -146,6 +146,224 @@
         "GF_USERS_ALLOW_SIGN_UP": "false",
         "GF_AUTH_ANONYMOUS_ENABLED": "false"
       }
+    },
+    "audiobookshelf": {
+      "repository": "ghcr.io/advplyr/audiobookshelf",
+      "image": "ghcr.io/advplyr/audiobookshelf:latest",
+      "ports": [
+        "13378:80"
+      ],
+      "volumes": [
+        "abs-config:/config",
+        "abs-metadata:/metadata",
+        "abs-audiobooks:/audiobooks",
+        "abs-podcasts:/podcasts"
+      ],
+      "description": "Audiobookshelf server and first-user setup. Data, book and podcast libraries live in four dedicated Docker volumes; upload or copy media into those volumes separately.",
+      "path": "http://ROUTER_IP:13378/",
+      "needs_write_access": true,
+      "run_as_user": "1000:1000",
+      "volume_initializers": [
+        {
+          "path": "/config",
+          "uid": 1000,
+          "gid": 1000
+        },
+        {
+          "path": "/metadata",
+          "uid": 1000,
+          "gid": 1000
+        },
+        {
+          "path": "/audiobooks",
+          "uid": 1000,
+          "gid": 1000
+        },
+        {
+          "path": "/podcasts",
+          "uid": 1000,
+          "gid": 1000
+        }
+      ],
+      "mem_limit": "768m",
+      "environment": {
+        "TZ": "Etc/UTC"
+      }
+    },
+    "changedetection": {
+      "repository": "ghcr.io/dgtlmoon/changedetection.io",
+      "image": "ghcr.io/dgtlmoon/changedetection.io:latest",
+      "ports": [
+        "5000:5000"
+      ],
+      "volumes": [
+        "changedetection-data:/datastore"
+      ],
+      "description": "Changedetection.io with persistent datastore and basic fetcher. LAN users can create monitored URLs; configure application authentication before granting access to untrusted clients.",
+      "path": "http://ROUTER_IP:5000/",
+      "needs_write_access": true,
+      "run_as_user": "1000:1000",
+      "volume_initializer": {
+        "path": "/datastore",
+        "uid": 1000,
+        "gid": 1000
+      },
+      "mem_limit": "768m",
+      "environment": {
+        "PORT": "5000"
+      }
+    },
+    "gitea": {
+      "repository": "docker.gitea.com/gitea",
+      "image": "docker.gitea.com/gitea:28.3.0-rootless",
+      "ports": [
+        "3101:3000"
+      ],
+      "volumes": [
+        "gitea-data:/var/lib/gitea",
+        "gitea-config:/etc/gitea"
+      ],
+      "description": "Rootless Gitea with SQLite and persistent named volumes. Web installer and administrator account setup are completed on first visit. SSH repository access is not exposed by default.",
+      "path": "http://ROUTER_IP:3101/",
+      "needs_write_access": true,
+      "run_as_user": "1000:1000",
+      "volume_initializers": [
+        {
+          "path": "/var/lib/gitea",
+          "uid": 1000,
+          "gid": 1000
+        },
+        {
+          "path": "/etc/gitea",
+          "uid": 1000,
+          "gid": 1000
+        }
+      ],
+      "mem_limit": "768m"
+    },
+    "homarr": {
+      "repository": "ghcr.io/homarr-labs/homarr",
+      "image": "ghcr.io/homarr-labs/homarr:latest",
+      "ports": [
+        "7575:7575"
+      ],
+      "volumes": [
+        "homarr-appdata:/appdata"
+      ],
+      "description": "Homarr dashboard without Docker socket access. MoCI generates and preserves the application encryption key; complete initial account setup in the web UI.",
+      "path": "http://ROUTER_IP:7575/",
+      "needs_write_access": true,
+      "run_as_user": "1000:1000",
+      "volume_initializer": {
+        "path": "/appdata",
+        "uid": 1000,
+        "gid": 1000
+      },
+      "mem_limit": "768m",
+      "generated_secret_env": "SECRET_ENCRYPTION_KEY"
+    },
+    "homepage": {
+      "repository": "ghcr.io/gethomepage/homepage",
+      "image": "ghcr.io/gethomepage/homepage:latest",
+      "ports": [
+        "3333:3000"
+      ],
+      "volumes": [
+        "homepage-config:/app/config"
+      ],
+      "description": "Homepage dashboard with its allowed HTTP host set to this router's actual LAN address. No Docker socket is mounted; configured widgets must be added separately.",
+      "path": "http://ROUTER_IP:3333/",
+      "needs_write_access": true,
+      "run_as_user": "1000:1000",
+      "volume_initializer": {
+        "path": "/app/config",
+        "uid": 1000,
+        "gid": 1000
+      },
+      "mem_limit": "512m",
+      "environment": {
+        "HOMEPAGE_ALLOWED_HOSTS": "ROUTER_IP:3333",
+        "PUID": "1000",
+        "PGID": "1000"
+      }
+    },
+    "jellyfin": {
+      "repository": "jellyfin/jellyfin",
+      "image": "jellyfin/jellyfin:latest",
+      "ports": [
+        "8096:8096"
+      ],
+      "volumes": [
+        "jellyfin-config:/config",
+        "jellyfin-cache:/cache",
+        "jellyfin-media:/media"
+      ],
+      "description": "Jellyfin on LAN TCP 8096 with dedicated configuration, cache and empty media volumes. Complete its first-run wizard; transfer media into the managed volume to add libraries. No GPU access or UDP discovery.",
+      "path": "http://ROUTER_IP:8096/",
+      "needs_write_access": true,
+      "run_as_user": "1000:1000",
+      "volume_initializers": [
+        {
+          "path": "/config",
+          "uid": 1000,
+          "gid": 1000
+        },
+        {
+          "path": "/cache",
+          "uid": 1000,
+          "gid": 1000
+        },
+        {
+          "path": "/media",
+          "uid": 1000,
+          "gid": 1000
+        }
+      ],
+      "mem_limit": "1024m"
+    },
+    "prometheus": {
+      "repository": "prom/prometheus",
+      "image": "prom/prometheus:latest",
+      "ports": [
+        "9090:9090"
+      ],
+      "volumes": [
+        "prometheus-data:/prometheus"
+      ],
+      "description": "Prometheus time-series server with its bundled default configuration. Exposes local monitoring UI on the trusted router LAN; scrape jobs are configured separately.",
+      "path": "http://ROUTER_IP:9090/",
+      "needs_write_access": false,
+      "mem_limit": "768m",
+      "volume_initializer": {
+        "path": "/prometheus",
+        "uid": 65534,
+        "gid": 65534
+      }
+    },
+    "tautulli": {
+      "repository": "lscr.io/linuxserver/tautulli",
+      "image": "lscr.io/linuxserver/tautulli:latest",
+      "ports": [
+        "8181:8181"
+      ],
+      "volumes": [
+        "tautulli-config:/config"
+      ],
+      "description": "Tautulli web manager on LAN TCP 8181, with persistent settings. Plex server integration and Plex logging paths are configured after installation. This candidate requires runtime testing for LinuxServer non-root startup.",
+      "path": "http://ROUTER_IP:8181/",
+      "needs_write_access": true,
+      "run_as_user": "1000:1000",
+      "volume_initializer": {
+        "path": "/config",
+        "uid": 1000,
+        "gid": 1000
+      },
+      "environment": {
+        "PUID": "1000",
+        "PGID": "1000",
+        "TZ": "Etc/UTC"
+      },
+      "mem_limit": "512m"
     }
   }
 }
