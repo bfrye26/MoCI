@@ -2106,3 +2106,16 @@ body {
 .advanced-shortcuts a{text-decoration:none}
 :root[data-theme="cloud"] .nav-menu-heading{color:#60718a;border-color:#e4ebf4}
 @media(max-width:768px){.nav-more-menu{max-height:min(56vh,500px);min-width:0}.nav-menu-heading{padding-left:24px}}
+
+/* Native UPnP settings and live mappings */
+.upnp-workspace{max-width:1120px}
+.upnp-status-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:12px;margin:18px 0}
+.upnp-status-cards .stat-card{min-height:88px;padding:15px;display:flex;flex-direction:column;gap:9px}
+.upnp-status-cards strong{font-size:14px;overflow-wrap:anywhere}
+.upnp-warning{border-left:3px solid #bd853d;padding:12px 16px;background:var(--theme-surface);border-radius:4px;color:var(--steel-muted)}
+.upnp-permissions{display:grid;gap:6px;margin:12px 0 22px}
+.upnp-permissions p{margin:0;border:1px solid var(--glass-border);border-radius:5px;padding:9px 12px;overflow-wrap:anywhere}
+.upnp-workspace .data-table{width:100%;margin:12px 0}
+.upnp-workspace .profiles-create{margin:16px 0 24px;max-width:690px}
+:root[data-theme="cloud"] .upnp-warning{background:#fff7e8;color:#654923}
+:root[data-theme="cloud"] .upnp-permissions p{background:white;border-color:#dce5f0}
