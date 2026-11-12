@@ -252,7 +252,55 @@ export default class VpnPoliciesModule{
         }catch(e){this.core.showToast('Removal not confirmed: '+e.message,'error');remove.disabled=false;}
         finally{this.busy=false;}
       });
-      card.append(remove);root.append(card);
+      const peerForm=this.el('form',undefined,'profiles-create');
+      const peerName=this.el('input');peerName.placeholder='laptop';peerName.required=true;
+      peerName.pattern='[a-z][a-z0-9]{1,20}';peerName.maxLength=21;
+      const publicKey=this.el('input');publicKey.required=true;publicKey.placeholder='Base64 peer public key';
+      publicKey.maxLength=44;publicKey.minLength=44;
+      const address=this.el('input');address.required=true;address.placeholder='10.45.0.2/32';
+      peerForm.append(this.createLabel('Peer label',peerName),this.createLabel('Client public key',publicKey),
+        this.createLabel('Client IPv4 address /32',address));
+      const addPeer=this.el('button','ADD VPN PEER','action-btn');addPeer.type='submit';
+      peerForm.append(addPeer);
+      peerForm.addEventListener('submit',async e=>{
+        e.preventDefault();if(this.busy)return;
+        const name=peerName.value.trim().toLowerCase(),key=publicKey.value.trim(),ip=address.value.trim();
+        if(!/^[a-z][a-z0-9]{1,20}$/.test(name)||!/^[A-Za-z0-9+/]{43}=$/.test(key)||
+           !validCIDR(ip)||!ip.endsWith('/32')){
+          this.core.showToast('Invalid peer name, public key or /32 client address','error');return;
+        }
+        const section='moci_peer_'+slug+'_'+name;
+        if(this.network[section]){this.core.showToast('Peer already exists','error');return;}
+        if(!window.confirm('Add peer '+name+' to inbound VPN '+iface+'?'))return;
+        this.busy=true;addPeer.disabled=true;
+        try{
+          await this.add('network','wireguard_'+iface,section);
+          await this.set('network',section,{description:'MoCI '+name,public_key:key,
+            allowed_ips:[ip],route_allowed_ips:'0'});
+          await this.apply();
+          this.core.showToast('Peer saved','success');await this.show();
+        }catch(error){this.core.showToast('Peer not confirmed: '+error.message,'error');}
+        finally{this.busy=false;addPeer.disabled=false;}
+      });
+      const peers=this.el('div',undefined,'profiles-list');
+      for(const [peerSection,peer] of Object.entries(this.network)){
+        if(peer['.type']!=='wireguard_'+iface)continue;
+        const line=this.el('article',undefined,'profiles-entry');
+        line.append(this.el('strong',peer.description||peerSection),
+          this.el('p',Array.isArray(peer.allowed_ips)?peer.allowed_ips.join(', '):String(peer.allowed_ips||''),'profiles-description'));
+        const revoke=this.el('button','REMOVE PEER','action-btn danger');revoke.type='button';
+        revoke.addEventListener('click',async()=>{
+          if(!window.confirm('Remove VPN client '+(peer.description||peerSection)+'?'))return;
+          revoke.disabled=true;
+          try{
+            await this.uci('delete',{config:'network',section:peerSection});
+            await this.apply();await this.show();
+          }catch(error){this.core.showToast(error.message,'error');revoke.disabled=false;}
+        });
+        line.append(revoke);peers.append(line);
+      }
+      const sectionTitle=this.el('h4','Remote clients');
+      card.append(sectionTitle,peerForm,peers,remove);root.append(card);
     }
   }
   renderChain(root,tunnels){
