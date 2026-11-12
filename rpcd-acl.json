@@ -80,6 +80,12 @@
         ],
         "/var/run/miniupnpd.leases": [
           "read"
+        ],
+        "/usr/libexec/moci-service-inspect list": [
+          "exec"
+        ],
+        "/usr/libexec/moci-service-inspect inspect *": [
+          "exec"
         ]
       },
       "ubus": {
