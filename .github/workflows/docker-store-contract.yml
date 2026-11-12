@@ -31,6 +31,9 @@ jobs:
           node --check moci/js/core.js
           node --check moci/js/modules/network.js
           node --check moci/js/modules/advanced.js
+          node --check moci/js/modules/wifi-schedules.js
+          node --check moci/js/modules/wifi-profiles.js
+          node --check moci/js/modules/vpn-policies.js
           node --check moci/js/modules/dashboard.js
           node --check integrations/docker-manager/moci-app-docker/files/addon.js
       - name: Build frontend package
