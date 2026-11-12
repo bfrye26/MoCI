@@ -20,7 +20,7 @@ class ReviewedAppProfileTests(unittest.TestCase):
             'uptime-kuma':{'repository':'louislam/uptime-kuma',
                            'ports':['3001:3001'],
                            'volumes':['uptime-kuma-data:/app/data'],
-                           'needs_write_access':True},
+                           'needs_write_access':True,'needs_root_for_volume_init':True},
         }}
         app={'services':{'app':{'image':image,'ports':['192.168.50.1:3001:3001'],
                                 'volumes':['uptime-kuma-data:/app/data']}}}
