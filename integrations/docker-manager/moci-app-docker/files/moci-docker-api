@@ -129,6 +129,7 @@ def spec_validate(spec, app_id=None):
     allow=policy()
     safe={}
     ports_used=set()
+    named_volumes=set()
     for name,svc in services.items():
         if not isinstance(name,str) or not NAME.fullmatch(name) or not isinstance(svc,dict) or set(svc)-{'image','ports','volumes'}:
             raise ValueError('Unsupported Compose service')
@@ -151,6 +152,7 @@ def spec_validate(spec, app_id=None):
         for v in volumes:
             if not isinstance(v,str) or not re.fullmatch(r'[a-z][a-z0-9_-]{0,39}:/[A-Za-z0-9_./-]{1,120}',v) or '..' in v.split(':')[1].split('/'):
                 raise ValueError('Only named volumes with safe paths allowed')
+            named_volumes.add(v.split(':',1)[0])
         managed={'labels':{'com.moci.managed':'true'},'image':image,'ports':ports,'volumes':volumes,
                  'read_only':True,'user':'65534:65534','cap_drop':['ALL'],
                  'security_opt':['no-new-privileges:true'],'pids_limit':128,'mem_limit':'512m',
@@ -168,7 +170,7 @@ def spec_validate(spec, app_id=None):
                 managed['read_only']=False
                 managed.pop('user')
         safe[name]=managed
-    return {'services':safe}
+    return {'services':safe,'volumes':{key:{} for key in sorted(named_volumes)}}
 
 def compose(name,arguments):
     base=STACKS+'/'+name
