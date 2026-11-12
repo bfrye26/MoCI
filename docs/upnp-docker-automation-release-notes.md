@@ -131,3 +131,30 @@ The service-control patch is safe to update independently on the VirtualBox
 test VM by copying only `moci/index.html`, `moci/app.css` and
 `moci/js/modules/system.js`; it does not restart services, modify firewall
 rules or replace the working login code.
+
+## VirtualBox follow-up: UPnP layout and service diagnostics
+
+The VM screenshots showed an oversized UPnP Save button and misleading
+"Unconfirmed" service states. This patch:
+
+- Replaces the inherited profile-form grid with two responsive UPnP cards,
+  a four-field port-range row and a normal-height Save footer.
+- Alerts when UPnP is configured enabled but miniupnpd has **no running
+  procd process**; links to `System > Startup` diagnostics, and reports
+  restart errors instead of treating the UCI save as success.
+- Adds `/usr/libexec/moci-service-inspect`, a small **read-only** POSIX
+  shell helper whose only commands are `list` and `inspect SERVICE`.
+  The latter strictly validates names and exposes bounded init-script status
+  and recent service logs to the authenticated administrator.
+- Shows actual init boot enablement using links under `/etc/rc.d`, instead
+  of showing UNKNOWN for every service missing procd's optional autostart flag.
+- Provides a per-service **Details** action. An init-script start returning
+  0 with no procd process is not proof that the service is running.
+- Does not automatically start services, change UPnP enablement or alter
+  existing fw4/Docker NAT rules.
+
+**Requires VM verification**: the new panel layout, permissions for the
+read-only service helper and the exact reason miniupnpd is not starting on
+the user's upstream-NAT VirtualBox WAN. ACME/firewall remain on-demand tasks;
+other examples such as GPIO switches or DDNS can legitimately be inactive on
+an Ethernet-only, unconfigured VM.
