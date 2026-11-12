@@ -162,10 +162,18 @@ export default class AdvancedModule {
   async apply(config,risky) {
     if(risky){
       await this.rpc('uci','apply',{rollback:true,timeout:60});
-      // Confirmation only after a successful API round-trip.
-      // An interrupted connection leaves the router free to roll back.
-      try {await this.rpc('uci','confirm',{});}
-      catch(error){throw new Error('Connection lost during confirmation. OpenWrt will revert the change automatically if its rollback service is available.');}
+      // Wait for the reconfigured network to settle and verify reachability.
+      // Never automatically confirm a potentially connectivity-breaking edit.
+      await new Promise(resolve=>setTimeout(resolve,2500));
+      try {
+        await this.rpc('system','info',{});
+        if(!window.confirm('The router is reachable after the change. Keep these settings?\n\nChoose Cancel to let the 60-second rollback restore the previous configuration.')) {
+          throw new Error('Changes left unconfirmed. OpenWrt should restore the previous configuration after the rollback timeout.');
+        }
+        await this.rpc('uci','confirm',{});
+      } catch(error) {
+        throw new Error('Configuration not confirmed: '+error.message);
+      }
     }else{
       await this.rpc('uci','commit',{config});
     }
