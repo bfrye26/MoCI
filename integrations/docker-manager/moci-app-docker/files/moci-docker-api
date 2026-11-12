@@ -117,7 +117,7 @@ def catalog():
         apps.append({k:app.get(k) for k in ('id','name','description','category','repository','profile','complexity','risk') } | {'ready':ready})
     return {'catalog':apps}
 
-def spec_validate(spec):
+def spec_validate(spec, app_id=None):
     if not isinstance(spec,dict) or set(spec)!={'services'}:
         raise ValueError('Only services supported')
     services=spec['services']
@@ -148,7 +148,23 @@ def spec_validate(spec):
         for v in volumes:
             if not isinstance(v,str) or not re.fullmatch(r'[a-z][a-z0-9_-]{0,39}:/[A-Za-z0-9_./-]{1,120}',v) or '..' in v.split(':')[1].split('/'):
                 raise ValueError('Only named volumes with safe paths allowed')
-        safe[name]={'labels':{'com.moci.managed':'true'},'image':image,'ports':ports,'volumes':volumes,'read_only':True,'user':'65534:65534','cap_drop':['ALL'],'security_opt':['no-new-privileges:true'],'pids_limit':128,'mem_limit':'512m','restart':'unless-stopped'}
+        managed={'labels':{'com.moci.managed':'true'},'image':image,'ports':ports,'volumes':volumes,
+                 'read_only':True,'user':'65534:65534','cap_drop':['ALL'],
+                 'security_opt':['no-new-privileges:true'],'pids_limit':128,'mem_limit':'512m',
+                 'restart':'unless-stopped'}
+        if app_id:
+            approved_template=template_specs().get(app_id)
+            if not isinstance(approved_template,dict) or app_id not in pins() or image!=pins()[app_id]:
+                raise ValueError('Unapproved application profile')
+            approved_ports=[lan_ip()+':'+x for x in approved_template.get('ports',[])]
+            if sorted(ports)!=sorted(approved_ports) or sorted(volumes)!=sorted(approved_template.get('volumes',[])):
+                raise ValueError('Application service differs from approved template')
+            if approved_template.get('needs_write_access') is True:
+                # Explicitly reviewed application requires writeable rootfs;
+                # never allow this through arbitrary custom Compose.
+                managed['read_only']=False
+                managed.pop('user')
+        safe[name]=managed
     return {'services':safe}
 
 def compose(name,arguments):
@@ -157,10 +173,10 @@ def compose(name,arguments):
     if result.returncode: raise ValueError('Compose command failed')
     return result.stdout[:4096].decode('utf-8','replace')
 
-def deploy(name,raw):
+def deploy(name,raw,app_id=None):
     if not isinstance(name,str) or not NAME.fullmatch(name) or not isinstance(raw,str) or len(raw.encode())>MAX_SPEC:
         raise ValueError('Invalid stack deployment')
-    value=json.dumps(spec_validate(json.loads(raw)),indent=2,sort_keys=True).encode()
+    value=json.dumps(spec_validate(json.loads(raw),app_id=app_id),indent=2,sort_keys=True).encode()
     root=STACKS+'/'+name
     os.makedirs(root,mode=0o700,exist_ok=True)
     with open(root+'/.lock','a+b') as lock:
@@ -279,7 +295,7 @@ def run(method,args):
                 raise ValueError('Invalid reviewed LAN port')
             ports.append(ip+':'+value)
         volumes=template.get('volumes',[])
-        return deploy(app_id,json.dumps({'services':{'app':{'image':image,'ports':ports,'volumes':volumes}}}))
+        return deploy(app_id,json.dumps({'services':{'app':{'image':image,'ports':ports,'volumes':volumes}}}),app_id=app_id)
 
     if method=='stack_action':
         name=args.get('name');action=args.get('action')
