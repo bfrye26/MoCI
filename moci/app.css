@@ -1953,3 +1953,10 @@ body {
 #wifi-profiles-content{display:grid;gap:16px}
 .wifi-security-warning{padding:14px 18px;color:var(--alert-red);border:1px solid var(--alert-red);border-radius:8px;font-size:13px;line-height:1.6}
 :root[data-theme="cloud"] .wifi-security-warning{color:#a52637;background:#fff5f4;border-color:#e8a5ae}
+
+/* StartWRT-inspired VPN policy editor */
+#vpn-policies-content{display:grid;gap:16px}
+#vpn-policies-content .profiles-create input,
+#vpn-policies-content .profiles-create select{width:100%;min-width:0;background:var(--theme-input);border:1px solid var(--glass-border);border-radius:6px;color:var(--starship-steel);padding:9px}
+:root[data-theme="cloud"] #vpn-policies-content .profiles-create input,
+:root[data-theme="cloud"] #vpn-policies-content .profiles-create select{background:#fff;color:#1e2d43;border-color:#bfcfe0}
