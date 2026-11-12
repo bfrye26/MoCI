@@ -18,21 +18,22 @@ const nativeRoutes = {
   system: 'system',
   advanced: 'advanced',
   profiles: 'profiles',
-  schedules: 'wifi-schedules',
+  schedules: 'schedules',
   'wifi-profiles': 'wifi-profiles',
   'ethernet-profiles': 'ethernet-profiles',
   'vpn-policies': 'vpn-policies',
   addons: 'addons',
 };
 for (const [route, module] of Object.entries(nativeRoutes)) {
+  const moduleFile=route==='schedules'?'wifi-schedules':module;
   assert(html.includes('id="'+route+'-page"'),
     'Missing HTML page for native '+route);
   assert(core.includes("'"+route+"': '"+module+"'") ||
          core.includes(route+": '"+module+"'"),
     'Missing router registration for '+route);
-  assert(builder.includes("'moci/js/modules/"+module+".js'"),
+  assert(builder.includes("'moci/js/modules/"+moduleFile+".js'"),
     'Frontend build omits '+module);
-  assert(makefile.includes('./dist/moci/js/modules/'+module+'.js'),
+  assert(makefile.includes('./dist/moci/js/modules/'+moduleFile+'.js'),
     'Firmware package omits '+module);
 }
 const themes = ['obsidian','cloud','ocean','terminal','amethyst','copper'];
