@@ -24,6 +24,12 @@ const SERVICES = [
   ['system','Time, Logging & System','Services','system'],
   ['rpcd','RPC Service','Services','rpcd']
 ].map(([id,title,group,config])=>({id,title,group,config}));
+const CURATED_CONFIGS=new Set(SERVICES.map(item=>item.config));
+const SERVICE_RELOAD=Object.freeze({
+  banip:'banip',acme:'acme',lldpd:'lldpd',sqm:'sqm',ddns:'ddns',
+  nlbwmon:'nlbwmon',luci_statistics:'luci_statistics',collectd:'collectd',
+  snmpd:'snmpd',nut:'nut',samba4:'samba4'
+});
 const SECRET = /password|passphrase|secret|token|private|key|credential|auth|community|cert|pem|salt|hash|cookie|psk/i;
 const NETWORK_CRITICAL = new Set(['mwan3','pbr','network','firewall','wireless','dhcp','dropbear','uhttpd','rpcd']);
 const sectionNameValid = value => /^[a-zA-Z0-9_@.\[\]-]{1,80}$/.test(value);
@@ -169,7 +175,7 @@ export default class AdvancedModule {
     }
     if(!Object.keys(changes).length){this.core.showToast('Nothing changed');return;}
     const fields=Object.keys(changes).map(k=>SECRET.test(k)?k+' (hidden)':k).join(', ');
-    const risky=NETWORK_CRITICAL.has(config);
+    const risky=(NETWORK_CRITICAL.has(config)||!CURATED_CONFIGS.has(config));
     if(!window.confirm('Update '+config+'.'+section+'?\nFields: '+fields+(risky?'\n\nConnectivity-critical: changes will revert unless the router confirms the new configuration within 60 seconds.':'')))return;
     this.busy=true;
     try {
@@ -197,6 +203,14 @@ export default class AdvancedModule {
       }
     }else{
       await this.rpc('uci','commit',{config});
+      const service=SERVICE_RELOAD[config];
+      if(service){
+        const [code,result]=await this.core.ubusCall('file','exec',
+          {command:'/etc/init.d/'+service,params:['reload']},{timeout:30000});
+        if(code!==0||result?.code!==0){
+          throw new Error('Configuration saved, but '+service+' did not reload. Check System → Startup before retrying.');
+        }
+      }
     }
   }
   async addSection() {
@@ -212,7 +226,7 @@ export default class AdvancedModule {
     this.busy=true;
     try{
       await this.rpc('uci','add',{config,type,...(name?{name}:{})});
-      await this.apply(config,NETWORK_CRITICAL.has(config));
+      await this.apply(config,(NETWORK_CRITICAL.has(config)||!CURATED_CONFIGS.has(config)));
       await this.load();
       this.core.showToast('Section created','success');
     }catch(e){this.core.showToast('Create failed: '+e.message,'error');}
@@ -225,7 +239,7 @@ export default class AdvancedModule {
     this.busy=true;
     try{
       await this.rpc('uci','delete',{config,section});
-      await this.apply(config,NETWORK_CRITICAL.has(config));
+      await this.apply(config,(NETWORK_CRITICAL.has(config)||!CURATED_CONFIGS.has(config)));
       await this.load();
       this.core.showToast('Section removed','success');
     }catch(e){this.core.showToast('Delete failed: '+e.message,'error');}
