@@ -19,6 +19,7 @@ jobs:
         run: |
           node --check moci/js/core.js
           for script in moci/js/modules/*.js; do node --check "$script"; done
+          sh -n files/moci-pkg-call
           sh -n files/moci-wifi-scheduler
           sh -n files/init-moci-wifi-scheduler
       - name: Validate release route and package contracts
