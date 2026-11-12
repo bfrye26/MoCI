@@ -1,0 +1,50 @@
+#!/bin/sh
+# Read-only helper for MoCI System > Startup. Never starts or stops a service.
+# Run through an explicitly scoped rpcd file.exec rule.
+set -u
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+valid_service() {
+    [ "${#1}" -ge 1 ] && [ "${#1}" -le 64 ] || return 1
+    case "$1" in
+        *[!A-Za-z0-9_-]*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+case "${1-}" in
+    list)
+        [ "$#" -eq 1 ] || exit 2
+        for link in /etc/rc.d/S[0-9][0-9]*; do
+            [ -L "$link" ] || continue
+            entry=${link##*/}
+            name=${entry#S??}
+            valid_service "$name" || continue
+            printf '%s\n' "$name"
+        done
+        ;;
+    inspect)
+        [ "$#" -eq 2 ] && valid_service "$2" || exit 2
+        name="$2"
+        path="/etc/init.d/$name"
+        [ -f "$path" ] && [ -x "$path" ] || exit 3
+        if "$path" enabled >/dev/null 2>&1; then
+            printf 'BOOT_ENABLED=yes\n'
+        else
+            printf 'BOOT_ENABLED=no\n'
+        fi
+        status=0
+        "$path" status >/dev/null 2>&1 || status=$?
+        printf 'INIT_STATUS_EXIT=%s\n' "$status"
+        printf 'RECENT_LOGS:\n'
+        if command -v logread >/dev/null 2>&1; then
+            # No dynamic shell evaluation. Display no more than 12 lines,
+            # each truncated to 200 bytes. The UI renders textContent.
+            logread 2>/dev/null | grep -i -F -- "$name" | tail -n 12 | cut -c1-200 || :
+        fi
+        ;;
+    *)
+        echo 'usage: moci-service-inspect list | inspect <service>' >&2
+        exit 2
+        ;;
+esac
