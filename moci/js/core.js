@@ -12,6 +12,36 @@ export class OpenWrtCore {
 		this.addons = new Map();
 		this.addonManifests = new Map();
 		this.addonRouteMap = new Map();
+		this.appearanceThemes = new Set(['obsidian', 'cloud', 'ocean', 'terminal', 'amethyst', 'copper']);
+		this.applyTheme(this.getSavedTheme());
+	}
+
+	getSavedTheme() {
+		try {
+			const stored = localStorage.getItem('moci_appearance_theme');
+			return this.appearanceThemes.has(stored) ? stored : 'obsidian';
+		} catch {
+			return 'obsidian';
+		}
+	}
+
+	applyTheme(theme) {
+		const next = this.appearanceThemes.has(theme) ? theme : 'obsidian';
+		document.documentElement.dataset.theme = next;
+		document.documentElement.style.colorScheme = next === 'cloud' ? 'light' : 'dark';
+		const select = document.getElementById('moci-theme-select');
+		if (select) select.value = next;
+		const meta = document.querySelector('meta[name="theme-color"]');
+		if (meta) meta.content = ({
+			obsidian: '#0b0d12', cloud: '#f5f7fa', ocean: '#09192f',
+			terminal: '#10191a', amethyst: '#171321', copper: '#121519'
+		})[next];
+		return next;
+	}
+
+	setTheme(theme) {
+		const next = this.applyTheme(theme);
+		try { localStorage.setItem('moci_appearance_theme', next); } catch {}
 	}
 
 	registerRoute(path, handler) {
@@ -226,6 +256,10 @@ export class OpenWrtCore {
 
 	attachEventListeners() {
 		document.getElementById('logout-btn')?.addEventListener('click', () => this.logout());
+		this.applyTheme(this.getSavedTheme());
+		document.getElementById('moci-theme-select')?.addEventListener('change', event => {
+			this.setTheme(event.target.value);
+		});
 
 		const menuToggle = document.querySelector('.menu-toggle');
 		const nav = document.querySelector('.nav');
