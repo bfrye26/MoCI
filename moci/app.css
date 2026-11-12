@@ -1942,3 +1942,9 @@ body {
 :root[data-theme="cloud"] .profiles-create{background:#fff;border-color:#dce5f0;box-shadow:0 3px 12px rgba(35,66,104,.05)}
 :root[data-theme="cloud"] .profiles-create input[type=text],:root[data-theme="cloud"] .profiles-create select{background:#fff;border-color:#bfcfe0;color:#1e2d43}
 @media(max-width:640px){.profiles-create{padding:15px;grid-template-columns:minmax(0,1fr)}}
+
+/* Wi-Fi schedules: independent of radio driver and responsive across themes. */
+#schedules-content{display:grid;gap:16px}
+.schedule-days{display:flex;flex-wrap:wrap;gap:12px;grid-column:1/-1;border:1px solid var(--glass-border);border-radius:8px;padding:12px 16px}
+.schedule-days legend{padding:0 7px;color:var(--steel-muted);font-size:12px}
+:root[data-theme="cloud"] .schedule-days{border-color:#dce5f0}
