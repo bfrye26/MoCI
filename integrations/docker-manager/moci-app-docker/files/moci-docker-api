@@ -104,6 +104,13 @@ def lan_ip():
     return ip
 
 def catalog():
+    """Describe installation capability for every catalogue entry, not only pinned apps.
+
+    A catalogue listing is not an approved or installable application. Only
+    explicitly reviewed templates with a pinned, allowlisted immutable digest
+    can enter the direct installation path. All other entries retain a manual
+    guided-setup workflow and visible requirements.
+    """
     with open(ROOT+'/app-catalog.json',encoding='utf-8') as f:
         data=json.load(f)
     if data.get('schema')!=1 or not isinstance(data.get('apps'),list):
@@ -111,23 +118,62 @@ def catalog():
     approved=policy()
     pinned=pins()
     templates=template_specs()
+    deploy_enabled=writes_enabled()
     apps=[]
     for app in data['apps'][:100]:
         appid=app.get('id')
         if not isinstance(appid,str) or not NAME.fullmatch(appid): continue
         image=pinned.get(appid)
-        ready=bool(writes_enabled() and appid in templates and app.get('template_available') and app.get('risk') in ('review',None) and image in approved and image.split('@')[0]==app.get('repository')) if image else False
-        can_prepare=bool(writes_enabled() and appid in templates and app.get('risk') in ('review',None) and app.get('template_available'))
+        template=templates.get(appid)
+        reviewed=(isinstance(template,dict) and app.get('template_available') is True
+                  and app.get('risk') in ('review',None)
+                  and template.get('repository')==app.get('repository')
+                  and isinstance(template.get('image'),str))
+        approved_image=bool(reviewed and image and image in approved
+                            and image.split('@',1)[0]==app.get('repository'))
         installed=os.path.isfile(STACKS+'/'+appid+'/compose.json')
+        ready=bool(deploy_enabled and approved_image)
+        can_prepare=bool(deploy_enabled and reviewed and not approved_image)
+        # Do not conflate read-only mode, incomplete templates, or already
+        # running containers with installation approval.
+        if installed: state='installed'
+        elif not deploy_enabled: state='disabled'
+        elif approved_image: state='ready'
+        elif reviewed: state='prepare'
+        else: state='manual'
         url=None
-        if appid in templates and installed:
-            raw_url=templates[appid].get('path')
+        if reviewed and installed:
+            raw_url=template.get('path')
             if isinstance(raw_url,str) and re.fullmatch(r'http://ROUTER_IP:[0-9]{4,5}/?',raw_url):
                 try:url=raw_url.replace('ROUTER_IP',lan_ip())
                 except ValueError:pass
-        apps.append({k:app.get(k) for k in ('id','name','description','category','repository','profile','complexity','risk') } |
-                    {'ready':ready,'can_prepare':can_prepare,'installed':installed,'url':url})
-    return {'catalog':apps}
+        if not deploy_enabled:
+            reason='Enable local Docker management to deploy applications'
+        elif reviewed and not approved_image:
+            reason='Prepare and approve the reviewed image digest before installation'
+        elif reviewed:
+            reason='Reviewed image and immutable digest approved'
+        else:
+            risk=app.get('risk')
+            if risk in ('router-critical','security-critical','privileged','docker-socket'):
+                reason='Advanced security-sensitive application: review its official installation and access requirements'
+            elif risk in ('resource-heavy','sensitive-data'):
+                reason='Requires a reviewed Compose configuration, storage and application-specific setup'
+            else:
+                reason='No reviewed one-click template; use the guided Compose workflow'
+        summary={k:app.get(k) for k in
+                 ('id','name','description','category','repository','profile','complexity','risk')}
+        summary.update({'ready':ready,'can_prepare':can_prepare,'installed':installed,
+                        'url':url,'setup_state':state,'reviewed_template':reviewed,
+                        'reason':reason,'read_only':not deploy_enabled})
+        if reviewed:
+            summary['template']={'description':str(template.get('description',''))[:400],
+                                 'image_tag':template.get('image'),
+                                 'ports':template.get('ports',[]),
+                                 'volumes':template.get('volumes',[]),
+                                 'needs_write_access':template.get('needs_write_access') is True}
+        apps.append(summary)
+    return {'catalog':apps,'total':len(apps),'read_only':not deploy_enabled}
 
 def spec_validate(spec, app_id=None, advanced=False):
     if not isinstance(spec,dict) or set(spec)!={'services'}:
