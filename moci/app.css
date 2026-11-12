@@ -2095,3 +2095,14 @@ body {
   .log-viewer { font-size: 11px; padding: 7px; }
   .log-viewer .log-line { padding: 5px 7px; }
 }
+
+/* Purpose-based router tools instead of a flat list of UCI packages. */
+.nav-more-menu{max-height:min(75vh,620px);overflow-y:auto;min-width:250px}
+.nav-menu-heading{font:700 10px var(--font-mono);letter-spacing:.1em;color:var(--steel-muted);padding:10px 12px 5px;border-top:1px solid var(--glass-border);margin-top:5px}
+.nav-menu-heading:first-child{border-top:0;margin-top:0}
+.advanced-nav{max-height:none;overflow:visible}
+.advanced-nav .action-btn{white-space:normal}
+.advanced-shortcuts{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 22px}
+.advanced-shortcuts a{text-decoration:none}
+:root[data-theme="cloud"] .nav-menu-heading{color:#60718a;border-color:#e4ebf4}
+@media(max-width:768px){.nav-more-menu{max-height:min(56vh,500px);min-width:0}.nav-menu-heading{padding-left:24px}}
