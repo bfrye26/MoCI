@@ -4,6 +4,7 @@ on:
     paths:
       - 'integrations/docker-manager/moci-app-docker/**'
       - 'moci/**'
+      - 'tests/service-controls.test.mjs'
       - 'tests/docker-store-contract.py'
       - '.github/workflows/docker-store-contract.yml'
   workflow_dispatch:
@@ -31,6 +32,8 @@ jobs:
         run: |
           node --check moci/js/core.js
           node --check moci/js/modules/network.js
+          node --check moci/js/modules/system.js
+          node --check tests/service-controls.test.mjs
           node --check moci/js/modules/upnp.js
           node --check moci/js/modules/advanced.js
           node --check moci/js/modules/wifi-schedules.js
@@ -38,6 +41,8 @@ jobs:
           node --check moci/js/modules/vpn-policies.js
           node --check moci/js/modules/dashboard.js
           node --check integrations/docker-manager/moci-app-docker/files/addon.js
+      - name: Test real service status and start/stop failure handling
+        run: node tests/service-controls.test.mjs
       - name: Build frontend package
         run: |
           npm install --no-audit --no-fund
