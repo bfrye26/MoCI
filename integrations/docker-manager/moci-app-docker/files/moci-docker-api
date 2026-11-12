@@ -174,8 +174,21 @@ def spec_validate(spec, app_id=None):
 
 def compose(name,arguments):
     base=STACKS+'/'+name
-    result=subprocess.run(['/usr/bin/docker','compose','--project-name','moci-'+name,'--file',base+'/compose.json']+arguments,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=120,env={'PATH':'/usr/bin:/bin','DOCKER_HOST':'unix:///var/run/docker.sock'},check=False)
-    if result.returncode: raise ValueError('Compose command failed')
+    # OpenWrt ships Compose both as Docker CLI plugin and standalone symlink.
+    # Prefer the plugin and fall back to the standalone executable.
+    command=(['/usr/bin/docker','compose'] if
+             os.path.isfile('/usr/lib/docker/cli-plugins/docker-compose')
+             else ['/usr/bin/docker-compose'])
+    if command[0]=='/usr/bin/docker-compose' and not os.path.isfile(command[0]):
+        raise ValueError('Docker Compose is not installed in the firmware')
+    result=subprocess.run(command+['--project-name','moci-'+name,
+        '--file',base+'/compose.json']+arguments,
+        stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=180,
+        env={'PATH':'/usr/bin:/bin','DOCKER_HOST':'unix:///var/run/docker.sock'},
+        check=False)
+    if result.returncode:
+        error=result.stderr.decode('utf-8','replace')[-1000:]
+        raise ValueError('Compose operation failed: '+error)
     return result.stdout[:4096].decode('utf-8','replace')
 
 def deploy(name,raw,app_id=None):
