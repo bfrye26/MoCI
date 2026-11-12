@@ -69,6 +69,7 @@ class ReleaseCandidateSecurity(unittest.TestCase):
             Path(root, "app-catalog.json").write_text(json.dumps(catalog))
             Path(root, "allowed-images.json").write_text(json.dumps({"images": [
                 "example/safe@sha256:" + "a" * 64, "example/critical@sha256:" + "b" * 64]}))
+            Path(root, "app-templates.json").write_text(json.dumps({"schema": 1, "templates": {"safe": {"repository": "example/safe"}}}))
             Path(root, "app-pins.json").write_text(json.dumps({
                 "safe": "example/safe@sha256:" + "a" * 64,
                 "critical": "example/critical@sha256:" + "b" * 64}))
