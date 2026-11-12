@@ -129,7 +129,7 @@ def catalog():
                     {'ready':ready,'can_prepare':can_prepare,'installed':installed,'url':url})
     return {'catalog':apps}
 
-def spec_validate(spec, app_id=None):
+def spec_validate(spec, app_id=None, advanced=False):
     if not isinstance(spec,dict) or set(spec)!={'services'}:
         raise ValueError('Only services supported')
     services=spec['services']
@@ -140,7 +140,7 @@ def spec_validate(spec, app_id=None):
     ports_used=set()
     named_volumes=set()
     for name,svc in services.items():
-        if not isinstance(name,str) or not NAME.fullmatch(name) or not isinstance(svc,dict) or set(svc)-{'image','ports','volumes','environment','depends_on','mem_limit','command'}:
+        if not isinstance(name,str) or not NAME.fullmatch(name) or not isinstance(svc,dict) or set(svc)-{'image','ports','volumes','environment','depends_on','mem_limit','command','user','read_only'}:
             raise ValueError('Unsupported Compose service')
         image=svc.get('image')
         if not isinstance(image,str) or image not in allow or not IMAGE.fullmatch(image):
@@ -188,8 +188,19 @@ def spec_validate(spec, app_id=None):
         mem_value=int(requested_memory[:-1])*(1024 if requested_memory[-1].lower()=='g' else 1)
         if mem_value<64 or mem_value>8192:
             raise ValueError('Memory limit must be between 64MB and 8GB')
+        requested_user=svc.get('user','65534:65534')
+        requested_read_only=svc.get('read_only',True)
+        if type(requested_read_only) is not bool:
+            raise ValueError('read_only must be a boolean')
+        if not isinstance(requested_user,str) or not re.fullmatch(r'[0-9]{1,5}:[0-9]{1,5}',requested_user):
+            raise ValueError('User must be an explicit UID:GID')
+        requested_ids=[int(value) for value in requested_user.split(':')]
+        if any(uid>65534 for uid in requested_ids):
+            raise ValueError('User ID outside allowed range')
+        if (not requested_read_only or requested_user!='65534:65534') and not advanced and app_id is None:
+            raise ValueError('Writable containers and custom users require advanced deployment confirmation')
         managed={'labels':{'com.moci.managed':'true'},'image':image,'ports':ports,'volumes':volumes,
-                 'read_only':True,'user':'65534:65534','cap_drop':['ALL'],
+                 'read_only':requested_read_only,'user':requested_user,'cap_drop':['ALL'],
                  'security_opt':['no-new-privileges:true'],'pids_limit':128,
                  'restart':'unless-stopped','mem_limit':requested_memory,
                  'environment':{key:str(value).lower() if isinstance(value,bool) else str(value)
@@ -276,10 +287,10 @@ def initialize_approved_volume(app_id,spec):
     if result.returncode:
         raise ValueError('Approved volume initialization failed')
 
-def deploy(name,raw,app_id=None):
+def deploy(name,raw,app_id=None,advanced=False):
     if not isinstance(name,str) or not NAME.fullmatch(name) or not isinstance(raw,str) or len(raw.encode())>MAX_SPEC:
         raise ValueError('Invalid stack deployment')
-    validated=spec_validate(json.loads(raw),app_id=app_id)
+    validated=spec_validate(json.loads(raw),app_id=app_id,advanced=advanced)
     value=json.dumps(validated,indent=2,sort_keys=True).encode()
     root=STACKS+'/'+name
     os.makedirs(root,mode=0o700,exist_ok=True)
@@ -549,7 +560,9 @@ def run(method,args):
             raw=res.read(65537)[:65536]
             return {'logs':decode_docker_logs(raw)}
         finally: conn.close()
-    if method=='deploy':return deploy(args.get('name'),args.get('spec'))
+    if method=='deploy':
+        advanced=args.get('confirmation')=='ALLOW ADVANCED CONTAINER'
+        return deploy(args.get('name'),args.get('spec'),advanced=advanced)
     if method=='install_catalog':
         app_id=args.get('id')
         if not isinstance(app_id,str) or not NAME.fullmatch(app_id):
@@ -622,7 +635,7 @@ def run(method,args):
     raise ValueError('Unknown method')
 
 METHODS={'set_deployments':{'enabled':'bool','confirmation':'str'}}
-METHODS.update({k:({} if k not in ('logs','deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action') else {'logs':{'id':'str'},'deploy':{'name':'str','spec':'str'},'prepare_app':{'id':'str'},'prepare_custom':{'image':'str'},'install_catalog':{'id':'str'},'stack_action':{'name':'str','action':'str'},'container_action':{'id':'str','action':'str'},'volume_action':{'name':'str','action':'str'},'network_action':{'name':'str','action':'str'},'image_action':{'id':'str','action':'str'}}[k]) for k in READ_METHODS+WRITE_METHODS if k!='set_deployments'})
+METHODS.update({k:({} if k not in ('logs','deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action') else {'logs':{'id':'str'},'deploy':{'name':'str','spec':'str','confirmation':'str'},'prepare_app':{'id':'str'},'prepare_custom':{'image':'str'},'install_catalog':{'id':'str'},'stack_action':{'name':'str','action':'str'},'container_action':{'id':'str','action':'str'},'volume_action':{'name':'str','action':'str'},'network_action':{'name':'str','action':'str'},'image_action':{'id':'str','action':'str'}}[k]) for k in READ_METHODS+WRITE_METHODS if k!='set_deployments'})
 if __name__=='__main__':
     if len(sys.argv)==2 and sys.argv[1]=='list':
         print(json.dumps(METHODS))
