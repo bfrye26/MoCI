@@ -38,7 +38,7 @@ jobs:
           test -f integrations/docker-manager/moci-app-docker/Makefile
           test -f integrations/docker-manager/moci-app-docker/files/moci-docker-api
       - name: Pin OpenWrt release
-        run: git clone --depth 1 --branch v25.12.2 https://github.com/openwrt/openwrt.git "$RUNNER_TEMP/openwrt"
+        run: git clone --depth 1 --branch v25.12.6 https://github.com/openwrt/openwrt.git "$RUNNER_TEMP/openwrt"
       - name: Build firmware
         env:
           OPENWRT_SRC: ${{ runner.temp }}/openwrt
