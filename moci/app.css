@@ -1924,3 +1924,21 @@ body {
 :root[data-theme="cloud"] .combobox-option:hover{background:#edf4ff}
 :root[data-theme="cloud"] .moci-help-panel li{color:#526780}
 :root[data-theme="cloud"] .toast{background:#fff;color:#243951;border-color:#dce5f0}
+
+/* StartWRT-inspired Security Profiles, native to MoCI */
+#profiles-content{display:grid;gap:20px}
+.profiles-description{line-height:1.6;color:var(--steel-muted);font-size:13px}
+.profiles-create{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;background:var(--glass-bg);padding:22px;border:1px solid var(--glass-border);border-radius:10px}
+.profiles-create .advanced-field{display:flex;flex-direction:column;gap:8px}
+.profiles-create input[type=text],.profiles-create select{width:100%;border:1px solid var(--glass-border);background:var(--theme-input);color:var(--starship-steel);border-radius:6px;padding:10px}
+.profiles-create .profiles-description,.profiles-create .profiles-check{grid-column:1/-1}
+.profiles-check{display:flex;gap:10px;align-items:start;color:var(--starship-steel);font-size:13px}
+.profiles-check input{margin-top:4px}
+.profiles-create .action-btn{justify-self:start}
+.profiles-create .action-btn:disabled{opacity:.45;cursor:not-allowed}
+.profiles-list{display:grid;gap:13px}
+.profiles-entry{display:flex;align-items:center;gap:20px;flex-wrap:wrap;justify-content:space-between}
+.profiles-entry strong{overflow-wrap:anywhere}
+:root[data-theme="cloud"] .profiles-create{background:#fff;border-color:#dce5f0;box-shadow:0 3px 12px rgba(35,66,104,.05)}
+:root[data-theme="cloud"] .profiles-create input[type=text],:root[data-theme="cloud"] .profiles-create select{background:#fff;border-color:#bfcfe0;color:#1e2d43}
+@media(max-width:640px){.profiles-create{padding:15px;grid-template-columns:minmax(0,1fr)}}
