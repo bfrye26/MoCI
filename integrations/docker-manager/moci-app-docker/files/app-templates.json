@@ -84,6 +84,68 @@
       "environment": {
         "GOTIFY_SERVER_PORT": "8080"
       }
+    },
+    "memos": {
+      "image": "neosmemo/memos:stable",
+      "repository": "neosmemo/memos",
+      "ports": [
+        "5230:5230"
+      ],
+      "volumes": [
+        "memos-data:/var/opt/memos"
+      ],
+      "description": "Private-by-default Memos with SQLite on a persistent named volume. The first user completes setup in the web UI.",
+      "path": "http://ROUTER_IP:5230/",
+      "needs_write_access": true,
+      "volume_initializer": {
+        "path": "/var/opt/memos",
+        "uid": 10001,
+        "gid": 10001
+      },
+      "run_as_user": "10001:10001",
+      "environment": {
+        "MEMOS_PORT": "5230",
+        "MEMOS_DRIVER": "sqlite"
+      }
+    },
+    "beszel": {
+      "image": "henrygd/beszel:latest",
+      "repository": "henrygd/beszel",
+      "ports": [
+        "8090:8090"
+      ],
+      "volumes": [
+        "beszel-data:/beszel_data"
+      ],
+      "description": "Beszel monitoring hub only. Additional agents and host/Docker monitoring permissions are configured separately. First visit sets up the hub account.",
+      "path": "http://ROUTER_IP:8090/",
+      "needs_write_access": true,
+      "mem_limit": "512m"
+    },
+    "grafana": {
+      "image": "grafana/grafana:latest",
+      "repository": "grafana/grafana",
+      "ports": [
+        "3010:3000"
+      ],
+      "volumes": [
+        "grafana-data:/var/lib/grafana"
+      ],
+      "description": "Grafana analytics on LAN TCP 3010 with persistent storage. Initial administrator password is generated once during installation; store it securely.",
+      "path": "http://ROUTER_IP:3010/",
+      "needs_write_access": true,
+      "run_as_user": "472:472",
+      "volume_initializer": {
+        "path": "/var/lib/grafana",
+        "uid": 472,
+        "gid": 472
+      },
+      "mem_limit": "768m",
+      "initial_password_env": "GF_SECURITY_ADMIN_PASSWORD",
+      "environment": {
+        "GF_USERS_ALLOW_SIGN_UP": "false",
+        "GF_AUTH_ANONYMOUS_ENABLED": "false"
+      }
     }
   }
 }
