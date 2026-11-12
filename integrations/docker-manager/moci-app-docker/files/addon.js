@@ -76,7 +76,7 @@ export default class ApplicationsAddon {
       <div class="docker-filters" role="group" aria-label="Application categories">
       ${categories.map(c=>`<button type="button" class="action-btn" data-category="${this.esc(c)}" aria-pressed="${this.category===c}">${this.esc(c)}</button>`).join('')}</div>
       <p class="docker-result-count" aria-live="polite"></p>
-      <div class="docker-app-grid">${apps.map(a=>`<article class="docker-app-card" data-app-category="${this.esc(a.category)}" data-app-profile="${this.esc(a.profile||'both')}"><small>${this.esc(a.category)} · ${this.esc(a.complexity||'review')} setup</small><h3>${this.esc(a.name)}</h3><p>${this.esc(a.description)}</p>${a.risk&&a.risk!=='review'?`<p class="docker-app-warning">Attention: ${this.esc(a.risk.replaceAll('-',' '))}</p>`:''}<footer><span>${a.ready?'Approved':a.can_prepare?'Ready to prepare':'Setup required'}</span><button type="button" class="action-btn" data-install="${this.esc(a.id)}" ${a.ready||a.can_prepare?'':'disabled'}>${a.ready?'Install':a.can_prepare?'Prepare & install':'Install'}</button></footer></article>`).join('')}</div>`;
+      <div class="docker-app-grid">${apps.map(a=>`<article class="docker-app-card" data-app-category="${this.esc(a.category)}" data-app-profile="${this.esc(a.profile||'both')}"><small>${this.esc(a.category)} · ${this.esc(a.complexity||'review')} setup</small><h3>${this.esc(a.name)}</h3><p>${this.esc(a.description)}</p>${a.risk&&a.risk!=='review'?`<p class="docker-app-warning">Attention: ${this.esc(a.risk.replaceAll('-',' '))}</p>`:''}<footer><span>${a.installed?'Installed':a.ready?'Approved':a.can_prepare?'Ready to prepare':'Setup required'}</span>${a.url?`<a class="action-btn" href="${this.esc(a.url)}" target="_blank" rel="noopener noreferrer">OPEN</a>`:''}<button type="button" class="action-btn" data-install="${this.esc(a.id)}" ${a.ready||a.can_prepare?'':'disabled'}>${a.installed?'Update / reinstall':a.ready?'Install':a.can_prepare?'Prepare & install':'Install'}</button></footer></article>`).join('')}</div>`;
     const updateFilters=()=>{
       let visible=0;
       root.querySelectorAll('[data-app-category]').forEach(card=>{
@@ -94,7 +94,7 @@ export default class ApplicationsAddon {
     updateFilters();
     root.querySelectorAll('[data-install]').forEach(b=>b.addEventListener('click',async()=>{
       if(!window.confirm('Install approved app '+b.dataset.install+'? This will create persistent Docker data and publish the reviewed application port on your router LAN.'))return;
-      const needsPrepare=b.textContent.includes('Prepare');
+      const needsPrepare=b.textContent.includes('Prepare')||b.textContent.includes('Update');
       b.dataset.needsPrepare=needsPrepare?'true':'false';
       b.disabled=true;
       b.textContent=needsPrepare?'PREPARING…':'INSTALLING…';
