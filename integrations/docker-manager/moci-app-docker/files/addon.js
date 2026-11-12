@@ -8,7 +8,7 @@ export default class ApplicationsAddon {
     this.profile = 'all';
   }
   async rpc(method, args={}) {
-    const write = ['deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action'].includes(method);
+    const write = ['deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action'].includes(method);
     const [status, data] = await this.core.ubusCall('moci-docker', method, args, {timeout:write?240000:25000});
     if (status !== 0 || !data || data.error) throw new Error(data?.error || 'The requested operation failed');
     return data;
@@ -50,9 +50,39 @@ export default class ApplicationsAddon {
       const data=rows.map(v=>typeof v==='string'?{Name:v}:v);
       if(!data.length){root.innerHTML='<p class="docker-empty">Nothing to display yet.</p>';return;}
       const keys=view==='containers'?['Names','Image','State','Status']:view==='stacks'?['Name','Containers']:view==='images'?['Tags','Size']:view==='volumes'?['Name','Driver']:view==='networks'?['Name','Driver']:['Mount','Total','Used','Free'];
-      root.innerHTML=`<div class="docker-scroll"><table class="data-table"><thead><tr>${keys.map(k=>`<th>${k}</th>`).join('')}${view==='containers'?'<th>Actions</th>':''}</tr></thead><tbody>
-        ${data.map(item=>`<tr>${keys.map(k=>`<td>${this.esc(Array.isArray(item[k])?item[k].join(', '):item[k])}</td>`).join('')}${view==='containers'?`<td><button class="action-btn" data-log="${this.esc(item.Id)}">Logs</button>${!this.readOnly&&item.Managed?['start','stop','restart'].map(action=>`<button class="action-btn" data-container-action="${action}" data-id="${this.esc(item.Id)}">${action}</button>`).join(''):''} </td>`:''}</tr>`).join('')}
+      root.innerHTML=`<div class="docker-scroll"><table class="data-table"><thead><tr>${keys.map(k=>`<th>${k}</th>`).join('')}${['containers','volumes','networks','images'].includes(view)?'<th>Actions</th>':''}</tr></thead><tbody>
+        ${data.map(item=>`<tr>${keys.map(k=>`<td>${this.esc(Array.isArray(item[k])?item[k].join(', '):item[k])}</td>`).join('')}${view==='containers'?`<td><button class="action-btn" data-log="${this.esc(item.Id)}">Logs</button>${!this.readOnly&&item.Managed?['start','stop','restart','remove'].map(action=>`<button class="action-btn" data-container-action="${action}" data-id="${this.esc(item.Id)}">${action}</button>`).join(''):''} </td>`:view==='volumes'&&!this.readOnly?`<td>${String(item.Name||'').startsWith('moci-')?`<button class="action-btn" data-resource-action="volume_action" data-id="${this.esc(item.Name)}">Remove</button>`:'Protected'}</td>`:view==='networks'&&!this.readOnly?`<td>${String(item.Name||'').startsWith('moci-')?`<button class="action-btn" data-resource-action="network_action" data-id="${this.esc(item.Name)}">Remove</button>`:'Protected'}</td>`:view==='images'&&!this.readOnly?`<td><button class="action-btn" data-resource-action="image_action" data-id="${this.esc(item.Id)}">Remove unused</button></td>`:'<td>Read only</td>'}</tr>`).join('')}
         </tbody></table></div><pre class="docker-log" hidden></pre>`;
+      if(!this.readOnly&&(view==='networks'||view==='volumes')){
+        const create=document.createElement('button');
+        create.type='button';create.className='action-btn';create.textContent=view==='volumes'?'Create managed volume':'Create isolated bridge network';
+        root.insertBefore(create,root.firstChild);
+        create.addEventListener('click',async()=>{
+          const name=window.prompt('Enter a unique name starting with moci- (for example moci-office):');
+          if(!name)return;
+          if(!/^moci-[a-z][a-z0-9-]{1,40}$/.test(name)){
+            this.core.showToast('Invalid managed resource name','error');return;
+          }
+          if(!window.confirm('Create managed '+view.slice(0,-1)+' '+name+'?'))return;
+          create.disabled=true;
+          try{
+            await this.rpc(view==='volumes'?'volume_action':'network_action',{name,action:'create'});
+            await this.renderView(view);
+          }catch(e){this.core.showToast(e.message,'error');create.disabled=false;}
+        });
+      }
+      root.querySelectorAll('[data-resource-action]').forEach(b=>b.addEventListener('click',async()=>{
+        const method=b.dataset.resourceAction;
+        const id=b.dataset.id;
+        if(!window.confirm('Remove '+id+'? Docker will refuse removal if this resource is still in use. This operation cannot be undone.'))return;
+        b.disabled=true;
+        try{
+          const args=method==='image_action'?{id,action:'remove'}:{name:id,action:'remove'};
+          await this.rpc(method,args);
+          this.core.showToast('Removed '+id,'success');
+          await this.renderView(view);
+        }catch(e){this.core.showToast(e.message,'error');b.disabled=false;}
+      }));
       root.querySelectorAll('[data-container-action]').forEach(b=>b.addEventListener('click',async()=>{
         const id=b.dataset.id,action=b.dataset.containerAction;
         if(!window.confirm(action+' this MoCI-managed container?'))return;
