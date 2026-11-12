@@ -2208,7 +2208,11 @@
 
 						<div class="tab-content hidden" id="tab-startup">
 							<div class="stat-card">
-								<div class="section-title">SYSTEM SERVICES</div>
+								<div class="system-services-heading">
+									<div class="section-title">SYSTEM SERVICES</div>
+									<button class="action-btn" type="button" id="refresh-startup-btn">REFRESH SERVICE STATUS</button>
+								</div>
+								<p class="service-help">Service status is checked against running procd instances, not merely registered services. Start and stop operations are confirmed after the init script completes. Some services require hardware or configuration before they can run.</p>
 								<table class="data-table" id="services-table">
 									<thead>
 										<tr>
