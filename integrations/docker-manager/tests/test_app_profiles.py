@@ -88,5 +88,24 @@ class ReviewedAppProfileTests(unittest.TestCase):
         self.assertTrue(result['installed'])
         self.assertEqual(result['url'],'http://192.168.50.1:8000/')
 
+    def test_compose_multiservice_environment_and_resource_limits(self):
+        image='example/safe@sha256:'+'a'*64
+        spec={'services':{
+            'db':{'image':image,'environment':{'DATABASE':'office','PORT':3306},
+                  'mem_limit':'1024m','volumes':['moci-db:/var/lib/db']},
+            'app':{'image':image,'environment':{'DATABASE_HOST':'db'},
+                   'depends_on':['db'],'mem_limit':'1g'}
+        }}
+        with patch.object(api,'policy',return_value={image}):
+            output=api.spec_validate(spec)
+            self.assertEqual(output['services']['app']['depends_on'],['db'])
+            self.assertEqual(output['services']['db']['environment']['PORT'],'3306')
+            self.assertEqual(output['services']['app']['mem_limit'],'1g')
+            self.assertEqual(output['volumes'],{'moci-db':{}})
+            invalid=dict(spec)
+            invalid['services']={'app':{'image':image,'depends_on':['missing']}}
+            with self.assertRaisesRegex(ValueError,'dependency'):
+                api.spec_validate(invalid)
+
 if __name__=='__main__':
     unittest.main()
