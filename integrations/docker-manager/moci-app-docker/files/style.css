@@ -69,3 +69,17 @@
 .docker-credential input{width:100%;margin-top:12px}
 .docker-management-mode{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 @media(max-width:700px){.docker-quick-setup{grid-template-columns:1fr}}
+
+/* Setup readiness and application-specific installer guidance. */
+.docker-search-label{display:flex;flex-direction:column;gap:8px;margin:15px 0;color:var(--steel-muted);font-size:12px;font-weight:600}
+.docker-search-label input{max-width:600px;width:100%;min-height:40px;padding:10px 12px;border:1px solid var(--glass-border);border-radius:7px;background:var(--theme-input);color:var(--starship-steel)}
+.docker-app-details{margin:9px 0 12px;font-size:12px;line-height:1.5;color:var(--steel-muted)}
+.docker-app-details summary{cursor:pointer;color:var(--primary-accent);font-weight:600;padding:6px 0}
+.docker-app-details p{margin:7px 0;overflow-wrap:anywhere}
+.docker-app-details strong{color:var(--starship-steel)}
+.docker-setup-notice{padding:11px 13px;border-left:3px solid var(--warning-amber);background:var(--theme-surface);color:var(--steel-muted);line-height:1.55}
+.docker-app-card footer button:disabled{opacity:.56;cursor:not-allowed}
+:root[data-theme="cloud"] .docker-search-label input{color:#24344b;background:#fff;border-color:#c4d4e7}
+:root[data-theme="cloud"] .docker-app-details summary{color:#225a9d}
+:root[data-theme="cloud"] .docker-app-details strong{color:#24344b}
+:root[data-theme="cloud"] .docker-setup-notice{color:#3e5269;background:#fff7e8}
