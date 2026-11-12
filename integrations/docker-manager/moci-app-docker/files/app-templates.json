@@ -10,14 +10,15 @@
       "volumes": [
         "uptime-kuma-data:/app/data"
       ],
-      "description": "Uptime Kuma v2 with persistent SQLite data; volume permissions are prepared before starting the unprivileged app.",
+      "description": "Uptime Kuma v2 with persistent SQLite data, preinitialized named volume and non-root UID 1000.",
       "path": "http://ROUTER_IP:3001/",
       "needs_write_access": true,
       "volume_initializer": {
         "path": "/app/data",
         "uid": 1000,
         "gid": 1000
-      }
+      },
+      "run_as_user": "1000:1000"
     },
     "it-tools": {
       "image": "corentinth/it-tools:latest",
