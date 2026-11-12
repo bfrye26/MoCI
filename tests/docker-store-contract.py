@@ -314,7 +314,8 @@ class DockerStoreContract(unittest.TestCase):
         with patch.dict(API['initialize_approved_volume'].__globals__,{
             'template_specs':lambda:{'glance':template},
             'subprocess':type('Proc',(),{'run':staticmethod(fake_run),
-                     'DEVNULL':__import__('subprocess').DEVNULL})}):
+                     'DEVNULL':__import__('subprocess').DEVNULL,
+                     'PIPE':__import__('subprocess').PIPE})}):
             API['initialize_approved_volume']('glance',spec)
         seed=[argv for argv in calls if 'moci-seed-config' in argv]
         self.assertEqual(len(seed),1)
