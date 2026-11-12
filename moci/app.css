@@ -1794,3 +1794,16 @@ body {
 .advanced-toolbar {display:flex;gap:10px;flex-wrap:wrap;margin:18px 0}
 .advanced-toolbar .danger {color:var(--alert-red)}
 @media(max-width:640px){.advanced-fields,.advanced-grid{grid-template-columns:minmax(0,1fr)}.advanced-section{padding:14px}}
+
+/* StartWRT-inspired contextual Help Mode, independently implemented for MoCI. */
+.moci-help-button{border:1px solid var(--glass-border);border-radius:6px;padding:9px 12px;background:var(--theme-input);color:var(--starship-steel);cursor:pointer;font:600 11px var(--font-mono)}
+.moci-help-button[aria-expanded="true"]{border-color:var(--primary-accent)}
+.moci-help-panel{margin-bottom:22px;background:var(--glass-bg);color:var(--starship-steel);padding:20px 24px;border:1px solid var(--glass-border);border-radius:10px;box-shadow:var(--glass-shadow)}
+.moci-help-panel .moci-help-heading{display:flex;justify-content:space-between;align-items:center;gap:15px;margin-bottom:12px}
+.moci-help-panel h3{font-size:17px}
+.moci-help-panel p,.moci-help-panel li{font-size:13px;line-height:1.7}
+.moci-help-panel p,.moci-help-panel li{color:var(--steel-muted)}
+.moci-help-panel ul{padding-left:20px;margin:10px 0}
+.moci-help-panel #moci-help-close{border:1px solid var(--glass-border);background:var(--theme-input);color:var(--starship-steel);padding:7px 12px;border-radius:5px;cursor:pointer}
+.moci-help-panel a{display:inline-block;margin-top:8px;color:var(--theme-link);font-size:12px}
+@media(max-width:800px){.moci-help-button{padding:7px 9px}.moci-help-panel{padding:15px}}
