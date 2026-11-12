@@ -96,6 +96,22 @@ class DockerStoreContract(unittest.TestCase):
             entry=next(a for a in API['catalog']()['catalog'] if a['id']=='uptime-kuma')
             self.assertEqual(entry['setup_state'],'installed')
 
+    def test_custom_image_registry_allowlist(self):
+        allowed=['ghcr.io/advplyr/audiobookshelf:latest',
+                 'docker.n8n.io/n8nio/n8n:1.3',
+                 'registry.rocket.chat/rocketchat/rocket.chat:8.0',
+                 'nextcloud:stable','vaultwarden/server:latest']
+        denied=['router.internal:latest','evil.example.org/steal:latest',
+                '127.0.0.1/local:latest','localhost/bad:latest',
+                '10.0.0.1/private:latest']
+        policy=runpy.run_path(str(BASE/'moci-docker-policy'))
+        for tag in allowed:
+            self.assertTrue(API['public_image_tag'](tag),tag)
+            self.assertTrue(policy['public_image_tag'](tag),tag)
+        for tag in denied:
+            self.assertFalse(API['public_image_tag'](tag),tag)
+            self.assertFalse(policy['public_image_tag'](tag),tag)
+
     def test_unapproved_digest_cannot_be_deployed(self):
         spec={'services':{'app':{'image':DIGEST}}}
         with self.assertRaisesRegex(ValueError,'Image digest not approved'):
