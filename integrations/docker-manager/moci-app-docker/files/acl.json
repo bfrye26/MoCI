@@ -13,7 +13,8 @@
           "storage",
           "logs",
           "catalog",
-          "managed_stacks"
+          "managed_stacks",
+          "diagnostics"
         ]
       }
     }
