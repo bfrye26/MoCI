@@ -124,7 +124,14 @@
         "samba4",
         "fstab",
         "rpcd",
-        "moci_wifi_schedule"
+        "moci_wifi_schedule",
+        "smartdns",
+        "watchcat",
+        "vnstat",
+        "irqbalance",
+        "openvpn",
+        "unbound",
+        "https-dns-proxy"
       ]
     },
     "write": {
@@ -240,7 +247,14 @@
         "samba4",
         "fstab",
         "rpcd",
-        "moci_wifi_schedule"
+        "moci_wifi_schedule",
+        "smartdns",
+        "watchcat",
+        "vnstat",
+        "irqbalance",
+        "openvpn",
+        "unbound",
+        "https-dns-proxy"
       ]
     }
   }
