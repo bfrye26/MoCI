@@ -74,3 +74,68 @@ jobs:
                   except Exception as error:
                       print('Cleanup warning:',error)
           PY
+
+      - name: Install stateful Uptime Kuma App Store profile and verify data survives recreation
+        run: |
+          docker pull louislam/uptime-kuma:2
+          python3 - <<'PY'
+          import importlib.machinery
+          import importlib.util
+          import json
+          from pathlib import Path
+          import subprocess
+          import tempfile
+          import time
+          import urllib.request
+          source='integrations/docker-manager/moci-app-docker/files/moci-docker-api'
+          loader=importlib.machinery.SourceFileLoader('moci_uptime_smoke',source)
+          spec=importlib.util.spec_from_loader(loader.name,loader)
+          api=importlib.util.module_from_spec(spec)
+          loader.exec_module(api)
+          tag='louislam/uptime-kuma:2'
+          digests=json.loads(subprocess.check_output(['/usr/bin/docker','image','inspect',
+                         '--format','{{json .RepoDigests}}',tag],text=True))
+          matching=[x for x in digests if x.startswith('louislam/uptime-kuma@sha256:')]
+          assert matching,'Registry did not return a trusted Uptime Kuma digest'
+          digest=matching[0]
+          templates=json.loads(Path('integrations/docker-manager/moci-app-docker/files/app-templates.json').read_text())
+          reviewed=templates['templates']['uptime-kuma']
+          ports=['127.0.0.1:'+x for x in reviewed['ports']]
+          with tempfile.TemporaryDirectory() as temp:
+              root=Path(temp)
+              policy=root/'policy';policy.mkdir()
+              stacks=root/'stacks';stacks.mkdir()
+              (policy/'allowed-images.json').write_text(json.dumps({'images':[digest]}))
+              (policy/'app-pins.json').write_text(json.dumps({'uptime-kuma':digest}))
+              (policy/'app-templates.json').write_text(json.dumps(templates))
+              api.ROOT=str(policy)
+              api.STACKS=str(stacks)
+              api.lan_ip=lambda:'127.0.0.1'
+              document={'services':{'app':{'image':digest,'ports':ports,
+                       'volumes':reviewed['volumes']}}}
+              def endpoint_ready():
+                  for _ in range(45):
+                      try:
+                          with urllib.request.urlopen('http://127.0.0.1:3001/',timeout=2) as response:
+                              if response.status==200:return True
+                      except Exception:pass
+                      time.sleep(1)
+                  return False
+              try:
+                  output=api.deploy('uptime-kuma',json.dumps(document),app_id='uptime-kuma')
+                  assert output['deployed']
+                  assert endpoint_ready(),'Uptime Kuma did not respond after deployment'
+                  container='moci-uptime-kuma-app-1'
+                  subprocess.check_call(['/usr/bin/docker','exec',container,
+                                        'sh','-c','printf smoke >/app/data/moci-smoke-test'])
+                  api.compose('uptime-kuma',['down'])
+                  api.compose('uptime-kuma',['up','-d','--wait'])
+                  assert endpoint_ready(),'Uptime Kuma failed to restart'
+                  marker=subprocess.check_output(['/usr/bin/docker','exec',container,
+                                  'cat','/app/data/moci-smoke-test'],text=True).strip()
+                  assert marker=='smoke','Persistent volume lost data after container recreation'
+                  print('Uptime Kuma installation, LAN HTTP and data persistence passed')
+              finally:
+                  try:api.compose('uptime-kuma',['down','--volumes','--remove-orphans'])
+                  except Exception as error:print('Cleanup warning:',error)
+          PY
