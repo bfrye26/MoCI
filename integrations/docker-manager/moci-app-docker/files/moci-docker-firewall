@@ -175,12 +175,18 @@ def reconcile(desired):
             call('/sbin/uci','-q','delete','firewall.'+name,ok=False)
         if zone_exists:
             call('/sbin/uci','-q','delete','firewall.'+ZONE,ok=False)
+        call('/sbin/uci','-q','delete','firewall.moci_docker_wan',ok=False)
         if desired['devices']:
             call('/sbin/uci','set','firewall.'+ZONE+'=zone')
-            for key,value in [('name',ZONE_NAME),('input','REJECT'),('output','REJECT'),('forward','REJECT')]:
+            for key,value in [('name',ZONE_NAME),('input','REJECT'),('output','ACCEPT'),('forward','REJECT')]:
                 call('/sbin/uci','set','firewall.'+ZONE+'.'+key+'='+value)
             for device in desired['devices']:
                 call('/sbin/uci','add_list','firewall.'+ZONE+'.device='+device)
+            # Apps may contact the internet but never gain generic Docker->LAN
+            # access. This is distinct from the LAN-only inbound published ports.
+            call('/sbin/uci','set','firewall.moci_docker_wan=forwarding')
+            call('/sbin/uci','set','firewall.moci_docker_wan.src='+ZONE_NAME)
+            call('/sbin/uci','set','firewall.moci_docker_wan.dest=wan')
             for name,rule in desired['rules'].items():
                 call('/sbin/uci','set','firewall.'+name+'=rule')
                 options={'name':'MoCI Docker LAN only '+name[-12:],
