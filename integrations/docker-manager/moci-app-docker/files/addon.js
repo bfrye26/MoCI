@@ -190,7 +190,11 @@ export default class ApplicationsAddon {
         this.core.showToast('Choose a supported version, verify required ports and volumes, then prepare its digest.','info');
         return;
       }
-      if(!window.confirm('Install approved app '+b.dataset.install+'? This will create persistent Docker data and publish the reviewed application port on your router LAN.'))return;
+      const sensitive=b.dataset.risk==='sensitive-data';
+      const warning=sensitive
+        ?'SENSITIVE DATA APPLICATION: This can store private files, credentials or backups and might need extra setup. Install on your trusted LAN only. Continue with reviewed configuration for '+b.dataset.install+'?'
+        :'Install approved app '+b.dataset.install+'? This will create persistent Docker data and publish the reviewed application port on your router LAN.';
+      if(!window.confirm(warning))return;
       const needsPrepare=b.dataset.installAction==='prepare'||b.dataset.installAction==='update';
       const originalLabel=b.textContent;
       b.dataset.needsPrepare=needsPrepare?'true':'false';
@@ -202,7 +206,7 @@ export default class ApplicationsAddon {
           b.dataset.needsPrepare='false';
           this.core.showToast('Image digest approved; deploying…','info');
         }
-        const installed=await this.rpc('install_catalog',{id:b.dataset.install});
+        const installed=await this.rpc('install_catalog',{id:b.dataset.install,...(sensitive?{confirmation:'INSTALL SENSITIVE APP'}:{})});
         this.core.showToast('Deployment completed','success');
         await this.renderView('managed_stacks');
         if(installed.initial_credentials){
