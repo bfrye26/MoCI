@@ -26,8 +26,8 @@ NAME=re.compile(r'^[a-z][a-z0-9-]{0,39}$')
 IMAGE=re.compile(r'^[A-Za-z0-9][A-Za-z0-9._/-]*@sha256:[0-9a-f]{64}$')
 CUSTOM_TAG=re.compile(r'^(?:(?:docker\.io|ghcr\.io|lscr\.io|quay\.io|registry\.gitlab\.com)/)?[a-z0-9][a-z0-9._/-]{2,95}:[A-Za-z0-9][A-Za-z0-9._-]{0,79}$')
 IDENT=re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$|^[a-f0-9]{12,64}$')
-READ_METHODS=['status','containers','stacks','images','volumes','networks','storage','logs','container_stats','catalog','managed_stacks','stack_config','diagnostics']
-WRITE_METHODS=['deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action','set_deployments']
+READ_METHODS=['status','containers','stacks','images','volumes','networks','storage','logs','container_stats','catalog','managed_stacks','diagnostics']
+WRITE_METHODS=['stack_config','deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action','set_deployments']
 # Deployments are opt-in: secure default for a router control plane.
 # The root administrator must explicitly create this local-only enable file.
 WRITES_ENABLED=False
