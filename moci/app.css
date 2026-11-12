@@ -2167,3 +2167,46 @@ body {
   .upnp-actions{align-items:stretch}
   .upnp-workspace .upnp-form .upnp-save-btn{width:100%}
 }
+
+/* Docker App Store: readable, responsive cards with stable action placement. */
+#addon-docker-page .docker-intro{display:flex;flex-direction:column;gap:10px;margin:12px 0 16px}
+#addon-docker-page .docker-intro h2{margin:0;font-size:20px;line-height:1.3}
+#addon-docker-page .docker-intro>p{margin:0;max-width:920px;line-height:1.6;color:var(--steel-muted)}
+#addon-docker-page .docker-store-summary{display:flex;align-items:center;gap:10px 16px;flex-wrap:wrap;margin:0 0 12px}
+#addon-docker-page .docker-store-summary span{border:1px solid var(--glass-border);border-radius:8px;padding:10px 14px;min-width:120px;font-size:12px;line-height:1.3}
+#addon-docker-page .docker-store-summary strong{font-size:17px;margin-right:6px}
+#addon-docker-page .docker-store-toolbar{display:grid;grid-template-columns:minmax(250px,1fr) auto;gap:16px;align-items:end;border:1px solid var(--glass-border);border-radius:10px;padding:16px;margin:16px 0;background:var(--theme-surface)}
+#addon-docker-page .docker-search-label{display:flex;flex-direction:column;gap:7px;font-size:12px;font-weight:600;margin:0}
+#addon-docker-page .docker-search-label input{width:100%;min-height:42px;margin:0}
+#addon-docker-page .docker-filters{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin:6px 0}
+#addon-docker-page .docker-filters .action-btn{min-height:34px;padding:7px 11px;white-space:nowrap}
+#addon-docker-page .docker-filters .action-btn[aria-pressed="true"]{background:var(--theme-accent,#cfe0ff);border-color:var(--theme-accent,#cfe0ff);color:var(--theme-bg,#24324d)}
+#addon-docker-page .docker-category-filter{border:1px solid var(--glass-border);border-radius:9px;margin:10px 0;padding:9px 13px;background:var(--theme-surface)}
+#addon-docker-page .docker-category-filter summary{cursor:pointer;font-size:12px;font-weight:700;letter-spacing:.035em;padding:4px 0}
+#addon-docker-page .docker-category-filter[open] summary{margin-bottom:12px}
+#addon-docker-page .docker-result-count{font-size:12px;color:var(--steel-muted);margin:13px 0}
+#addon-docker-page .docker-app-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(295px,1fr));gap:16px;align-items:stretch}
+#addon-docker-page .docker-app-card{display:flex;flex-direction:column;min-width:0;gap:11px;padding:20px;border:1px solid var(--glass-border);border-radius:12px;background:var(--theme-surface);box-shadow:0 1px 3px rgba(22,43,84,.045)}
+#addon-docker-page .docker-app-card[hidden]{display:none!important}
+#addon-docker-page .docker-app-card small{font-size:11px;line-height:1.45;letter-spacing:.03em;color:var(--steel-muted)}
+#addon-docker-page .docker-app-card h3{font-size:16px;line-height:1.3;margin:0;overflow-wrap:anywhere}
+#addon-docker-page .docker-app-card>p{margin:0;font-size:13px;line-height:1.55;overflow-wrap:anywhere}
+#addon-docker-page .docker-app-card .docker-app-warning{font-size:11px;line-height:1.4;color:var(--steel-muted);border-radius:5px;background:transparent;padding:0}
+#addon-docker-page .docker-app-state{display:inline-flex;align-self:flex-start;padding:5px 8px;border:1px solid var(--glass-border);border-radius:6px;font-size:11px;line-height:1.3;font-weight:600}
+#addon-docker-page .docker-app-state.is-ready{background:#eaf8f1;color:#146c4f;border-color:#a9ddc5}
+#addon-docker-page .docker-app-state.is-manual{background:#fff6e7;color:#92561c;border-color:#eed8b6}
+#addon-docker-page .docker-app-details{margin-top:2px;border-top:1px solid var(--glass-border);padding-top:10px;font-size:12px;line-height:1.6;min-width:0}
+#addon-docker-page .docker-app-details summary{cursor:pointer;color:var(--steel-muted);font-weight:600}
+#addon-docker-page .docker-app-details[open]{max-height:260px;overflow:auto;overflow-wrap:anywhere}
+#addon-docker-page .docker-app-details p{font-size:12px;line-height:1.5;margin:9px 0}
+#addon-docker-page .docker-app-card footer{display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:9px;margin-top:auto;padding-top:14px;border-top:1px solid var(--glass-border);min-width:0}
+#addon-docker-page .docker-app-card footer>span{font-size:11px;color:var(--steel-muted);flex:1 1 120px;line-height:1.35}
+#addon-docker-page .docker-app-card footer .action-btn{min-height:34px;padding:7px 11px;max-width:100%;font-size:11px}
+#addon-docker-page .docker-app-card .docker-primary-action{background:var(--theme-accent,#3b65a0);color:#fff;border-color:transparent}
+#addon-docker-page .docker-app-card .docker-primary-action:disabled{opacity:.6;cursor:not-allowed}
+#addon-docker-page .docker-app-card:focus-within{outline:2px solid var(--theme-accent,#3b65a0);outline-offset:1px}
+:root[data-theme="cloud"] #addon-docker-page .docker-app-card,:root[data-theme="cloud"] #addon-docker-page .docker-store-toolbar,:root[data-theme="cloud"] #addon-docker-page .docker-category-filter{background:#fff;border-color:#dbe3ef}
+:root[data-theme="cloud"] #addon-docker-page .docker-app-card footer>span,:root[data-theme="cloud"] #addon-docker-page .docker-result-count{color:#526780}
+:root[data-theme="cloud"] #addon-docker-page .docker-primary-action{background:#385c8e;color:#fff}
+@media(max-width:850px){#addon-docker-page .docker-store-toolbar{grid-template-columns:1fr;gap:10px}#addon-docker-page .docker-app-grid{grid-template-columns:repeat(auto-fill,minmax(255px,1fr))}}
+@media(max-width:560px){#addon-docker-page .docker-app-grid{grid-template-columns:1fr}#addon-docker-page .docker-app-card{padding:15px}#addon-docker-page .docker-store-toolbar{padding:12px}}
