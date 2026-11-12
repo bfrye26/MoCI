@@ -32,7 +32,8 @@
           "prepare_custom",
           "volume_action",
           "network_action",
-          "image_action"
+          "image_action",
+          "set_deployments"
         ]
       }
     }
