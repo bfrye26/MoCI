@@ -69,16 +69,21 @@
 					<button class="menu-toggle" aria-label="Toggle menu" aria-expanded="false">
 						<span></span><span></span><span></span>
 					</button>
-					<nav class="nav">
+					<nav class="nav" aria-label="Main navigation">
 						<a href="#/dashboard" class="active">DASHBOARD</a>
 						<a href="#/network">NETWORK</a>
-						<a href="#/system">SYSTEM</a>
 						<a href="#/profiles">SECURITY</a>
-						<a href="#/schedules">SCHEDULES</a>
-						<a href="#/wifi-profiles">WI-FI PROFILES</a>
-						<a href="#/vpn-policies">VPN POLICIES</a>
-						<a href="#/advanced">ADVANCED</a>
-						<a href="#/addons" data-feature="addons">ADD-ONS</a>
+						<a href="#/system">SYSTEM</a>
+						<details class="nav-more">
+							<summary>MORE</summary>
+							<div class="nav-more-menu">
+								<a href="#/schedules">WI-FI SCHEDULES</a>
+								<a href="#/wifi-profiles">WI-FI PASSWORDS</a>
+								<a href="#/vpn-policies">VPN POLICIES</a>
+								<a href="#/advanced">ADVANCED OPENWRT</a>
+								<a href="#/addons" data-feature="addons">ADD-ONS</a>
+							</div>
+						</details>
 					</nav>
 					<label class="theme-picker" for="moci-theme-select">
 						<span>THEME</span>
