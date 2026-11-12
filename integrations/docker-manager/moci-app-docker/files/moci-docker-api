@@ -207,9 +207,9 @@ def compose(name,arguments):
     base=STACKS+'/'+name
     # OpenWrt ships Compose both as Docker CLI plugin and standalone symlink.
     # Prefer the plugin and fall back to the standalone executable.
-    command=(['/usr/bin/docker','compose'] if
-             os.path.isfile('/usr/lib/docker/cli-plugins/docker-compose')
-             else ['/usr/bin/docker-compose'])
+    plugin=subprocess.run(['/usr/bin/docker','compose','version'],
+        stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=12,check=False)
+    command=(['/usr/bin/docker','compose'] if plugin.returncode==0 else ['/usr/bin/docker-compose'])
     if command[0]=='/usr/bin/docker-compose' and not os.path.isfile(command[0]):
         raise ValueError('Docker Compose is not installed in the firmware')
     result=subprocess.run(command+['--project-name','moci-'+name,
@@ -333,14 +333,19 @@ def diagnostics():
         report('Docker Engine',bool(info.get('Version')),'Version '+str(info.get('Version','unknown')))
     except Exception:
         report('Docker Engine',False,'Daemon socket or service unavailable')
-    binary='/usr/lib/docker/cli-plugins/docker-compose'
-    if not os.path.isfile(binary):
-        binary='/usr/bin/docker-compose'
-    exists=os.path.isfile(binary)
+    try:
+        docker_compose=subprocess.run(['/usr/bin/docker','compose','version'],
+            stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=12,check=False)
+        plugin_ok=docker_compose.returncode==0
+    except (OSError,subprocess.SubprocessError):
+        plugin_ok=False
+    binary='/usr/bin/docker-compose'
+    exists=plugin_ok or os.path.isfile(binary)
     report('Docker Compose',exists,'Installed' if exists else 'Missing Compose CLI plugin')
     if exists:
         try:
-            process=subprocess.run([binary,'version','--short'],capture_output=True,
+            command=['/usr/bin/docker','compose','version','--short'] if plugin_ok else [binary,'version','--short']
+            process=subprocess.run(command,capture_output=True,
                 text=True,timeout=8,check=False)
             report('Compose executable',process.returncode==0,
                 (process.stdout or process.stderr).strip()[:100] if process.returncode==0 else 'Could not execute plugin')
