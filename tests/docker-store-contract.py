@@ -50,7 +50,7 @@ class DockerStoreContract(unittest.TestCase):
 
     def test_reviewed_templates_match_listings_and_repositories(self):
         catalog_by_id={a['id']:a for a in CATALOG}
-        self.assertEqual(len(TEMPLATES),5)
+        self.assertEqual(len(TEMPLATES),8)
         for name,template in TEMPLATES.items():
             self.assertIn(name,catalog_by_id)
             self.assertTrue(catalog_by_id[name]['template_available'])
@@ -76,8 +76,8 @@ class DockerStoreContract(unittest.TestCase):
         with patch.dict(API['catalog'].__globals__,{'writes_enabled':lambda:True}):
             apps=API['catalog']()['catalog']
         reviewed=[a for a in apps if a['can_prepare']]
-        self.assertEqual(len(reviewed),5)
-        self.assertEqual(len([a for a in apps if a['setup_state']=='manual']),68)
+        self.assertEqual(len(reviewed),8)
+        self.assertEqual(len([a for a in apps if a['setup_state']=='manual']),65)
         self.assertTrue(all(a['reviewed_template'] for a in reviewed))
         self.assertTrue(all(not a['ready'] for a in apps))
 
@@ -178,6 +178,45 @@ class DockerStoreContract(unittest.TestCase):
         for tag in denied:
             self.assertFalse(API['public_image_tag'](tag),tag)
             self.assertFalse(policy['public_image_tag'](tag),tag)
+
+    def test_new_one_click_templates_match_official_storage_and_lan_ports(self):
+        expected={'memos':('5230:5230','/var/opt/memos'),
+                  'beszel':('8090:8090','/beszel_data'),
+                  'grafana':('3010:3000','/var/lib/grafana')}
+        for name,(port,path) in expected.items():
+            item=TEMPLATES[name]
+            self.assertIn(port,item['ports'])
+            self.assertTrue(any(mount.endswith(':'+path) for mount in item['volumes']))
+            self.assertTrue(item.get('needs_write_access'))
+            self.assertEqual(item['repository'],next(
+                app['repository'] for app in CATALOG if app['id']==name))
+            self.assertTrue(item['path'].startswith('http://ROUTER_IP:'))
+        self.assertEqual(TEMPLATES['grafana']['initial_password_env'],
+                         'GF_SECURITY_ADMIN_PASSWORD')
+        self.assertEqual(TEMPLATES['memos']['run_as_user'],'10001:10001')
+        self.assertEqual(TEMPLATES['grafana']['run_as_user'],'472:472')
+
+    def test_docker_firewall_only_publishes_managed_running_lan_tcp_ports(self):
+        fw=runpy.run_path(str(BASE/'moci-docker-firewall'))
+        netid='a'*64
+        networks=[{'Driver':'bridge','Id':netid,
+                   'Options':{},'Labels':{'com.docker.compose.project':'moci-memos'}}]
+        def container(project='moci-memos',ip='192.168.50.1',state='running',proto='tcp'):
+            return {'Id':'b'*64,'State':state,
+              'Labels':{'com.moci.managed':'true',
+                        'com.docker.compose.project':project},
+              'NetworkSettings':{'Networks':{'default':{
+                  'NetworkID':netid,'IPAddress':'172.23.0.2'}}},
+              'Ports':[{'IP':ip,'Type':proto,'PublicPort':5230,'PrivatePort':5230}]}
+        valid=fw['plan'](networks,[container()], '192.168.50.1')
+        self.assertEqual(valid['devices'],['br-'+'a'*12])
+        self.assertEqual(len(valid['rules']),1)
+        self.assertEqual(next(iter(valid['rules'].values()))['ip'],'172.23.0.2')
+        for client in [container(ip='0.0.0.0'),container(state='exited'),
+                       container(project='unrelated'),container(proto='udp')]:
+            rejected=fw['plan'](networks,[client],'192.168.50.1')
+            self.assertEqual(rejected['devices'],[])
+            self.assertEqual(rejected['rules'],{})
 
     def test_managed_apps_report_live_state_and_safe_lan_launch_url(self):
         names=('it-tools','openspeedtest','uptime-kuma','memos')
