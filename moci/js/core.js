@@ -392,34 +392,46 @@ export class OpenWrtCore {
 	}
 
 	async login(username, password) {
-		const response = await fetch('/ubus', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				jsonrpc: '2.0',
-				id: 1,
-				method: 'call',
-				params: [
-					'00000000000000000000000000000000',
-					'session',
-					'login',
-					{
-						username,
-						password
-					}
-				]
-			})
-		});
-
-		const data = await response.json();
-
-		if (data.result && data.result[1] && data.result[1].ubus_rpc_session) {
-			this.sessionId = data.result[1].ubus_rpc_session;
-			sessionStorage.setItem('ubus_session', this.sessionId);
-
+		let response;
+		try {
+			response = await fetch('/ubus', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					jsonrpc: '2.0',
+					id: 1,
+					method: 'call',
+					params: [
+						'00000000000000000000000000000000',
+						'session',
+						'login',
+						{ username, password }
+					]
+				})
+			});
+		} catch (error) {
+			console.error('MoCI cannot reach authenticated /ubus endpoint:', error);
+			throw new Error('Cannot connect to /ubus. Check uhttpd, the HTTPS certificate, and any HTTP-to-HTTPS redirect. LuCI is available at /cgi-bin/luci/.');
+		}
+		if (!response.ok) {
+			throw new Error(`/ubus returned HTTP ${response.status}. Check uhttpd-mod-ubus and the router web server settings.`);
+		}
+		let data;
+		try {
+			data = await response.json();
+		} catch {
+			throw new Error('The /ubus endpoint returned a non-JSON response. Confirm the ubus_prefix is /ubus and uhttpd-mod-ubus is installed.');
+		}
+		if (!Array.isArray(data.result) || data.result[0] !== 0 || !data.result[1]?.ubus_rpc_session) {
+			throw new Error('The router rejected the login. Check the username, password and rpcd session permissions.');
+		}
+		this.sessionId = data.result[1].ubus_rpc_session;
+		sessionStorage.setItem('ubus_session', this.sessionId);
+		try {
 			await this.initSession();
-		} else {
-			throw new Error('Login failed');
+		} catch (error) {
+			console.error('MoCI authenticated but failed to initialize:', error);
+			throw new Error('Authentication succeeded, but MoCI did not finish loading: ' + error.message);
 		}
 	}
 
@@ -459,7 +471,7 @@ export class OpenWrtCore {
 				await this.login(username, password);
 			} catch (err) {
 				console.error('Login error:', err);
-				this.showToast('Login failed: ' + err.message, 'error');
+				this.showToast('MoCI: ' + err.message, 'error');
 			}
 		};
 	}
@@ -807,10 +819,16 @@ export class OpenWrtCore {
 
 	async loadAddons() {
 		for (const [id, manifest] of this.addonManifests) {
-			await this.loadAddon(id);
-			this.injectAddonCSS(id, manifest);
-			this.injectAddonNav(id, manifest);
-			this.createAddonPage(id, manifest);
+			try {
+				const instance = await this.loadAddon(id);
+				if (!instance) continue;
+				this.injectAddonCSS(id, manifest);
+				this.injectAddonNav(id, manifest);
+				this.createAddonPage(id, manifest);
+			} catch (error) {
+				// A malformed add-on must not make a successful login appear to fail.
+				console.warn('MoCI skipped add-on initialization:', id, error);
+			}
 		}
 	}
 
@@ -839,14 +857,14 @@ export class OpenWrtCore {
 		if (!nav) return;
 
 		if (manifest.nav.placement === 'top') {
-			const addonsLink = nav.querySelector('a[href="#/addons"]');
-			if (addonsLink) {
-				nav.insertBefore(link, addonsLink);
-			} else {
-				nav.appendChild(link);
-			}
+			// The ADD-ONS link is nested inside the MORE menu. It is NOT a
+			// child of nav, so nav.insertBefore(link, addonsLink) throws.
+			const more = nav.querySelector('details.nav-more');
+			const reference = more?.parentElement === nav ? more : null;
+			if (reference) nav.insertBefore(link, reference);
+			else nav.appendChild(link);
 		} else if (manifest.nav.placement === 'addons') {
-			let group = document.getElementById('addons-nav-group');
+			let group = nav.querySelector('#addons-nav-group');
 			if (!group) {
 				group = document.createElement('div');
 				group.id = 'addons-nav-group';
@@ -854,14 +872,15 @@ export class OpenWrtCore {
 				const dropdown = document.createElement('div');
 				dropdown.className = 'nav-dropdown';
 				group.appendChild(dropdown);
-				const addonsLink = nav.querySelector('a[href="#/addons"]');
-				if (addonsLink) {
-					nav.insertBefore(group, addonsLink.nextSibling);
+				const container = nav.querySelector('.nav-more-menu') || nav;
+				const addonsLink = container.querySelector('a[href="#/addons"]');
+				if (addonsLink?.parentElement === container) {
+					container.insertBefore(group, addonsLink.nextSibling);
 				} else {
-					nav.appendChild(group);
+					container.appendChild(group);
 				}
 			}
-			group.querySelector('.nav-dropdown').appendChild(link);
+			group.querySelector('.nav-dropdown')?.appendChild(link);
 			group.classList.remove('hidden');
 		}
 	}

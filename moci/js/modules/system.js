@@ -112,27 +112,74 @@ export default class SystemModule {
 		try {
 			const [status, boardInfo] = await this.core.ubusCall('system', 'board', {});
 			if (status === 0 && boardInfo) {
-				document.getElementById('system-hostname').value = boardInfo.hostname || '';
+				const hostname = document.getElementById('system-hostname');
+				if (hostname) hostname.value = boardInfo.hostname || '';
 			}
 			const [us, ur] = await this.core.uciGet('system', '@system[0]');
 			if (us === 0 && ur?.values) {
-				document.getElementById('system-timezone').value = ur.values.zonename || ur.values.timezone || 'UTC';
+				await this.loadTimezones(ur.values.zonename || 'UTC', ur.values.timezone || 'UTC0');
+			} else {
+				await this.loadTimezones('UTC', 'UTC0');
 			}
-		} catch {}
+		} catch (error) {
+			console.warn('Could not read system settings:', error);
+			await this.loadTimezones('UTC', 'UTC0');
+		}
+	}
+
+	async loadTimezones(currentName = 'UTC', currentPosix = 'UTC0') {
+		const select = document.getElementById('system-timezone');
+		if (!select) return;
+		// LuCI ships the authoritative IANA -> POSIX timezone mapping for OpenWrt.
+		// Preserve the current selection when the LuCI RPC is unavailable.
+		const zones = new Map([[currentName, currentPosix]]);
+		try {
+			const [status, available] = await this.core.ubusCall('luci', 'getTimezones', {});
+			if (status === 0 && available && typeof available === 'object') {
+				for (const [name, details] of Object.entries(available)) {
+					if (typeof details?.tzstring === 'string' && details.tzstring.length > 0) {
+						zones.set(name, details.tzstring);
+					}
+				}
+			}
+		} catch (error) {
+			console.warn('Timezone catalogue unavailable; keeping existing timezone:', error);
+		}
+		this.timezoneOffsets = zones;
+		select.replaceChildren();
+		for (const name of [...zones.keys()].sort((a, b) => a.localeCompare(b))) {
+			const option = document.createElement('option');
+			option.value = name;
+			option.textContent = name.replaceAll('_', ' ');
+			select.appendChild(option);
+		}
+		select.value = currentName;
 	}
 
 	async saveGeneral() {
-		const hostname = document.getElementById('system-hostname').value.trim();
-		const timezone = document.getElementById('system-timezone').value.trim();
+		const hostname = document.getElementById('system-hostname')?.value.trim();
+		const timezone = document.getElementById('system-timezone')?.value;
 		if (!hostname) {
 			this.core.showToast('Hostname is required', 'error');
 			return;
 		}
+		const posix = this.timezoneOffsets?.get(timezone);
+		if (!timezone || !posix) {
+			this.core.showToast('Select a valid timezone', 'error');
+			return;
+		}
 		try {
-			await this.core.uciSet('system', '@system[0]', { hostname, zonename: timezone });
-			await this.core.uciCommit('system');
+			const [setStatus] = await this.core.uciSet('system', '@system[0]', {
+				hostname, zonename: timezone, timezone: posix
+			});
+			if (setStatus !== 0) throw new Error('UCI settings were rejected');
+			const [commitStatus] = await this.core.uciCommit('system');
+			if (commitStatus !== 0) throw new Error('UCI commit failed');
+			try { await this.core.serviceReload('system'); }
+			catch (error) { console.warn('Settings saved; service reload unavailable:', error); }
 			this.core.showToast('System settings saved', 'success');
-		} catch {
+		} catch (error) {
+			console.error('Failed to save system settings:', error);
 			this.core.showToast('Failed to save settings', 'error');
 		}
 	}
