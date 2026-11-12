@@ -28,12 +28,14 @@ export default class SecurityProfilesModule{
     const root=this.page.querySelector('#profiles-content');
     root.replaceChildren(this.make('p','Loading existing zones and interfaces…'));
     try{
-      const [zones,interfaces]=await Promise.all([
+      const [zones,interfaces,dhcp]=await Promise.all([
         this.call('uci','get',{config:'firewall'}),
-        this.call('uci','get',{config:'network'})
+        this.call('uci','get',{config:'network'}),
+        this.call('uci','get',{config:'dhcp'})
       ]);
       this.firewall=zones.values||{};
       this.network=interfaces.values||{};
+      this.dhcp=dhcp.values||{};
       this.render();
     }catch(e){root.replaceChildren(this.make('p','Could not read networking policy: '+e.message));}
   }
@@ -111,6 +113,33 @@ export default class SecurityProfilesModule{
         revoke.addEventListener('click',()=>this.revokeLanDevice(id));
         line.append(revoke);grants.append(line);
       }
+      const interfaceName=this.zoneNetwork(zone)[0]||'';
+      const dhcpSection=Object.entries(this.dhcp||{}).find(([id,entry])=>
+        entry['.type']==='dhcp'&&(id===interfaceName||entry.interface===interfaceName));
+      const dnsSection=this.make('div',undefined,'profiles-dns');
+      dnsSection.append(this.make('h4','Profile DNS resolver'));
+      if(dhcpSection){
+        const [dhcpName,dhcpConfig]=dhcpSection;
+        const options=Array.isArray(dhcpConfig.dhcp_option)?dhcpConfig.dhcp_option:
+          typeof dhcpConfig.dhcp_option==='string'?[dhcpConfig.dhcp_option]:[];
+        const current=options.find(x=>String(x).startsWith('6,'))||'';
+        const dnsForm=this.make('form',undefined,'profiles-allow-form');
+        const resolver=this.make('input');
+        resolver.placeholder='Router default or DNS IPv4';
+        resolver.value=current.replace(/^6,/,'');
+        resolver.setAttribute('aria-label','Optional profile DNS resolver IPv4');
+        const saveResolver=this.make('button','SAVE DNS','action-btn');
+        saveResolver.type='submit';
+        dnsForm.append(resolver,saveResolver);
+        dnsForm.addEventListener('submit',e=>{
+          e.preventDefault();
+          this.setProfileDns(name,dhcpName,resolver.value.trim(),options);
+        });
+        dnsSection.append(this.make('p','Leave blank to use the router default resolver. An external resolver may bypass the router’s DNS filtering.','profiles-description'),dnsForm);
+      }else{
+        dnsSection.append(this.make('p','Create a DHCP pool for interface '+interfaceName+
+          ' before setting profile-specific DNS.','profiles-description'));
+      }
       const subhead=this.make('h4','Allowed LAN services');
       const quietTitle=this.make('h4','Profile quiet hours (block forwarded Internet traffic)');
       const quietForm=this.make('form',undefined,'profiles-allow-form');
@@ -142,7 +171,7 @@ export default class SecurityProfilesModule{
       const quietStatus=this.make('p',activeQuiet.length?'Quiet-hour rules active: '+activeQuiet.length:
         forwards.length?'No quiet-hour restrictions':'Internet forwarding is not enabled for this profile',
         'profiles-description');
-      panel.append(title,status,subhead,allowForm,grants,quietTitle,quietStatus,quietForm,clear,remove);current.append(panel);
+      panel.append(title,status,dnsSection,subhead,allowForm,grants,quietTitle,quietStatus,quietForm,clear,remove);current.append(panel);
     }
     root.append(current);
   }
@@ -225,6 +254,30 @@ export default class SecurityProfilesModule{
       await this.apply();
       this.core.showToast('LAN exception removed','success');await this.show();
     }catch(e){this.core.showToast('Access change failed: '+e.message,'error');}
+    finally{this.busy=false;}
+  }
+  async setProfileDns(profile,section,resolver,previous){
+    if(this.busy||!SLUG.test(profile)||!this.dhcp?.[section])return;
+    if(resolver&&!this.privateIPv4(resolver)&&!/^([0-9]{1,3}\.){3}[0-9]{1,3}$/.test(resolver)){
+      this.core.showToast('Use a valid IPv4 DNS resolver','error');return;
+    }
+    if(resolver){
+      const octets=resolver.split('.').map(Number);
+      if(octets.some(x=>x>255)||octets[0]===0||octets[0]>=224||octets[3]===0||octets[3]===255){
+        this.core.showToast('Invalid DNS address','error');return;
+      }
+    }
+    const configured=previous.filter(x=>typeof x==='string'&&!x.startsWith('6,'));
+    if(resolver)configured.push('6,'+resolver);
+    if(!window.confirm('Change the DNS server advertised to devices in '+profile+
+      ' to '+(resolver||'router default')+'? Some devices will need to renew their DHCP lease.'))return;
+    this.busy=true;
+    try{
+      await this.call('uci','set',{config:'dhcp',section,values:{dhcp_option:configured}});
+      await this.apply();
+      this.core.showToast('Profile DNS settings saved','success');
+      await this.show();
+    }catch(e){this.core.showToast('DNS setting not confirmed: '+e.message,'error');}
     finally{this.busy=false;}
   }
   async clearQuietHours(profile){
