@@ -1,0 +1,76 @@
+name: MoCI Docker integration smoke
+on:
+  workflow_dispatch:
+  push:
+    branches: ['develop/docker-manager']
+    paths:
+      - 'integrations/docker-manager/**'
+      - '.github/workflows/docker-compose-smoke.yml'
+permissions:
+  contents: read
+concurrency:
+  group: moci-docker-smoke-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Docker and Compose
+        run: |
+          docker info
+          docker compose version
+          python3 -m unittest discover -s integrations/docker-manager/tests -p 'test*.py'
+      - name: Deploy and remove a pinned, unprivileged, named-volume Compose service
+        run: |
+          docker pull busybox:1.36
+          python3 - <<'PY'
+          import importlib.machinery
+          import importlib.util
+          import json
+          from pathlib import Path
+          import subprocess
+          import tempfile
+
+          source = 'integrations/docker-manager/moci-app-docker/files/moci-docker-api'
+          loader = importlib.machinery.SourceFileLoader('moci_docker_smoke',source)
+          spec = importlib.util.spec_from_loader(loader.name,loader)
+          api = importlib.util.module_from_spec(spec)
+          loader.exec_module(api)
+          raw = subprocess.check_output(
+              ['/usr/bin/docker','image','inspect','--format','{{json .RepoDigests}}','busybox:1.36'],
+              text=True)
+          digests = json.loads(raw)
+          assert digests, 'No immutable BusyBox image digest returned'
+          digest = digests[0]
+          assert api.IMAGE.fullmatch(digest), 'Unexpected registry digest: '+digest
+          with tempfile.TemporaryDirectory() as root:
+              path = Path(root)
+              policy = path/'policy'
+              stacks = path/'stacks'
+              policy.mkdir()
+              stacks.mkdir()
+              (policy/'allowed-images.json').write_text(json.dumps({'images':[digest]}))
+              api.ROOT=str(policy)
+              api.STACKS=str(stacks)
+              document={'services':{'app':{
+                  'image':digest,
+                  'volumes':['moci-smoke:/data'],
+                  'command':['sleep','120'],
+                  'mem_limit':'128m'
+              }}}
+              try:
+                  api.deploy('smoke',json.dumps(document))
+                  containers=api.run('containers',{})['containers']
+                  matched=[x for x in containers if 'moci-smoke' in x['Names']]
+                  assert matched, 'MoCI Compose did not create the container'
+                  assert matched[0]['Managed'], 'MoCI management label missing'
+                  assert matched[0]['State']=='running', matched[0]
+                  print('MoCI Docker deployment smoke passed')
+              finally:
+                  try:
+                      api.compose('smoke',['down','--volumes','--remove-orphans'])
+                  except Exception as error:
+                      print('Cleanup warning:',error)
+          PY
