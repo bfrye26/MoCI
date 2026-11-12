@@ -16,7 +16,8 @@ $linuxPath='/tmp/moci-ship-'+[guid]::NewGuid().ToString('N')+'.sh'
 Write-Host '[MoCI] Preparing the pinned local build in Ubuntu.'
 # Base64 contains no shell metacharacters. Only a generated path enters the
 # shell command; execution uses separate argv values and interactive stdin.
-$payload | & $wsl -d $Distro --exec bash -c "umask 077; base64 -d > '$linuxPath'"
+$payload | & $wsl -d $Distro --exec bash -c "umask 077; tr -d '\r\n' | base64 -d > '$linuxPath'"
 if ($LASTEXITCODE -ne 0) { throw "Could not stage builder in $Distro (exit $LASTEXITCODE)." }
 & $wsl -d $Distro --exec bash $linuxPath $Mode.ToLowerInvariant() "$Jobs"
 if ($LASTEXITCODE -ne 0) { throw "MoCI local build failed (exit $LASTEXITCODE). See the output log path above." }
+
