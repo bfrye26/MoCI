@@ -219,7 +219,7 @@
       "profile": "office",
       "complexity": "medium",
       "risk": "sensitive-data",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "filestash",
@@ -483,7 +483,7 @@
       "profile": "office",
       "complexity": "medium",
       "risk": "sensitive-data",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "netdata",
@@ -527,7 +527,7 @@
       "profile": "both",
       "complexity": "easy",
       "risk": "review",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "odoo",
@@ -703,7 +703,7 @@
       "profile": "office",
       "complexity": "medium",
       "risk": "sensitive-data",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "syncthing",
