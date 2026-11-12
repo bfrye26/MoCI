@@ -264,9 +264,11 @@ export class OpenWrtCore {
 	}
 
 	startApplication() {
-		this.attachEventListeners();
-
-		window.addEventListener('hashchange', () => this.handleRouteChange());
+		if (!this._applicationStarted) {
+			this.attachEventListeners();
+			window.addEventListener('hashchange', () => this.handleRouteChange());
+			this._applicationStarted = true;
+		}
 
 		if (!window.location.hash) {
 			this.navigate('/dashboard');
@@ -461,6 +463,8 @@ export class OpenWrtCore {
 		document.getElementById('main-view').classList.add('hidden');
 
 		const loginForm = document.getElementById('login-form');
+		const passwordField = document.getElementById('password');
+		if (passwordField) passwordField.value = '';
 
 		loginForm.onsubmit = async e => {
 			e.preventDefault();
@@ -481,9 +485,42 @@ export class OpenWrtCore {
 		document.getElementById('main-view').classList.remove('hidden');
 	}
 
+	async checkSessionAfterDenied(requestSession) {
+		if (!requestSession || requestSession !== this.sessionId) return;
+		if (this._sessionCheck?.id === requestSession) return this._sessionCheck.promise;
+		const controller = new AbortController();
+		const timer = setTimeout(() => controller.abort(), 4000);
+		const promise = (async () => {
+			try {
+				// An individual ACL denial does not prove that login expired.
+				const response = await fetch('/ubus', {
+					method:'POST',headers:{'Content-Type':'application/json'},
+					signal:controller.signal,
+					body:JSON.stringify({jsonrpc:'2.0',id:Math.random(),method:'call',
+						params:[requestSession,'session','access',{}]})
+				});
+				const data = response.ok ? await response.json() : null;
+				const expired = response.status === 401 || data?.result?.[0] === 6 || data?.error?.code === -32002;
+				if (expired && this.sessionId === requestSession) {
+					this.stopPolling();
+					sessionStorage.removeItem('ubus_session');
+					this.sessionId = null;
+					this.showLoginView();
+					this.showToast('Your router session has expired. Please log in again.', 'info');
+				}
+			} catch {
+				// Router unavailability is not proof that login expired.
+			} finally { clearTimeout(timer); }
+		})();
+		this._sessionCheck = {id:requestSession,promise};
+		try { await promise; }
+		finally { if (this._sessionCheck?.promise === promise) this._sessionCheck = null; }
+	}
+
 	async ubusCall(object, method, params = {}, { timeout = 10000, retries = 0 } = {}) {
 		let lastError;
 		for (let attempt = 0; attempt <= retries; attempt++) {
+			const requestSession = this.sessionId;
 			const controller = new AbortController();
 			const timer = setTimeout(() => controller.abort(), timeout);
 			try {
@@ -495,11 +532,14 @@ export class OpenWrtCore {
 						jsonrpc: '2.0',
 						id: Math.random(),
 						method: 'call',
-						params: [this.sessionId || '00000000000000000000000000000000', object, method, params]
+						params: [requestSession || '00000000000000000000000000000000', object, method, params]
 					})
 				});
 				clearTimeout(timer);
 				const data = await response.json();
+				if (object !== 'session' && (data.result?.[0] === 6 || data.error?.code === -32002)) {
+					await this.checkSessionAfterDenied(requestSession);
+				}
 				if (data.error) throw new Error(data.error.message || `${object}.${method} failed`);
 				return data.result;
 			} catch (err) {

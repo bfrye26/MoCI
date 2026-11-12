@@ -1,0 +1,51 @@
+#!/bin/sh
+# Read-only inventory: no scans, credentials, disk writes or settings changes.
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+printf '=== MoCI hardware inventory ===\n'
+date -u '+UTC: %Y-%m-%dT%H:%M:%SZ'
+uname -srmo
+printf '\nCPU: '
+awk -F ': ' '/model name/ {print $2; exit}' /proc/cpuinfo
+printf '\nMemory:\n'
+awk '/MemTotal/ {print}' /proc/meminfo
+printf '\nBoot mode: '
+if [ -d /sys/firmware/efi ]; then printf 'UEFI\n'; else printf 'Legacy/unknown\n'; fi
+printf '\nPhysical network interfaces (MAC / driver / link):\n'
+for link in /sys/class/net/*; do
+  [ -e "$link/device" ] || continue
+  name=${link##*/}
+  mac=$(cat "$link/address" 2>/dev/null)
+  driver=$(readlink -f "$link/device/driver" 2>/dev/null)
+  driver=${driver##*/}
+  carrier=$(cat "$link/carrier" 2>/dev/null || printf 'unknown')
+  kind=Ethernet
+  [ ! -d "$link/wireless" ] || kind=Wi-Fi
+  printf '%s: %s MAC=%s driver=%s carrier=%s\n' "$name" "$kind" "$mac" "${driver:-unknown}" "$carrier"
+done
+printf '\nPCI devices and bound drivers:\n'
+if command -v lspci >/dev/null 2>&1; then lspci -nnk; else
+  for dev in /sys/bus/pci/devices/*; do
+    class=$(cat "$dev/class" 2>/dev/null)
+    case "$class" in 0x02*)
+      vendor=$(cat "$dev/vendor" 2>/dev/null)
+      device=$(cat "$dev/device" 2>/dev/null)
+      driver=$(readlink -f "$dev/driver" 2>/dev/null)
+      printf '%s class=%s vendor=%s device=%s driver=%s\n' "${dev##*/}" "$class" "$vendor" "$device" "${driver##*/}"
+    ;; esac
+  done
+fi
+printf '\nUSB devices:\n'
+if command -v lsusb >/dev/null 2>&1; then lsusb; else printf 'lsusb not installed\n'; fi
+printf '\nWireless radios and supported modes:\n'
+if command -v iw >/dev/null 2>&1; then iw phy 2>/dev/null
+else printf 'iw not installed; inspect PCI/USB identifiers above\n'; fi
+printf '\nStorage (no serial numbers):\n'
+if command -v lsblk >/dev/null 2>&1; then lsblk -d -o NAME,SIZE,TYPE,MODEL; fi
+printf '\nTemperature sensors:\n'
+for sensor in /sys/class/thermal/thermal_zone*/temp; do
+  [ -r "$sensor" ] || continue
+  printf '%s: ' "$sensor"
+  cat "$sensor"
+done
+printf '\nIdentify the Wi-Fi chipset before selecting its driver/firmware.\n'
+printf 'A Wi-Fi module is not proof of access-point mode support.\n'

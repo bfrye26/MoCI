@@ -379,7 +379,7 @@ def spec_validate(spec, app_id=None, advanced=False):
             raise ValueError('Writable containers and custom users require advanced deployment confirmation')
         managed={'labels':{'com.moci.managed':'true'},'image':image,'ports':ports,'volumes':volumes,
                  'read_only':requested_read_only,'user':requested_user,'cap_drop':['ALL'],
-                 'security_opt':['no-new-privileges:true'],'pids_limit':128,
+                 'security_opt':['no-new-privileges=true'],'pids_limit':128,
                  'restart':'unless-stopped','mem_limit':requested_memory,
                  'environment':{key:str(value).lower() if isinstance(value,bool) else str(value)
                                 for key,value in environment.items()}}
@@ -514,7 +514,7 @@ def initialize_approved_volume(app_id,spec):
             stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,timeout=15,check=True)
         setup=['/usr/bin/docker','run','--rm','--network','none','--read-only',
             '--user','0:0','--cap-drop','ALL','--cap-add','CHOWN',
-            '--security-opt','no-new-privileges:true','--pids-limit','64',
+            '--security-opt','no-new-privileges=true','--pids-limit','64',
             '--memory','128m','--mount',
             'type=volume,source='+volume+',target='+path,
             '--entrypoint','/bin/sh',service['image'],'-c',
@@ -561,7 +561,7 @@ def initialize_approved_volume(app_id,spec):
         # The reviewed literal text is passed as an argv parameter.
         command=['/usr/bin/docker','run','--rm','--network','none','--read-only',
           '--user',str(owner['uid'])+':'+str(owner['gid']),
-          '--cap-drop','ALL','--security-opt','no-new-privileges:true',
+          '--cap-drop','ALL','--security-opt','no-new-privileges=true',
           '--pids-limit','32','--memory','128m','--mount',
           'type=volume,source='+volume+',target='+mount[1],
           '--entrypoint','/bin/sh',service['image'],'-c',

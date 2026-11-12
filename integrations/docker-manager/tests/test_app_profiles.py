@@ -32,7 +32,7 @@ class ReviewedAppProfileTests(unittest.TestCase):
                 self.assertFalse(spec['services']['app']['read_only'])
                 self.assertEqual(spec['services']['app']['user'],'1000:1000')
                 self.assertEqual(spec['services']['app']['cap_drop'],['ALL'])
-                self.assertEqual(spec['services']['app']['security_opt'],['no-new-privileges:true'])
+                self.assertEqual(spec['services']['app']['security_opt'],['no-new-privileges=true'])
                 self.assertEqual(spec['volumes'],{'uptime-kuma-data':{}})
                 locked=api.spec_validate(app)
                 self.assertTrue(locked['services']['app']['read_only'])
@@ -101,7 +101,7 @@ class ReviewedAppProfileTests(unittest.TestCase):
             self.assertFalse(app['read_only'])
             self.assertEqual(app['user'],'1000:1000')
             self.assertEqual(app['cap_drop'],['ALL'])
-            self.assertEqual(app['security_opt'],['no-new-privileges:true'])
+            self.assertEqual(app['security_opt'],['no-new-privileges=true'])
             payload['services']['app']['privileged']=True
             with self.assertRaisesRegex(ValueError,'Unsupported Compose service'):
                 api.spec_validate(payload,advanced=True)

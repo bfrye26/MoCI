@@ -157,7 +157,7 @@ class DockerStoreContract(unittest.TestCase):
             self.assertEqual(actual['cap_drop'],['ALL'])
             self.assertEqual(actual['cap_add'],[
                 'CHOWN','DAC_OVERRIDE','FOWNER','SETGID','SETUID'])
-            self.assertEqual(actual['security_opt'],['no-new-privileges:true'])
+            self.assertEqual(actual['security_opt'],['no-new-privileges=true'])
             self.assertEqual(actual['ports'],spec['services']['app']['ports'])
             # Generic compose callers cannot get the reviewed root/capability
             # exemption, even if a matching image digest is approved.
