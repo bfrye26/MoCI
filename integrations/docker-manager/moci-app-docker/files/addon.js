@@ -99,14 +99,14 @@ export default class ApplicationsAddon {
   }
   renderCatalog(root,apps) {
     const categories=['All',...new Set(apps.map(a=>a.category))];
-    root.innerHTML=`<div class="docker-intro"><h2>Applications</h2><p>Browse ${apps.length} self-hosted services for office networks and homelabs. Apps marked Setup required are not installable until reviewed templates, approved digests and authentication gates are ready.</p></div>
+    root.innerHTML=`<div class="docker-intro"><h2>Applications</h2><p>Browse ${apps.length} self-hosted services for office networks and homelabs. Reviewed templates support guided installation. Other listings open a Compose setup wizard so users can configure ports, volumes and verified image versions.</p></div>
       <div class="docker-filters" role="group" aria-label="Application profiles">
       ${[['all','All apps'],['office','Office LAN'],['home','Homelab'],['both','Office + Homelab']].map(([id,label])=>`<button type="button" class="action-btn" data-profile="${id}" aria-pressed="${this.profile===id}">${label}</button>`).join('')}
       </div>
       <div class="docker-filters" role="group" aria-label="Application categories">
       ${categories.map(c=>`<button type="button" class="action-btn" data-category="${this.esc(c)}" aria-pressed="${this.category===c}">${this.esc(c)}</button>`).join('')}</div>
       <p class="docker-result-count" aria-live="polite"></p>
-      <div class="docker-app-grid">${apps.map(a=>`<article class="docker-app-card" data-app-category="${this.esc(a.category)}" data-app-profile="${this.esc(a.profile||'both')}"><small>${this.esc(a.category)} · ${this.esc(a.complexity||'review')} setup</small><h3>${this.esc(a.name)}</h3><p>${this.esc(a.description)}</p>${a.risk&&a.risk!=='review'?`<p class="docker-app-warning">Attention: ${this.esc(a.risk.replaceAll('-',' '))}</p>`:''}<footer><span>${a.installed?'Installed':a.ready?'Approved':a.can_prepare?'Ready to prepare':'Setup required'}</span>${a.url?`<a class="action-btn" href="${this.esc(a.url)}" target="_blank" rel="noopener noreferrer">OPEN</a>`:''}<button type="button" class="action-btn" data-install="${this.esc(a.id)}" ${a.ready||a.can_prepare?'':'disabled'}>${a.installed?'Update / reinstall':a.ready?'Install':a.can_prepare?'Prepare & install':'Install'}</button></footer></article>`).join('')}</div>`;
+      <div class="docker-app-grid">${apps.map(a=>`<article class="docker-app-card" data-app-category="${this.esc(a.category)}" data-app-profile="${this.esc(a.profile||'both')}"><small>${this.esc(a.category)} · ${this.esc(a.complexity||'review')} setup</small><h3>${this.esc(a.name)}</h3><p>${this.esc(a.description)}</p>${a.risk&&a.risk!=='review'?`<p class="docker-app-warning">Attention: ${this.esc(a.risk.replaceAll('-',' '))}</p>`:''}<footer><span>${a.installed?'Installed':a.ready?'Approved':a.can_prepare?'Ready to prepare':'Manual setup'}</span>${a.url?`<a class="action-btn" href="${this.esc(a.url)}" target="_blank" rel="noopener noreferrer">OPEN</a>`:''}<button type="button" class="action-btn" data-install="${this.esc(a.id)}" data-repository="${this.esc(a.repository)}" data-risk="${this.esc(a.risk||'review')}">${a.installed?'Update / reinstall':a.ready?'Install':a.can_prepare?'Prepare & install':'Configure'}</button></footer></article>`).join('')}</div>`;
     const updateFilters=()=>{
       let visible=0;
       root.querySelectorAll('[data-app-category]').forEach(card=>{
@@ -123,6 +123,20 @@ export default class ApplicationsAddon {
     root.querySelectorAll('[data-profile]').forEach(b=>b.addEventListener('click',()=>{this.profile=b.dataset.profile;updateFilters();}));
     updateFilters();
     root.querySelectorAll('[data-install]').forEach(b=>b.addEventListener('click',async()=>{
+      if(b.textContent==='Configure'){
+        const repository=b.dataset.repository||'';
+        const risk=b.dataset.risk||'review';
+        if(!window.confirm('Open custom Compose setup for '+b.dataset.install+'? This application does not have a tested one-click template. Category risks: '+risk+'. Review its official installation requirements before deployment.'))return;
+        await this.renderView('managed_stacks');
+        const create=this.page.querySelector('#docker-create');
+        create?.click();
+        const name=this.page.querySelector('#docker-name');
+        const tag=this.page.querySelector('#docker-image-tag');
+        if(name)name.value=b.dataset.install.slice(0,40);
+        if(tag)tag.placeholder=repository+':VERSION';
+        this.core.showToast('Choose a supported version, verify required ports and volumes, then prepare its digest.','info');
+        return;
+      }
       if(!window.confirm('Install approved app '+b.dataset.install+'? This will create persistent Docker data and publish the reviewed application port on your router LAN.'))return;
       const needsPrepare=b.textContent.includes('Prepare')||b.textContent.includes('Update');
       b.dataset.needsPrepare=needsPrepare?'true':'false';
