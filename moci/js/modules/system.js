@@ -502,21 +502,25 @@ export default class SystemModule {
 
 	serviceDisplay(name,running,pending,feedback){
 		if(pending)return {variant:'info',label:pending.action==='stop'?'STOPPING…':'STARTING…'};
-		if(feedback?.kind==='failed')return {variant:'error',label:'FAILED',hint:'Open Details to inspect the start/stop error'};
-		if(feedback?.kind==='completed')return {variant:'success',label:'COMPLETED'};
 		if(running)return {variant:'success',label:'RUNNING'};
-		if(feedback && feedback.expected!==running)return {
-			variant:'info',label:'UNCONFIRMED',hint:'No persistent process confirmed. Open Details'};
-		if(name==='urandom_seed')return {variant:'info',label:'BOOT TASK',hint:'Runs briefly when random seeds are initialized'};
+		if(name==='urandom_seed')return feedback?.kind==='completed'
+			?{variant:'success',label:'COMPLETED'}
+			:{variant:'info',label:'BOOT TASK',hint:'Short-lived random seed initialization; no daemon is expected'};
 		if(name==='banip'){
 			if(this.serviceContext?.BANIP_STATE==='active')return {variant:'success',label:'ACTIVE'};
 			if(this.serviceContext?.BANIP_ENABLED==='no')return {
-				variant:'info',label:'APP DISABLED',hint:'Enable BanIP and configure feeds before starting'};
-			return {variant:'info',label:'INACTIVE',hint:'Use Details to inspect BanIP blocklist status'};
+				variant:'info',label:'APP DISABLED',hint:'Enable BanIP and configure blocklists before starting'};
 		}
 		if(name==='nut-server' && this.serviceContext?.NUT_DRIVER_CONFIGURED==='no')return {
-			variant:'info',label:'SETUP NEEDED',hint:'No UPS driver configured for this router'};
-		if(this.serviceIsOneShot(name))return {variant:'info',label:'IDLE'};
+			variant:'info',label:'SETUP NEEDED',hint:'No UPS driver is configured for this router'};
+		if(feedback?.kind==='failed')return {
+			variant:'error',label:'FAILED',hint:'Start/stop returned an error. Open Details'};
+		if(feedback?.kind==='completed')return {variant:'success',label:'COMPLETED'};
+		if(feedback && feedback.expected!==running)return {
+			variant:'info',label:'UNCONFIRMED',hint:'No persistent process confirmed. Open Details'};
+		if(name==='banip')return {variant:'info',label:'INACTIVE',
+			hint:'Check Details for the BanIP firewall application status'};
+		if(this.serviceIsOneShot(name))return {variant:'info',label:'ON DEMAND'};
 		return {variant:'error',label:'STOPPED'};
 	}
 
