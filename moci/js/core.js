@@ -819,16 +819,22 @@ export class OpenWrtCore {
 
 	async loadAddons() {
 		for (const [id, manifest] of this.addonManifests) {
-			await this.loadAddon(id);
-			this.injectAddonCSS(id, manifest);
-			this.injectAddonNav(id, manifest);
-			this.createAddonPage(id, manifest);
+			try {
+				const instance = await this.loadAddon(id);
+				if (!instance) continue;
+				this.injectAddonCSS(id, manifest);
+				this.injectAddonNav(id, manifest);
+				this.createAddonPage(id, manifest);
+			} catch (error) {
+				// A malformed add-on must not make a successful login appear to fail.
+				console.warn('MoCI skipped add-on initialization:', id, error);
+			}
 		}
 	}
 
 	injectAddonCSS(id, manifest) {
 		if (!manifest.css) return;
-		if (/(?:^|\/)\.\.(?:\/|$)/.test(manifest.css) || manifest.css.startsWith('/') || manifest.css.includes('\\'))
+		if (/(?:^|\\/)\\.\\.(?:\\/|$)/.test(manifest.css) || manifest.css.startsWith('/') || manifest.css.includes('\\\\'))
 			return;
 		if (document.querySelector(`link[data-addon="${id}"]`)) return;
 		const link = document.createElement('link');
@@ -851,14 +857,14 @@ export class OpenWrtCore {
 		if (!nav) return;
 
 		if (manifest.nav.placement === 'top') {
-			const addonsLink = nav.querySelector('a[href="#/addons"]');
-			if (addonsLink) {
-				nav.insertBefore(link, addonsLink);
-			} else {
-				nav.appendChild(link);
-			}
+			// The ADD-ONS link is nested inside the MORE menu. It is NOT a
+			// child of nav, so nav.insertBefore(link, addonsLink) throws.
+			const more = nav.querySelector('details.nav-more');
+			const reference = more?.parentElement === nav ? more : null;
+			if (reference) nav.insertBefore(link, reference);
+			else nav.appendChild(link);
 		} else if (manifest.nav.placement === 'addons') {
-			let group = document.getElementById('addons-nav-group');
+			let group = nav.querySelector('#addons-nav-group');
 			if (!group) {
 				group = document.createElement('div');
 				group.id = 'addons-nav-group';
@@ -866,14 +872,15 @@ export class OpenWrtCore {
 				const dropdown = document.createElement('div');
 				dropdown.className = 'nav-dropdown';
 				group.appendChild(dropdown);
-				const addonsLink = nav.querySelector('a[href="#/addons"]');
-				if (addonsLink) {
-					nav.insertBefore(group, addonsLink.nextSibling);
+				const container = nav.querySelector('.nav-more-menu') || nav;
+				const addonsLink = container.querySelector('a[href="#/addons"]');
+				if (addonsLink?.parentElement === container) {
+					container.insertBefore(group, addonsLink.nextSibling);
 				} else {
-					nav.appendChild(group);
+					container.appendChild(group);
 				}
 			}
-			group.querySelector('.nav-dropdown').appendChild(link);
+			group.querySelector('.nav-dropdown')?.appendChild(link);
 			group.classList.remove('hidden');
 		}
 	}
