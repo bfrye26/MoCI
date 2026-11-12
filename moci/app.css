@@ -2021,3 +2021,19 @@ body {
 }
 :root[data-theme="cloud"] .log-line:first-child{border-top-left-radius:5px;border-top-right-radius:5px}
 :root[data-theme="cloud"] .log-line:last-child{border-bottom:0;border-bottom-left-radius:5px;border-bottom-right-radius:5px}
+
+/* Native OpenWrt 25.12+ APK package administration */
+.package-toolbar{
+  display:flex;flex-wrap:wrap;gap:10px;align-items:end;
+  padding:14px 0 20px;margin-bottom:12px;border-bottom:1px solid var(--glass-border);
+}
+.package-toolbar label{display:flex;flex:1 1 230px;flex-direction:column;gap:8px;color:var(--steel-muted);font-size:12px}
+.package-toolbar input{width:100%;min-width:0;background:var(--theme-input);color:var(--starship-steel);border:1px solid var(--glass-border);border-radius:6px;padding:10px}
+.package-search-results{
+  white-space:pre-wrap;overflow-wrap:anywhere;width:100%;max-height:220px;overflow:auto;
+  border:1px solid var(--glass-border);border-radius:8px;padding:13px;
+  background:var(--theme-input);color:var(--starship-steel);font-size:12px;
+}
+.package-search-results[hidden]{display:none}
+:root[data-theme="cloud"] .package-toolbar input,
+:root[data-theme="cloud"] .package-search-results{background:#fff;color:#213551;border-color:#cbd9e8}
