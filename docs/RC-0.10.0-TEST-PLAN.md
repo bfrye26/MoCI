@@ -86,3 +86,29 @@ The `deploy` RPC expects a validated JSON service spec. The current implementati
 - [ ] Final release artifacts and checksums published with explicit known limitations.
 
 This is an **RC validation baseline**, not a claim that all 73 applications are functional one-click installs or that Docker write access is production secure.
+
+## Expanded branch status: advanced OpenWrt, StartWRT concepts and app preparation
+
+Changes made after the initial baseline, pending a **fresh firmware rebuild and VM verification**:
+
+- Native Advanced OpenWrt UCI forms for business-oriented packages, with explicit confirmation and timed rollback for connectivity-critical changes. This provides UCI section management but **is not full parity with every LuCI app's specialized screens**.
+- StartWRT-inspired contextual Help Mode and isolated Security Profiles. The profile wizard attaches firewall isolation to a pre-existing logical network interface, permits DNS/DHCP to the router, and optionally allows WAN forwarding. It does not configure physical VLAN switch ports or Wi-Fi credential-to-VLAN mapping automatically.
+- Docker policy helper now has `prepare <app-id>` to fetch only root-owned reviewed image tags, inspect their immutable registry digests and record approved pins.
+- GUI can **Prepare & install** approved pilot apps after the root administrator enables deployments. Four pilot configurations exist in source: Uptime Kuma 2, IT Tools, OpenSpeedTest and CyberChef. Each needs on-device deployment and persistence verification before being called production-ready.
+- Approved stateful application profiles may use writable container root filesystems only if image, published LAN ports and volumes precisely match the trusted template. Arbitrary Compose retains read-only, unprivileged defaults.
+- Dashboard graph now derives stroke colours from the active theme and shows a sample-collection indicator; Cloud Light styling has been reworked.
+
+### Remaining mandatory release gates
+
+- [ ] Build a fresh OpenWrt x86-64 EFI image and Debian ISO containing all changes and pass full firmware/package compilation.
+- [ ] Validate `docker compose version` and test pilot app pull, create, health, LAN access, persistence through reboot, stop/start, and uninstall without leaving stale data.
+- [ ] Verify Docker's LAN-only published ports cannot be reached from WAN and that firewall reloads do not expose container ports.
+- [ ] Confirm network profile wizard rollback in Hyper-V and with physical Ethernet/VLAN-capable hardware.
+- [ ] Complete StartWRT-style per-Ethernet-port policies, multi-password Wi-Fi dynamic VLAN, inbound/outbound WireGuard policy, chaining and Wi-Fi schedules with hardware-aware tests.
+- [ ] Complete native MoCI support for specialized LuCI service settings, including multi-WAN, PBR, banIP, monitoring, certificate renewal and backup/restore.
+- [ ] Test all six themes in desktop/mobile browsers including console logs and errors.
+- [ ] Independent security evaluation of privileged Docker RPC, session/ACL boundaries and CSRF.
+- [ ] Verify physical x86-64 installer on a disposable SSD and recovery from interrupted writes.
+- [ ] Publish candidate firmware/ISO only after checksums, test reports and release provenance are available.
+
+**Source CI passing is not evidence that the above runtime acceptance checks have passed.**
