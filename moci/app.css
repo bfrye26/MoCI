@@ -1990,3 +1990,34 @@ body {
 #ethernet-profiles-content .profiles-create select{width:100%;min-width:0;padding:10px;border-radius:6px;color:var(--starship-steel);border:1px solid var(--glass-border);background:var(--theme-input)}
 :root[data-theme="cloud"] #ethernet-profiles-content .profiles-create input,
 :root[data-theme="cloud"] #ethernet-profiles-content .profiles-create select{color:#1e2d43;background:#fff;border-color:#bfcfe0}
+
+/* Readable diagnostic logs in Cloud Light instead of grey haze and red noise. */
+:root[data-theme="cloud"] .log-viewer {
+  background:#f8fafd!important;
+  color:#304158!important;
+  border:1px solid #dce5f0;
+  box-shadow:inset 0 1px 3px rgba(35,65,98,.025);
+  padding:10px 12px;
+  line-height:1.55;
+}
+:root[data-theme="cloud"] .log-line{
+  color:#374a64;
+  padding:5px 9px;
+  margin:0;
+  border-bottom:1px solid #edf1f6;
+  overflow-wrap:anywhere;
+  word-break:normal;
+}
+:root[data-theme="cloud"] .log-line:nth-child(even){background:#f1f5fa}
+:root[data-theme="cloud"] .log-line.error{
+  color:#9b3340;
+  background:#fff7f7;
+  border-left:3px solid #d86b76;
+}
+:root[data-theme="cloud"] .log-line.warn{
+  color:#8b5b14;
+  background:#fffbf1;
+  border-left:3px solid #e5b75d;
+}
+:root[data-theme="cloud"] .log-line:first-child{border-top-left-radius:5px;border-top-right-radius:5px}
+:root[data-theme="cloud"] .log-line:last-child{border-bottom:0;border-bottom-left-radius:5px;border-bottom-right-radius:5px}
