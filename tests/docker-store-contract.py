@@ -50,7 +50,7 @@ class DockerStoreContract(unittest.TestCase):
 
     def test_reviewed_templates_match_listings_and_repositories(self):
         catalog_by_id={a['id']:a for a in CATALOG}
-        self.assertEqual(len(TEMPLATES),22)
+        self.assertEqual(len(TEMPLATES),24)
         for name,template in TEMPLATES.items():
             self.assertIn(name,catalog_by_id)
             self.assertTrue(catalog_by_id[name]['template_available'])
@@ -78,8 +78,8 @@ class DockerStoreContract(unittest.TestCase):
         with patch.dict(API['catalog'].__globals__,{'writes_enabled':lambda:True}):
             apps=API['catalog']()['catalog']
         reviewed=[a for a in apps if a['can_prepare']]
-        self.assertEqual(len(reviewed),22)
-        self.assertEqual(len([a for a in apps if a['setup_state']=='manual']),51)
+        self.assertEqual(len(reviewed),24)
+        self.assertEqual(len([a for a in apps if a['setup_state']=='manual']),49)
         self.assertTrue(all(a['reviewed_template'] for a in reviewed))
         self.assertTrue(all(not a['ready'] for a in apps))
 
@@ -198,10 +198,10 @@ class DockerStoreContract(unittest.TestCase):
         self.assertEqual(TEMPLATES['memos']['run_as_user'],'10001:10001')
         self.assertEqual(TEMPLATES['grafana']['run_as_user'],'472:472')
 
-    def test_twenty_two_candidate_templates_have_unique_host_ports_and_volume_owners(self):
+    def test_twenty_four_candidate_templates_have_unique_host_ports_and_volume_owners(self):
         host_ports=set()
         catalog={app['id']:app for app in CATALOG}
-        self.assertEqual(len(TEMPLATES),22)
+        self.assertEqual(len(TEMPLATES),24)
         for name,template in TEMPLATES.items():
             self.assertTrue(catalog[name]['template_available'])
             self.assertEqual(catalog[name]['repository'],template['repository'])
@@ -327,6 +327,30 @@ class DockerStoreContract(unittest.TestCase):
         self.assertEqual(args[args.index('moci-seed-config')+1],
                          '/app/config/glance.yml')
         self.assertNotIn('--privileged',args)
+
+    def test_filestash_and_backrest_require_sensitive_data_approval(self):
+        for name,port,destination in [
+            ('filestash','8334:8334','/app/data/state'),
+            ('backrest','9898:9898','/data')]:
+            app=next(entry for entry in CATALOG if entry['id']==name)
+            template=TEMPLATES[name]
+            self.assertEqual(app['risk'],'sensitive-data')
+            self.assertEqual(template.get('reviewed_risk'),'sensitive-data')
+            self.assertTrue(app['template_available'])
+            self.assertIn(port,template['ports'])
+            self.assertTrue(any(mount.endswith(':'+destination)
+                                for mount in template['volumes']))
+            self.assertFalse(any('/var/run/docker.sock' in str(value)
+                                 for value in template.values()))
+        self.assertEqual(TEMPLATES['backrest']['environment']['BACKREST_CONFIG'],
+                         '/config/config.json')
+
+    def test_managed_docker_reports_missing_automatic_lan_firewall(self):
+        globals_=API['docker_lan_firewall_status'].__globals__
+        with patch.object(globals_['os'].path,'isfile',return_value=False):
+            result=API['docker_lan_firewall_status']()
+        self.assertEqual(result['state'],'missing')
+        self.assertIn('unreachable',result['detail'])
 
     def test_docker_firewall_only_publishes_managed_running_lan_tcp_ports(self):
         fw=runpy.run_path(str(BASE/'moci-docker-firewall'))
