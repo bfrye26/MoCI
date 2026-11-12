@@ -423,45 +423,53 @@ def compose(name,arguments):
     return result.stdout[:4096].decode('utf-8','replace')
 
 def initialize_approved_volume(app_id,spec):
-    """Initialize only a reviewed named-volume mount for a fixed app image.
+    """Initialize bounded, named volumes owned by a verified application.
 
-    Runs a one-shot root process without network or host mounts, with only
-    CAP_CHOWN. The application itself never receives root permissions.
+    Use the exact approved image, no network, no additional host access,
+    and only CAP_CHOWN. No recursive modification of existing application data.
+    Only images with /bin/sh are eligible; scratch/distroless apps must use
+    a separately reviewed bootstrap workflow.
     """
     template=template_specs().get(app_id,{})
-    initializer=template.get('volume_initializer')
-    if not initializer:
-        return
-    if not isinstance(initializer,dict) or set(initializer)!={'path','uid','gid'}:
-        raise ValueError('Invalid approved volume initializer')
-    uid=initializer['uid'];gid=initializer['gid'];path=initializer['path']
-    if any(not isinstance(value,int) or isinstance(value,bool) or not 1<=value<=65534 for value in (uid,gid)):
-        raise ValueError('Invalid volume owner')
-    if not isinstance(path,str) or not re.fullmatch(r'/[A-Za-z0-9_-]+(?:/[A-Za-z0-9_.-]+)*',path):
-        raise ValueError('Invalid volume initialization mount')
+    initializers=template.get('volume_initializers',[])
+    if template.get('volume_initializer'):
+        if initializers:
+            raise ValueError('Conflicting volume initialization profiles')
+        initializers=[template['volume_initializer']]
+    if not isinstance(initializers,list) or len(initializers)>4:
+        raise ValueError('Invalid volume initialization profiles')
     service=spec['services'].get('app')
     if not isinstance(service,dict):
         raise ValueError('Approved app must use the app service')
-    named=[v.split(':',1)[0] for v in service['volumes'] if v.split(':',1)[1]==path]
-    if len(named)!=1:
-        raise ValueError('Approved mount was not found in app')
-    volume='moci-'+app_id+'_'+named[0]
-    if not re.fullmatch(r'[a-z][a-z0-9_-]{0,100}',volume):
-        raise ValueError('Invalid Docker volume name')
-    subprocess.run(['/usr/bin/docker','volume','create','--label','com.moci.managed=true',volume],
-       stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,timeout=15,check=True)
-    # Never pass untrusted shell fragments. Owner and path are positional args.
-    init=['/usr/bin/docker','run','--rm','--network','none','--read-only',
-          '--user','0:0','--cap-drop','ALL','--cap-add','CHOWN',
-          '--security-opt','no-new-privileges:true','--pids-limit','64',
-          '--memory','128m','--mount',
-          'type=volume,source='+volume+',target='+path,
-          '--entrypoint','/bin/sh',service['image'],'-c',
-          'chown "$1" "$2"','moci-volume-init',str(uid)+':'+str(gid),path]
-    result=subprocess.run(init,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,
-                          timeout=45,check=False)
-    if result.returncode:
-        raise ValueError('Approved volume initialization failed')
+    used=set()
+    for initializer in initializers:
+        if not isinstance(initializer,dict) or set(initializer)!={'path','uid','gid'}:
+            raise ValueError('Invalid approved volume initializer')
+        uid=initializer['uid'];gid=initializer['gid'];path=initializer['path']
+        if any(not isinstance(v,int) or isinstance(v,bool) or not 1<=v<=65534 for v in (uid,gid)):
+            raise ValueError('Invalid volume owner')
+        if not isinstance(path,str) or not re.fullmatch(r'/[A-Za-z0-9_-]+(?:/[A-Za-z0-9_.-]+)*',path):
+            raise ValueError('Invalid volume initialization mount')
+        if path in used:raise ValueError('Duplicate volume initialization mount')
+        used.add(path)
+        named=[v.split(':',1)[0] for v in service['volumes'] if v.split(':',1)[1]==path]
+        if len(named)!=1:raise ValueError('Approved volume mount was not found')
+        volume='moci-'+app_id+'_'+named[0]
+        if not re.fullmatch(r'[a-z][a-z0-9_-]{0,100}',volume):
+            raise ValueError('Invalid Docker volume name')
+        subprocess.run(['/usr/bin/docker','volume','create','--label','com.moci.managed=true',volume],
+            stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,timeout=15,check=True)
+        setup=['/usr/bin/docker','run','--rm','--network','none','--read-only',
+            '--user','0:0','--cap-drop','ALL','--cap-add','CHOWN',
+            '--security-opt','no-new-privileges:true','--pids-limit','64',
+            '--memory','128m','--mount',
+            'type=volume,source='+volume+',target='+path,
+            '--entrypoint','/bin/sh',service['image'],'-c',
+            'chown "$1" "$2"','moci-volume-init',str(uid)+':'+str(gid),path]
+        result=subprocess.run(setup,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,
+                              timeout=45,check=False)
+        if result.returncode:
+            raise ValueError('Approved volume initialization failed for '+app_id)
 
 def sync_docker_firewall():
     """Update only managed Compose firewall rules, preserving LAN/WAN policy."""
