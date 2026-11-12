@@ -1,0 +1,8 @@
+#!/bin/sh
+# Enable the MoCI Wi-Fi scheduler after the writable root overlay is ready.
+# The scheduler itself defaults to disabled until explicitly enabled in MoCI.
+if [ -x /etc/init.d/moci-wifi-scheduler ]; then
+  /etc/init.d/moci-wifi-scheduler enable || :
+  /etc/init.d/moci-wifi-scheduler start || :
+fi
+exit 0
