@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+"""Offline Docker Store contract tests. No Docker daemon, root or network required."""
+import json
+import re
+import runpy
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+BASE=Path(__file__).resolve().parents[1]/'integrations/docker-manager/moci-app-docker/files'
+API=runpy.run_path(str(BASE/'moci-docker-api'))
+CATALOG=json.loads((BASE/'app-catalog.json').read_text(encoding='utf-8'))['apps']
+TEMPLATES=json.loads((BASE/'app-templates.json').read_text(encoding='utf-8'))['templates']
+DIGEST='louislam/uptime-kuma@sha256:'+('a'*64)
+
+
+class DockerStoreContract(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root=Path(self.temp.name)
+        (self.root/'app-catalog.json').write_text(
+            json.dumps({'schema':1,'apps':CATALOG}),encoding='utf-8')
+        globals_=API['catalog'].__globals__
+        self.override=patch.dict(globals_,{
+            'ROOT':str(self.root),
+            'STACKS':str(self.root/'stacks'),
+            'policy':lambda:set(),
+            'pins':lambda:{},
+            'template_specs':lambda:TEMPLATES,
+            'writes_enabled':lambda:False,
+            'lan_ip':lambda:'192.168.50.1',
+        })
+        self.override.start()
+        self.addCleanup(self.override.stop)
+
+    def test_all_catalogue_entries_have_unique_safe_identifiers(self):
+        self.assertEqual(len(CATALOG),73)
+        ids=[a['id'] for a in CATALOG]
+        self.assertEqual(len(ids),len(set(ids)))
+        for app in CATALOG:
+            self.assertRegex(app['id'],r'^[a-z][a-z0-9-]{0,39}$')
+            self.assertTrue(app.get('name'))
+            self.assertTrue(app.get('description'))
+            self.assertTrue(app.get('repository'))
+            self.assertIn(app.get('risk'),
+                          {'review','router-critical','security-critical',
+                           'resource-heavy','sensitive-data','privileged','docker-socket'})
+
+    def test_reviewed_templates_match_listings_and_repositories(self):
+        catalog_by_id={a['id']:a for a in CATALOG}
+        self.assertEqual(len(TEMPLATES),5)
+        for name,template in TEMPLATES.items():
+            self.assertIn(name,catalog_by_id)
+            self.assertTrue(catalog_by_id[name]['template_available'])
+            self.assertEqual(catalog_by_id[name]['risk'],'review')
+            self.assertEqual(template['repository'],catalog_by_id[name]['repository'])
+            self.assertTrue(template['image'].startswith(template['repository']+':'))
+            self.assertLessEqual(len(template.get('ports',[])),8)
+            self.assertLessEqual(len(template.get('volumes',[])),4)
+        for app in CATALOG:
+            if app.get('template_available') and app.get('risk')=='review':
+                self.assertIn(app['id'],TEMPLATES)
+
+    def test_read_only_mode_keeps_every_entry_visible_but_not_installable(self):
+        values=API['catalog']()
+        self.assertEqual(values['total'],73)
+        self.assertTrue(values['read_only'])
+        self.assertEqual(len(values['catalog']),73)
+        self.assertTrue(all(a['setup_state']=='disabled' for a in values['catalog']))
+        self.assertTrue(all(not a['ready'] and not a['can_prepare']
+                            for a in values['catalog']))
+
+    def test_enabled_mode_only_prepares_reviewed_templates(self):
+        with patch.dict(API['catalog'].__globals__,{'writes_enabled':lambda:True}):
+            apps=API['catalog']()['catalog']
+        reviewed=[a for a in apps if a['can_prepare']]
+        self.assertEqual(len(reviewed),5)
+        self.assertEqual(len([a for a in apps if a['setup_state']=='manual']),68)
+        self.assertTrue(all(a['reviewed_template'] for a in reviewed))
+        self.assertTrue(all(not a['ready'] for a in apps))
+
+    def test_pinned_digest_is_ready_then_installed(self):
+        overrides={'writes_enabled':lambda:True,
+                   'policy':lambda:{DIGEST},
+                   'pins':lambda:{'uptime-kuma':DIGEST}}
+        with patch.dict(API['catalog'].__globals__,overrides):
+            entry=next(a for a in API['catalog']()['catalog'] if a['id']=='uptime-kuma')
+            self.assertTrue(entry['ready'])
+            self.assertEqual(entry['setup_state'],'ready')
+            self.assertEqual(entry['template']['ports'],['3001:3001'])
+            path=self.root/'stacks'/'uptime-kuma'/'compose.json'
+            path.parent.mkdir(parents=True)
+            path.write_text('{}')
+            entry=next(a for a in API['catalog']()['catalog'] if a['id']=='uptime-kuma')
+            self.assertEqual(entry['setup_state'],'installed')
+
+    def test_unapproved_digest_cannot_be_deployed(self):
+        spec={'services':{'app':{'image':DIGEST}}}
+        with self.assertRaisesRegex(ValueError,'Image digest not approved'):
+            API['spec_validate'](spec)
+
+    def test_external_host_port_binding_is_rejected(self):
+        spec={'services':{'app':{'image':DIGEST,'ports':['0.0.0.0:8088:80']}}}
+        with patch.dict(API['spec_validate'].__globals__,{'policy':lambda:{DIGEST}}):
+            with self.assertRaisesRegex(ValueError,'LAN interface'):
+                API['spec_validate'](spec)
+
+    def test_sensitive_apps_are_never_auto_promoted_to_one_click(self):
+        with patch.dict(API['catalog'].__globals__,{'writes_enabled':lambda:True}):
+            apps=API['catalog']()['catalog']
+        for app in apps:
+            if app['risk'] in {'router-critical','security-critical','privileged','docker-socket'}:
+                self.assertFalse(app['reviewed_template'],app['id'])
+                self.assertFalse(app['ready'],app['id'])
+
+
+if __name__=='__main__':
+    unittest.main(verbosity=2)
