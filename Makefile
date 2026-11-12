@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=moci
 PKG_VERSION:=0.2.0
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_MAINTAINER:=HudsonGraeme
 PKG_LICENSE:=MIT
@@ -15,7 +15,7 @@ define Package/moci
   CATEGORY:=Administration
   TITLE:=MoCI - Modern Configuration Interface for OpenWrt
   PKGARCH:=all
-  DEPENDS:=+rpcd +jsonfilter
+  DEPENDS:=+rpcd +jsonfilter +uhttpd +uhttpd-mod-ubus
 endef
 
 define Package/moci/description
