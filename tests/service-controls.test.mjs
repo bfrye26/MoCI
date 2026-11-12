@@ -132,7 +132,7 @@ assert.equal(vm.serviceIsOneShot('luci_statistics'),true);
 {
   const module=Object.create(SystemModule.prototype);
   module.serviceContext=null;
-  module.core={ubusCall:async()=>[0,{code:0,stdout:'BANIP_ENABLED=no\\nBANIP_STATE=disabled\\nNUT_DRIVER_CONFIGURED=no\\n'}]};
+  module.core={ubusCall:async()=>[0,{code:0,stdout:'BANIP_ENABLED=no\nBANIP_STATE=disabled\nNUT_DRIVER_CONFIGURED=no\n'}]};
   const context=await module.loadServiceContext(true);
   assert.equal(context.BANIP_ENABLED,'no');
   assert.equal(context.BANIP_STATE,'disabled');
