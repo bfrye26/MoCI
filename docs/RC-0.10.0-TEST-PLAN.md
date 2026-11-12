@@ -41,7 +41,7 @@ On Windows use MoCI Local Builder v1.6 with a *clean* Git checkout. Preserve loc
 
 ```sh
 # Test VM ONLY, as root, after reviewing and understanding the trust boundary.
-printf 'enabled\\n' > /etc/moci-docker/enable-deployments
+printf 'enabled\n' > /etc/moci-docker/enable-deployments
 chmod 600 /etc/moci-docker/enable-deployments
 /etc/init.d/rpcd restart
 ```
