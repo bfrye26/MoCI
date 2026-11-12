@@ -364,6 +364,130 @@
         "TZ": "Etc/UTC"
       },
       "mem_limit": "512m"
+    },
+    "filebrowser": {
+      "repository": "filebrowser/filebrowser",
+      "image": "filebrowser/filebrowser:latest",
+      "ports": [
+        "8086:80"
+      ],
+      "volumes": [
+        "filebrowser-files:/srv",
+        "filebrowser-database:/database",
+        "filebrowser-config:/config"
+      ],
+      "description": "File Browser with three private managed volumes for files, configuration and its user database. The image creates a first-run admin password, which should be retrieved from its Docker logs and immediately stored securely. No host filesystem access.",
+      "path": "http://ROUTER_IP:8086/",
+      "needs_write_access": true,
+      "run_as_user": "1000:1000",
+      "volume_initializers": [
+        {
+          "path": "/srv",
+          "uid": 1000,
+          "gid": 1000
+        },
+        {
+          "path": "/database",
+          "uid": 1000,
+          "gid": 1000
+        },
+        {
+          "path": "/config",
+          "uid": 1000,
+          "gid": 1000
+        }
+      ],
+      "mem_limit": "384m",
+      "reviewed_risk": "sensitive-data"
+    },
+    "sftpgo": {
+      "repository": "drakkan/sftpgo",
+      "image": "drakkan/sftpgo:latest",
+      "ports": [
+        "8125:8080",
+        "2022:2022"
+      ],
+      "volumes": [
+        "sftpgo-data:/srv/sftpgo",
+        "sftpgo-state:/var/lib/sftpgo"
+      ],
+      "description": "SFTPGo managed file-transfer server: LAN web interface TCP 8125 and SFTP TCP 2022. No WAN exposure. First administrator account is created in the web UI; default permissions apply to named private volumes only.",
+      "path": "http://ROUTER_IP:8125/",
+      "needs_write_access": true,
+      "run_as_user": "1000:1000",
+      "volume_initializers": [
+        {
+          "path": "/srv/sftpgo",
+          "uid": 1000,
+          "gid": 1000
+        },
+        {
+          "path": "/var/lib/sftpgo",
+          "uid": 1000,
+          "gid": 1000
+        }
+      ],
+      "mem_limit": "512m",
+      "reviewed_risk": "sensitive-data"
+    },
+    "n8n": {
+      "repository": "docker.n8n.io/n8nio/n8n",
+      "image": "docker.n8n.io/n8nio/n8n:latest",
+      "ports": [
+        "5678:5678"
+      ],
+      "volumes": [
+        "n8n-data:/home/node/.n8n"
+      ],
+      "description": "n8n automation editor with SQLite and persistent encrypted credentials. The encryption key is generated and retained by MoCI. On the isolated trusted LAN, secure cookies are disabled for plain HTTP. Configure HTTPS and proper authentication before using real credentials or production webhooks.",
+      "path": "http://ROUTER_IP:5678/",
+      "needs_write_access": true,
+      "run_as_user": "1000:1000",
+      "volume_initializer": {
+        "path": "/home/node/.n8n",
+        "uid": 1000,
+        "gid": 1000
+      },
+      "mem_limit": "1024m",
+      "environment": {
+        "N8N_SECURE_COOKIE": "false",
+        "N8N_HOST": "ROUTER_IP",
+        "N8N_PORT": "5678",
+        "N8N_PROTOCOL": "http",
+        "N8N_DIAGNOSTICS_ENABLED": "false",
+        "N8N_PERSONALIZATION_ENABLED": "false"
+      },
+      "generated_secret_env": "N8N_ENCRYPTION_KEY",
+      "reviewed_risk": "sensitive-data"
+    },
+    "ntfy": {
+      "repository": "binwiederhier/ntfy",
+      "image": "binwiederhier/ntfy:latest",
+      "ports": [
+        "8093:80"
+      ],
+      "volumes": [
+        "ntfy-data:/var/lib/ntfy"
+      ],
+      "description": "ntfy local notification server over LAN TCP 8093, with persistent SQLite cache. Starts with read/write access for trusted LAN users only. Set authentication and user access rules before using it for private or untrusted notifications.",
+      "path": "http://ROUTER_IP:8093/",
+      "needs_write_access": true,
+      "volume_initializer": {
+        "path": "/var/lib/ntfy",
+        "uid": 1000,
+        "gid": 1000
+      },
+      "run_as_user": "1000:1000",
+      "mem_limit": "384m",
+      "command": [
+        "serve"
+      ],
+      "environment": {
+        "NTFY_BASE_URL": "http://ROUTER_IP:8093",
+        "NTFY_LISTEN_HTTP": ":80",
+        "NTFY_CACHE_FILE": "/var/lib/ntfy/cache.db",
+        "NTFY_AUTH_DEFAULT_ACCESS": "read-write"
+      }
     }
   }
 }
