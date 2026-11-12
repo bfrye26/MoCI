@@ -50,7 +50,7 @@ class DockerStoreContract(unittest.TestCase):
 
     def test_reviewed_templates_match_listings_and_repositories(self):
         catalog_by_id={a['id']:a for a in CATALOG}
-        self.assertEqual(len(TEMPLATES),20)
+        self.assertEqual(len(TEMPLATES),22)
         for name,template in TEMPLATES.items():
             self.assertIn(name,catalog_by_id)
             self.assertTrue(catalog_by_id[name]['template_available'])
@@ -78,8 +78,8 @@ class DockerStoreContract(unittest.TestCase):
         with patch.dict(API['catalog'].__globals__,{'writes_enabled':lambda:True}):
             apps=API['catalog']()['catalog']
         reviewed=[a for a in apps if a['can_prepare']]
-        self.assertEqual(len(reviewed),20)
-        self.assertEqual(len([a for a in apps if a['setup_state']=='manual']),53)
+        self.assertEqual(len(reviewed),22)
+        self.assertEqual(len([a for a in apps if a['setup_state']=='manual']),51)
         self.assertTrue(all(a['reviewed_template'] for a in reviewed))
         self.assertTrue(all(not a['ready'] for a in apps))
 
@@ -198,10 +198,10 @@ class DockerStoreContract(unittest.TestCase):
         self.assertEqual(TEMPLATES['memos']['run_as_user'],'10001:10001')
         self.assertEqual(TEMPLATES['grafana']['run_as_user'],'472:472')
 
-    def test_twenty_candidate_templates_have_unique_host_ports_and_volume_owners(self):
+    def test_twenty_two_candidate_templates_have_unique_host_ports_and_volume_owners(self):
         host_ports=set()
         catalog={app['id']:app for app in CATALOG}
-        self.assertEqual(len(TEMPLATES),20)
+        self.assertEqual(len(TEMPLATES),22)
         for name,template in TEMPLATES.items():
             self.assertTrue(catalog[name]['template_available'])
             self.assertEqual(catalog[name]['repository'],template['repository'])
@@ -283,6 +283,49 @@ class DockerStoreContract(unittest.TestCase):
         self.assertEqual(TEMPLATES['ntfy']['command'],['serve'])
         self.assertEqual(TEMPLATES['ntfy']['environment']['NTFY_AUTH_DEFAULT_ACCESS'],
                          'read-write')
+
+    def test_bootstrap_dashboard_configs_have_explicit_safe_paths_and_bounded_content(self):
+        for app,path,port in [('dashy','/app/user-data/conf.yml','4000:8080'),
+                              ('glance','/app/config/glance.yml','8088:8080')]:
+            template=TEMPLATES[app]
+            self.assertIn(port,template['ports'])
+            self.assertTrue(template['needs_write_access'])
+            seeds=template.get('seed_files',[])
+            self.assertEqual(len(seeds),1)
+            self.assertEqual(seeds[0]['path'],path)
+            self.assertIn('pages:',seeds[0]['content']) if app=='glance' else self.assertIn('pageInfo:',seeds[0]['content'])
+            self.assertLessEqual(len(seeds[0]['content']),4096)
+            self.assertTrue(any(path.startswith(v.split(':',1)[1]+'/')
+                for v in template.get('volumes',[])))
+        self.assertTrue(all('docker.sock' not in str(t) for t in
+                            (TEMPLATES['dashy'],TEMPLATES['glance'])))
+
+    def test_seed_bootstrap_uses_only_networkless_reviewed_image_and_preserves_files(self):
+        digest='glanceapp/glance@sha256:'+('e'*64)
+        template=TEMPLATES['glance']
+        spec={'services':{'app':{'image':digest,
+                                 'volumes':template['volumes']}}}
+        calls=[]
+        def fake_run(argv,**kwargs):
+            calls.append(argv)
+            class Result:
+                returncode=0
+            return Result()
+        with patch.dict(API['initialize_approved_volume'].__globals__,{
+            'template_specs':lambda:{'glance':template},
+            'subprocess':type('Proc',(),{'run':staticmethod(fake_run),
+                     'DEVNULL':__import__('subprocess').DEVNULL})}):
+            API['initialize_approved_volume']('glance',spec)
+        seed=[argv for argv in calls if 'moci-seed-config' in argv]
+        self.assertEqual(len(seed),1)
+        args=seed[0]
+        self.assertIn('--network',args)
+        self.assertEqual(args[args.index('--network')+1],'none')
+        self.assertEqual(args[args.index('--user')+1],'1000:1000')
+        self.assertIn('test -e "$1"',args)
+        self.assertEqual(args[args.index('moci-seed-config')+1],
+                         '/app/config/glance.yml')
+        self.assertNotIn('--privileged',args)
 
     def test_docker_firewall_only_publishes_managed_running_lan_tcp_ports(self):
         fw=runpy.run_path(str(BASE/'moci-docker-firewall'))
