@@ -214,10 +214,77 @@ export default class ApplicationsAddon {
       <button id="docker-prepare" type="button" class="action-btn">Prepare custom image</button>
       <p id="docker-prepared-result" aria-live="polite"></p>
       <label>Stack name<input id="docker-name" maxlength="40" placeholder="service-name"></label>
-      <label>Compose services JSON<textarea id="docker-spec" rows="10" spellcheck="false" placeholder='{"services":{"service":{"image":"repo@sha256:..."}}}'></textarea></label>
+      <section class="docker-quick-setup" aria-label="Guided container setup">
+        <h4>Guided single-container setup</h4>
+        <p>Enter only the mappings required by the application's official documentation. Published ports are LAN-only; persistent data uses named volumes.</p>
+        <label>LAN TCP port mappings, one per line (host:container)
+          <textarea id="docker-port-maps" rows="3" spellcheck="false" placeholder="8088:80"></textarea>
+        </label>
+        <label>Named persistent volumes, one per line (name:/container/path)
+          <textarea id="docker-volume-maps" rows="3" spellcheck="false" placeholder="myapp-data:/app/data"></textarea>
+        </label>
+        <label>Environment variables, one per line (KEY=value). Do not use this form for sensitive credentials.
+          <textarea id="docker-env-maps" rows="3" spellcheck="false" placeholder="APP_MODE=production"></textarea>
+        </label>
+        <label>Memory limit
+          <select id="docker-memory-limit">
+            <option value="256m">256 MB</option>
+            <option value="512m" selected>512 MB</option>
+            <option value="1g">1 GB</option>
+            <option value="2g">2 GB</option>
+            <option value="4g">4 GB</option>
+          </select>
+        </label>
+        <button type="button" class="action-btn" id="docker-generate">Generate Compose configuration</button>
+      </section>
+      <details class="docker-advanced-json" open>
+        <summary>Advanced Compose JSON editor</summary>
+        <label>Validated Compose services JSON<textarea id="docker-spec" rows="10" spellcheck="false" placeholder='{"services":{"service":{"image":"repo@sha256:..."}}}'></textarea></label>
+      </details>
       <button id="docker-deploy" type="button" class="action-btn">Deploy managed stack</button>
       <p>Compose allows up to eight unprivileged services, approved digests, named volumes and ports bound only to the router LAN or loopback.</p>
     </div>`;
+    const lines=id=>target.querySelector(id).value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+    target.querySelector('#docker-generate').addEventListener('click',()=>{
+      try{
+        const digest=target.querySelector('#docker-prepared-result').textContent.trim();
+        if(!/^[A-Za-z0-9][A-Za-z0-9._/-]*@sha256:[a-f0-9]{64}$/.test(digest))
+          throw new Error('Prepare an immutable image digest first.');
+        const host=window.location.hostname;
+        if(!/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(host))
+          throw new Error('Open MoCI via its LAN IPv4 address before generating port mappings.');
+        const ports=lines('#docker-port-maps');
+        const volumes=lines('#docker-volume-maps');
+        const envLines=lines('#docker-env-maps');
+        if(ports.length>8||volumes.length>4||envLines.length>48)
+          throw new Error('Too many ports, volumes or environment variables.');
+        const mappedPorts=ports.map(p=>{
+          if(!/^[0-9]{4,5}:[0-9]{1,5}$/.test(p))throw new Error('Port mapping must be host:container.');
+          const [out,inside]=p.split(':').map(Number);
+          if(out<1024||out>65535||inside<1||inside>65535)throw new Error('Invalid port number.');
+          return host+':'+p;
+        });
+        for(const volume of volumes){
+          if(!/^[a-z][a-z0-9_-]{0,39}:\/[A-Za-z0-9_./-]{1,120}$/.test(volume)||volume.includes('..'))
+            throw new Error('Use named volumes such as app-data:/app/data, not host paths.');
+        }
+        const environment={};
+        for(const line of envLines){
+          const pos=line.indexOf('=');
+          if(pos<1)throw new Error('Environment variables must be KEY=value.');
+          const key=line.slice(0,pos);
+          if(!/^[A-Za-z_][A-Za-z0-9_]{0,80}$/.test(key))
+            throw new Error('Invalid environment variable name.');
+          if(/password|secret|token|private|api_key/i.test(key))
+            throw new Error('Credentials need a protected secret workflow; do not enter them here.');
+          environment[key]=line.slice(pos+1);
+        }
+        const service={image:digest,ports:mappedPorts,volumes,environment,
+          mem_limit:target.querySelector('#docker-memory-limit').value};
+        target.querySelector('#docker-spec').value=JSON.stringify({services:{app:service}},null,2);
+        this.core.showToast('Compose JSON generated. Review it before deploying.','success');
+      }catch(error){this.core.showToast(error.message,'error');}
+    });
     const prepareButton=target.querySelector('#docker-prepare');
     prepareButton.addEventListener('click',async()=>{
       const tag=target.querySelector('#docker-image-tag').value.trim();
