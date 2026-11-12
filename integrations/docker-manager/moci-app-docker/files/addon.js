@@ -8,7 +8,7 @@ export default class ApplicationsAddon {
     this.profile = 'all';
   }
   async rpc(method, args={}) {
-    const write = ['deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action','set_deployments'].includes(method);
+    const write = ['deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action','set_deployments','stack_config'].includes(method);
     const [status, data] = await this.core.ubusCall('moci-docker', method, args, {timeout:write?240000:25000});
     if (status !== 0 || !data || data.error) throw new Error(data?.error || 'The requested operation failed');
     return data;
@@ -211,8 +211,29 @@ export default class ApplicationsAddon {
   renderManaged(root,names) {
     root.innerHTML=`<div class="docker-intro"><h2>Managed Compose Stacks</h2><p>Deploy only approved, pinned images. Host networking, arbitrary mounts and privileged containers are prohibited.</p></div>
       ${this.readOnly?'<p class="docker-note">Deployment controls are disabled until non-root permissions are verified on OpenWrt.</p>':'<button type="button" class="action-btn" id="docker-create">Create stack</button><div id="docker-editor"></div>'}
-      <div class="docker-stack-list">${names.map(n=>`<article class="docker-stack"><strong>${this.esc(n)}</strong> ${this.readOnly?'':`<button class="action-btn" data-action="start" data-name="${this.esc(n)}">Start</button><button class="action-btn" data-action="stop" data-name="${this.esc(n)}">Stop</button><button class="action-btn" data-action="remove" data-name="${this.esc(n)}">Remove containers</button>`}</article>`).join('')||'<p>No managed stacks yet.</p>'}</div>`;
+      <div class="docker-stack-list">${names.map(n=>`<article class="docker-stack"><strong>${this.esc(n)}</strong> ${this.readOnly?'':`<button class="action-btn" data-action="start" data-name="${this.esc(n)}">Start</button><button class="action-btn" data-action="stop" data-name="${this.esc(n)}">Stop</button><button class="action-btn" data-action="remove" data-name="${this.esc(n)}">Remove containers</button><button class="action-btn" data-export-stack="${this.esc(n)}">Export configuration</button>`}</article>`).join('')||'<p>No managed stacks yet.</p>'}</div>`;
     root.querySelector('#docker-create')?.addEventListener('click',()=>this.showEditor(root));
+    root.querySelectorAll('[data-export-stack]').forEach(button=>button.addEventListener('click',async()=>{
+      const name=button.dataset.exportStack;
+      if(!window.confirm('Export '+name+' Compose configuration? This JSON may contain environment secrets or initial application passwords. Store it securely.'))return;
+      button.disabled=true;
+      try{
+        const result=await this.rpc('stack_config',{name});
+        if(result.contains_secrets&&!window.confirm('This stack includes environment variables that may contain credentials. Continue with local JSON export?'))return;
+        const text=JSON.stringify(result.config,null,2)+'\n';
+        const blob=new Blob([text],{type:'application/json'});
+        const url=URL.createObjectURL(blob);
+        try{
+          const link=document.createElement('a');
+          link.href=url;link.download='moci-stack-'+name+'.json';
+          this.page.appendChild(link);
+          link.click();
+          link.remove();
+        }finally{setTimeout(()=>URL.revokeObjectURL(url),5000);}
+      }catch(error){this.core.showToast('Export failed: '+error.message,'error');}
+      finally{button.disabled=false;}
+    }));
+
     root.querySelectorAll('[data-action]').forEach(b=>b.addEventListener('click',async()=>{
       if(!window.confirm(b.dataset.action+' '+b.dataset.name+'?'))return;
       try{await this.rpc('stack_action',{name:b.dataset.name,action:b.dataset.action});await this.renderView('managed_stacks');}
