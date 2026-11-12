@@ -77,6 +77,9 @@
         ],
         "/usr/libexec/moci-pkg-call search-general *": [
           "exec"
+        ],
+        "/var/run/miniupnpd.leases": [
+          "read"
         ]
       },
       "ubus": {
@@ -137,7 +140,8 @@
         "irqbalance",
         "openvpn",
         "unbound",
-        "https-dns-proxy"
+        "https-dns-proxy",
+        "upnpd"
       ]
     },
     "write": {
@@ -207,6 +211,9 @@
         ],
         "/usr/libexec/moci-pkg-call remove-general *": [
           "exec"
+        ],
+        "/etc/init.d/miniupnpd restart": [
+          "exec"
         ]
       },
       "ubus": {
@@ -266,7 +273,8 @@
         "irqbalance",
         "openvpn",
         "unbound",
-        "https-dns-proxy"
+        "https-dns-proxy",
+        "upnpd"
       ]
     }
   }
