@@ -47,6 +47,7 @@ class DockerContract(unittest.TestCase):
                 json.dump({'schema':1,'apps':[{'id':'uptime-kuma','name':'Uptime Kuma','category':'Monitoring','repository':'louislam/uptime-kuma','template_available':True}]},f)
             with open(os.path.join(directory,'allowed-images.json'),'w') as f:json.dump({'images':[]},f)
             with open(os.path.join(directory,'app-pins.json'),'w') as f:json.dump({},f)
+            with open(os.path.join(directory,'app-templates.json'),'w') as f:json.dump({'schema':1,'templates':{}},f)
             with patch.object(api,'ROOT',directory):
                 result=api.catalog()
             self.assertFalse(result['catalog'][0]['ready'])
