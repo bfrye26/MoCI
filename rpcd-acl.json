@@ -81,7 +81,8 @@
           "status"
         ],
         "uci": [
-          "get"
+          "get",
+          "configs"
         ],
         "file": [
           "read"
