@@ -67,5 +67,26 @@ class ReviewedAppProfileTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'Invalid application ID'):
                 api.run('prepare_app',{'id':'../../bin/sh'})
 
+    def test_catalog_exposes_installed_app_and_lan_link_only(self):
+        image='example/safe@sha256:'+'a'*64
+        app={'id':'safe','name':'Safe','repository':'example/safe','risk':'review',
+             'template_available':True,'profile':'both','complexity':'easy'}
+        import os
+        with tempfile.TemporaryDirectory() as root:
+            policy=Path(root,'policy');policy.mkdir()
+            stacks=Path(root,'stacks');(stacks/'safe').mkdir(parents=True)
+            (stacks/'safe'/'compose.json').write_text('{"services":{}}')
+            (policy/'app-catalog.json').write_text(json.dumps({'schema':1,'apps':[app]}))
+            (policy/'allowed-images.json').write_text(json.dumps({'images':[image]}))
+            (policy/'app-pins.json').write_text(json.dumps({'safe':image}))
+            (policy/'app-templates.json').write_text(json.dumps({'schema':1,'templates':{
+                'safe':{'repository':'example/safe','path':'http://ROUTER_IP:8000/'}}}))
+            with patch.object(api,'ROOT',str(policy)),patch.object(api,'STACKS',str(stacks)):
+                with patch.object(api,'writes_enabled',return_value=True),patch.object(api,'lan_ip',return_value='192.168.50.1'):
+                    result=api.catalog()['catalog'][0]
+        self.assertTrue(result['ready'])
+        self.assertTrue(result['installed'])
+        self.assertEqual(result['url'],'http://192.168.50.1:8000/')
+
 if __name__=='__main__':
     unittest.main()
