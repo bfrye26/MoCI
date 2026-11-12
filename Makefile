@@ -1,8 +1,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=moci
-PKG_VERSION:=0.2.0
-PKG_RELEASE:=2
+PKG_VERSION:=0.11.0
+PKG_RELEASE:=1
 
 PKG_MAINTAINER:=HudsonGraeme
 PKG_LICENSE:=MIT
@@ -52,6 +52,10 @@ define Package/moci/install
 
 	$(INSTALL_DIR) $(1)/usr/libexec
 	$(INSTALL_BIN) ./files/moci-pkg-call $(1)/usr/libexec/moci-pkg-call
+	$(INSTALL_DIR) $(1)/usr/sbin
+	$(INSTALL_BIN) ./files/moci-wifi-scheduler $(1)/usr/sbin/moci-wifi-scheduler
+	$(INSTALL_DIR) $(1)/etc/init.d
+	$(INSTALL_BIN) ./files/init-moci-wifi-scheduler $(1)/etc/init.d/moci-wifi-scheduler
 
 	$(INSTALL_DIR) $(1)/usr/libexec/rpcd
 	$(INSTALL_BIN) ./files/rpcd-moci $(1)/usr/libexec/rpcd/moci
@@ -64,6 +68,7 @@ define Package/moci/install
 
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/moci.config $(1)/etc/config/moci
+	$(INSTALL_CONF) ./files/moci-wifi-schedule.config $(1)/etc/config/moci_wifi_schedule
 
 	$(INSTALL_DIR) $(1)/etc/opkg/keys
 	$(INSTALL_DATA) ./files/moci-feed.pub $(1)/etc/opkg/keys/bc0c5f67deb5edb8
@@ -77,6 +82,7 @@ endef
 
 define Package/moci/conffiles
 /etc/config/moci
+/etc/config/moci_wifi_schedule
 /etc/opkg/moci-apps.conf
 endef
 
@@ -85,6 +91,8 @@ define Package/moci/postinst
 [ -n "$${IPKG_INSTROOT}" ] || {
 	kill -HUP $$(pidof ubusd) 2>/dev/null
 	/etc/init.d/rpcd restart
+	/etc/init.d/moci-wifi-scheduler enable 2>/dev/null || :
+	/etc/init.d/moci-wifi-scheduler start 2>/dev/null || :
 	if [ -f /etc/init.d/lighttpd ]; then
 		/etc/init.d/lighttpd restart
 		echo "MoCI installed (lighttpd). Access at http://[router-ip]/moci/"
