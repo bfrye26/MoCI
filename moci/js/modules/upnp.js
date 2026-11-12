@@ -56,13 +56,13 @@ export default class UpnpModule {
       const section=values.config?'config':Object.keys(values).find(k=>values[k]===instance);
       if(!instance||!section)throw new Error('UPnP configuration section not found');
       this.section=section;
-      const [wan,service,leases]=await Promise.all([
-        this.optional('network.interface.wan','status',{}),
+      const [interfaces,service,leases]=await Promise.all([
+        this.optional('network.interface','dump',{}),
         this.optional('service','list',{name:'miniupnpd'}),
         this.optional('file','read',{path:'/var/run/miniupnpd.leases'})]);
       this.render(root,instance,{
-        service:!!service?.miniupnpd?.instances,
-        behindNat:this.privateWan(wan),
+        service:Object.values(service?.miniupnpd?.instances||{}).some(value=>value?.running===true),
+        behindNat:this.privateWan((interfaces?.interface||[]).find(v=>v.interface==='wan')), 
         mappings:this.leaseRows(leases?.data)
       });
     }catch(error){
@@ -83,7 +83,7 @@ export default class UpnpModule {
     root.replaceChildren();
     root.append(this.el('h3','UPnP & Automatic Port Mapping'),
       this.el('p','Control which trusted clients can request inbound ports. UPnP and NAT-PMP/PCP are disabled by default; secure mode remains enforced, and automatic requests from the WAN are never accepted.','profiles-description'));
-    const indicators=this.el('div','upnp-status-cards');
+    const indicators=this.el('div',undefined,'upnp-status-cards');
     const badge=(name,value)=>{
       const card=this.el('div',undefined,'stat-card');
       card.append(this.el('div',name,'stat-label'),this.el('strong',value));
@@ -115,7 +115,7 @@ export default class UpnpModule {
     this.field(form,'External IPv4 interface',external);
     const rules=Object.entries(this.cfg).filter(([,v])=>v?.['.type']==='perm_rule');
     root.append(this.el('p','Port permission policy is ordered. Requests are evaluated against the rules below, with deny as the fallback. Restrict unknown devices through your firewall and separate guest/IoT networks.','profiles-description'));
-    const existingList=this.el('div','upnp-permissions');
+    const existingList=this.el('div',undefined,'upnp-permissions');
     for(const [,v] of rules){
       const p=this.el('p',(v.action||'deny').toUpperCase()+' · external '+(v.ext_ports||'?')+
         ' → internal '+(v.int_addr||'?')+':'+(v.int_ports||'?')+' · '+(v.comment||''),'profiles-description');
@@ -179,12 +179,12 @@ export default class UpnpModule {
         if(range)await this.rpc('uci','set',{config:'upnpd',section:this.allowRuleSection,values:range});
         await this.rpc('uci','commit',{config:'upnpd'});
         const result=await this.optional('file','exec',{command:'/etc/init.d/miniupnpd',params:['restart']});
-        if(!result||Number(result.code||0)!==0){
+        if(!result||result.code!==0){
           this.core.showToast('UPnP settings saved. Restart miniupnpd to apply the changes.','info');
         }else{
           this.core.showToast('UPnP settings applied','success');
         }
-        await this.load(target);
+        await this.load(root.parentElement);
       }catch(error){this.core.showToast('UPnP save failed: '+error.message,'error');}
       finally{this.busy=false;save.disabled=false;}
     });
@@ -207,7 +207,7 @@ export default class UpnpModule {
     }
     table.append(tbody);root.append(table);
     const refresh=this.el('button','REFRESH ACTIVE MAPPINGS','action-btn');refresh.type='button';
-    refresh.addEventListener('click',()=>this.load(target));root.append(refresh);
+    refresh.addEventListener('click',()=>this.load(root.parentElement));root.append(refresh);
     root.append(this.el('p','Mapping descriptions are untrusted client input and are displayed as text only. For granular permission-rule editing, use OpenWrt Tools > UPnP configuration until a dedicated rule editor is validated.','profiles-description'));
   }
 }
