@@ -101,80 +101,7 @@ def prepare_app(name):
 
 # Only selected public registry hostnames can be targeted from the browser.
 # Arbitrary registry URLs could turn the router into a privileged SSRF proxy.
-CUSTOM_TAG=re.compile(r'^(?:(?:docker\\.io|ghcr\\.io|lscr\\.io|quay\\.io|registry\\.gitlab\\.com)/)?[a-z0-9][a-z0-9._/-]{2,95}:[A-Za-z0-9][A-Za-z0-9._-]{0,79}
-    if os.geteuid()!=0:
-        fatal('run as root on an isolated test router')
-    if not args or args[0]=='help':
-        print('Usage: moci-docker-policy status | prepare <app-id> | prepare-custom <repository:tag> | allow <repo@sha256:digest> | pin <app-id> <repo@sha256:digest> | enable | disable')
-        return
-    op=args[0]
-    if op=='status' and len(args)==1:
-        print('Writes:', 'enabled' if APPROVAL.exists() and APPROVAL.read_text().strip()=='enabled' else 'disabled')
-        print('Allowed image digests:',len(load('allowed-images.json').get('images',[])))
-        print('Pinned applications:',len(load('app-pins.json')))
-        return
-    if op=='prepare' and len(args)==2:
-        print('Approved immutable digest:',prepare_app(args[1]))
-        return
-    if op=='prepare-custom' and len(args)==2:
-        print('Approved immutable digest:',prepare_custom(args[1]))
-        return
-    if op=='allow' and len(args)==2:
-        image=validate_image(args[1])
-        if not image_exists(image):
-            fatal('digest not present locally. Pull verified digest with: docker pull '+image)
-        data=load('allowed-images.json')
-        entries=data.get('images')
-        if not isinstance(entries,list):
-            fatal('invalid allowlist format')
-        data['images']=sorted(set(entries+[image]))
-        if len(data['images'])>100:
-            fatal('allowlist limit exceeded')
-        safe_save('allowed-images.json',data)
-        print('Approved digest:',image)
-        return
-    if op=='pin' and len(args)==3:
-        name,image=args[1],validate_image(args[2])
-        if not ID_RE.fullmatch(name):
-            fatal('invalid app ID')
-        apps=load('app-catalog.json').get('apps',[])
-        entry=next((app for app in apps if app.get('id')==name),None)
-        if not entry or not entry.get('template_available'):
-            fatal('app does not have a reviewed template')
-        templates=load('app-templates.json').get('templates',{})
-        template=templates.get(name)
-        if not isinstance(template,dict) or template.get('repository')!=entry.get('repository'):
-            fatal('app does not have an approved installation profile')
-        if entry.get('risk') not in ('review',None):
-            fatal('app is marked as security or router critical')
-        if image.split('@',1)[0]!=entry.get('repository'):
-            fatal('image repository does not match catalogue entry')
-        if image not in load('allowed-images.json').get('images',[]):
-            fatal('digest must be allowed before pinning')
-        pins=load('app-pins.json')
-        if not isinstance(pins,dict):
-            fatal('invalid pins format')
-        pins[name]=image
-        safe_save('app-pins.json',pins)
-        print('Pinned',name,'to',image)
-        return
-    if op=='enable' and len(args)==1:
-        # Direct root action only; no ubus endpoint for altering this policy.
-        fd=os.open(str(APPROVAL),os.O_CREAT|os.O_WRONLY|os.O_TRUNC,0o600)
-        with os.fdopen(fd,'w',encoding='ascii') as file:
-            os.fchmod(file.fileno(),0o600)
-            file.write('enabled\n')
-        print('RC deployment gate enabled. DO NOT USE ON PRODUCTION ROUTERS.')
-        return
-    if op=='disable' and len(args)==1:
-        APPROVAL.unlink(missing_ok=True)
-        print('RC deployment gate disabled')
-        return
-    fatal('invalid command or number of arguments')
-
-if __name__=='__main__':
-    main(sys.argv[1:])
-)
+CUSTOM_TAG=re.compile(r'^(?:(?:docker\.io|ghcr\.io|lscr\.io|quay\.io|registry\.gitlab\.com)/)?[a-z0-9][a-z0-9._/-]{2,95}:[A-Za-z0-9][A-Za-z0-9._-]{0,79}$')
 def prepare_custom(image_tag):
     if not isinstance(image_tag,str) or not CUSTOM_TAG.fullmatch(image_tag):
         fatal('Image must be a public registry repository with a valid immutable-release tag')
@@ -212,7 +139,7 @@ def main(args):
     if os.geteuid()!=0:
         fatal('run as root on an isolated test router')
     if not args or args[0]=='help':
-        print('Usage: moci-docker-policy status | prepare <app-id> | allow <repo@sha256:digest> | pin <app-id> <repo@sha256:digest> | enable | disable')
+        print('Usage: moci-docker-policy status | prepare <app-id> | prepare-custom <repository:tag> | allow <repo@sha256:digest> | pin <app-id> <repo@sha256:digest> | enable | disable')
         return
     op=args[0]
     if op=='status' and len(args)==1:
@@ -222,6 +149,9 @@ def main(args):
         return
     if op=='prepare' and len(args)==2:
         print('Approved immutable digest:',prepare_app(args[1]))
+        return
+    if op=='prepare-custom' and len(args)==2:
+        print('Approved immutable digest:',prepare_custom(args[1]))
         return
     if op=='allow' and len(args)==2:
         image=validate_image(args[1])
