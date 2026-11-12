@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 PKG_NAME:=moci-app-docker
 PKG_VERSION:=0.10.0
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=MoCI contributors
 include $(INCLUDE_DIR)/package.mk
@@ -33,6 +33,7 @@ define Package/moci-app-docker/install
 	$(INSTALL_DATA) ./files/acl.json $(1)/usr/share/rpcd/acl.d/moci-app-docker.json
 	$(INSTALL_DIR) $(1)/etc/moci-docker
 	$(INSTALL_CONF) ./files/app-catalog.json $(1)/etc/moci-docker/app-catalog.json
+	$(INSTALL_CONF) ./files/app-templates.json $(1)/etc/moci-docker/app-templates.json
 	$(INSTALL_CONF) ./files/allowed-images.json $(1)/etc/moci-docker/allowed-images.json
 	$(INSTALL_CONF) ./files/app-pins.json $(1)/etc/moci-docker/app-pins.json
 endef
