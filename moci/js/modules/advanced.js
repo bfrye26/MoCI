@@ -163,10 +163,12 @@ export default class AdvancedModule {
       const buttons=this.element('div','advanced-toolbar');
       const save=this.element('button','action-btn','REVIEW & SAVE');
       save.type='submit';
+      const option=this.element('button','action-btn','ADD OPTION');
+      option.type='button';option.addEventListener('click',()=>this.addOption(item.config,name,options));
       const remove=this.element('button','action-btn danger','DELETE SECTION');
       remove.type='button';
       remove.addEventListener('click',()=>this.deleteSection(item.config,name));
-      buttons.append(save,remove);form.appendChild(buttons);
+      buttons.append(save,option,remove);form.appendChild(buttons);
       form.addEventListener('submit',event=>{event.preventDefault();this.saveSection(item.config,name,form);});
       card.appendChild(form);root.appendChild(card);
     }
@@ -237,6 +239,38 @@ export default class AdvancedModule {
       await this.load();
       this.core.showToast('Section created','success');
     }catch(e){this.core.showToast('Create failed: '+e.message,'error');}
+    finally{this.busy=false;}
+  }
+  async addOption(config,section,knownOptions) {
+    if(this.busy)return;
+    const key=window.prompt('New UCI option name (letters, digits or underscores):');
+    if(key===null)return;
+    if(!/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(key)||key.startsWith('.')){
+      this.core.showToast('Invalid option name','error');return;
+    }
+    if(Object.prototype.hasOwnProperty.call(knownOptions,key)){
+      this.core.showToast('This option already exists','error');return;
+    }
+    const type=window.prompt('Option type: enter "string" or "list"','string');
+    if(type===null)return;
+    if(type!=='string'&&type!=='list'){
+      this.core.showToast('Use string or list','error');return;
+    }
+    const raw=window.prompt('Value'+(type==='list'?' (separate list values with commas)':''),'');
+    if(raw===null)return;
+    const value=type==='list'?raw.split(',').map(v=>v.trim()).filter(Boolean):raw;
+    if(typeof value==='string'&&value.length>4096||Array.isArray(value)&&(value.length>32||value.some(x=>x.length>256))){
+      this.core.showToast('Option value too long','error');return;
+    }
+    const risky=NETWORK_CRITICAL.has(config)||!CURATED_CONFIGS.has(config);
+    if(!window.confirm('Add '+config+'.'+section+'.'+key+'?'+(risky?' Connectivity-critical changes will be rolled back unless confirmed.':'')))return;
+    this.busy=true;
+    try{
+      await this.rpc('uci','set',{config,section,values:{[key]:value}});
+      await this.apply(config,risky);
+      await this.load();
+      this.core.showToast('Option added','success');
+    }catch(error){this.core.showToast('Option not applied: '+error.message,'error');}
     finally{this.busy=false;}
   }
   async deleteSection(config,section) {
