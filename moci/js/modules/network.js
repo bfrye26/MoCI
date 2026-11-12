@@ -1254,20 +1254,50 @@ export default class NetworkModule {
 		this.core.uciEdit('dhcp', id, STATIC_LEASE_FIELDS, 'static-lease-modal', 'edit-static-lease-section');
 	}
 
-	saveStaticLease() {
-		this.core.uciSave({
-			config: 'dhcp',
-			uciType: 'host',
-			modalId: 'static-lease-modal',
-			sectionIdField: 'edit-static-lease-section',
-			fieldMap: STATIC_LEASE_FIELDS,
-			reloadFn: () => this.loadDHCP(),
-			successMsg: 'Static lease saved'
+	async reloadDHCPAfterReservation() {
+		// Commit alone does not make dnsmasq pick up UCI host reservations.
+		// A failed service reload must not be reported as a failed UCI commit.
+		try {
+			const [status, response]=await this.core.serviceReload('dnsmasq');
+			if(status!==0||Number(response?.code||0)!==0)throw new Error('dnsmasq reload denied');
+		} catch(error) {
+			console.warn('DHCP reservation saved but dnsmasq reload failed:',error);
+			this.core.showToast('Saved. DHCP service reload may be needed before the reservation takes effect.','info');
+		}
+		await this.loadDHCP();
+	}
+
+	async saveStaticLease() {
+		const mac=document.getElementById('edit-static-lease-mac')?.value.trim().toLowerCase()||'';
+		const ip=document.getElementById('edit-static-lease-ip')?.value.trim()||'';
+		const section=document.getElementById('edit-static-lease-section')?.value||'';
+		const octets=ip.split('.');
+		const validIp=octets.length===4&&octets.every(o=>/^\d{1,3}$/.test(o)&&Number(o)<=255);
+		if(!/^(?:[0-9a-f]{2}:){5}[0-9a-f]{2}$/.test(mac)||!validIp){
+			this.core.showToast('Enter a valid MAC address and IPv4 address','error');
+			return;
+		}
+		const configured=this.core.filterUciSections(this._dhcpCfg||{},'host');
+		const conflictingIp=configured.find(entry=>entry.section!==section&&entry.ip===ip);
+		const conflictingMac=configured.find(entry=>
+			entry.section!==section&&String(entry.mac||'').toLowerCase().split(/[\s,]+/).includes(mac));
+		if(conflictingIp||conflictingMac){
+			this.core.showToast(conflictingIp?'This IP is already reserved for another device':'This device already has an IP reservation','error');
+			return;
+		}
+		await this.core.uciSave({
+			config:'dhcp',
+			uciType:'host',
+			modalId:'static-lease-modal',
+			sectionIdField:'edit-static-lease-section',
+			fieldMap:STATIC_LEASE_FIELDS,
+			reloadFn:()=>this.reloadDHCPAfterReservation(),
+			successMsg:'Reservation saved. Reconnect the device to obtain its reserved IP.'
 		});
 	}
 
 	deleteStaticLease(id) {
-		this.core.uciDeleteEntry('dhcp', id, 'Delete this static lease?', () => this.loadDHCP());
+		this.core.uciDeleteEntry('dhcp',id,'Delete this reserved address?',()=>this.reloadDHCPAfterReservation());
 	}
 
 	async editDhcpPool(id) {
