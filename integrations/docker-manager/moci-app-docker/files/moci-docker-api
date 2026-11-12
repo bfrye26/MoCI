@@ -316,8 +316,19 @@ def run(method,args):
         name=args.get('name');action=args.get('action')
         if not isinstance(name,str) or not NAME.fullmatch(name) or action not in ('start','stop','remove') or not os.path.isfile(STACKS+'/'+name+'/compose.json'):
             raise ValueError('Invalid managed stack operation')
-        compose(name,{'start':['up','-d','--wait'],'stop':['stop'],'remove':['down','--remove-orphans']}[action])
-        return {'ok':True,'name':name,'action':action}
+        if action=='remove':
+            # Remove managed containers and their network; retain named volumes
+            # so uninstall does not silently destroy business data.
+            compose(name,['down','--remove-orphans'])
+            directory=STACKS+'/'+name
+            path=directory+'/compose.json'
+            if os.path.islink(path):
+                raise ValueError('Unsafe Compose path')
+            os.unlink(path)
+        else:
+            compose(name,{'start':['up','-d','--wait'],'stop':['stop']}[action])
+        return {'ok':True,'name':name,'action':action,
+                'data_preserved':action=='remove'}
     raise ValueError('Unknown method')
 
 METHODS={k:({} if k not in ('logs','deploy','prepare_app','install_catalog','stack_action','container_action') else {'logs':{'id':'str'},'deploy':{'name':'str','spec':'str'},'prepare_app':{'id':'str'},'install_catalog':{'id':'str'},'stack_action':{'name':'str','action':'str'},'container_action':{'id':'str','action':'str'}}[k]) for k in READ_METHODS+WRITE_METHODS}
