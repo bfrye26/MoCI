@@ -1,0 +1,86 @@
+#!/bin/sh
+# MoCI Wi-Fi scheduler: safe per-radio on/off windows.
+# Runs once per minute through cron; never changes passwords or UCI wireless state.
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+# Preserve manual disabled=1 states; only restore radios the scheduler changed.
+restore_previous() {
+  for state in /tmp/moci-wifi-scheduler/radio*.state; do
+    [ -f "$state" ] || continue
+    radio=${state##*/}
+    radio=${radio%.state}
+    case "$radio" in radio[0-9]|radio[0-9][0-9]) ;; *) continue ;; esac
+    if [ "$(cat "$state" 2>/dev/null)" = down ] &&
+       [ "$(uci -q get "wireless.$radio.disabled")" != 1 ]; then
+      /sbin/wifi up "$radio" >/dev/null 2>&1 || :
+    fi
+    rm -f "$state"
+  done
+}
+if [ "$(uci -q get moci_wifi_schedule.settings.enabled)" != 1 ]; then
+  restore_previous
+  exit 0
+fi
+now=$(date +%H%M) || exit 1
+day=$(date +%w) || exit 1
+yesterday=$(((day + 6) % 7))
+case "$now:$day" in
+  [0-2][0-9][0-5][0-9]:[0-6]) ;;
+  *) exit 1 ;;
+esac
+mkdir -p /tmp/moci-wifi-scheduler || exit 1
+i=0
+seen=' '
+while [ "$i" -lt 32 ]; do
+  sec="@schedule[$i]"
+  radio=$(uci -q get "moci_wifi_schedule.$sec.radio") || break
+  enabled=$(uci -q get "moci_wifi_schedule.$sec.enabled")
+  i=$((i + 1))
+  [ "$enabled" = 1 ] || continue
+  case "$radio" in radio[0-9]|radio[0-9][0-9]) ;; *) continue ;; esac
+  case "$seen" in *" $radio "*) continue ;; esac
+  seen="$seen$radio "
+  [ -e "/sys/class/ieee80211" ] || continue
+  # Do not reactivate radios intentionally disabled by the administrator.
+  [ "$(uci -q get "wireless.$radio.disabled")" != 1 ] || continue
+  start=$(uci -q get "moci_wifi_schedule.$sec.start")
+  end=$(uci -q get "moci_wifi_schedule.$sec.end")
+  days=$(uci -q get "moci_wifi_schedule.$sec.days")
+  [ -n "$days" ] || days='0 1 2 3 4 5 6'
+  case "$start:$end" in
+    [0-2][0-9][0-5][0-9]:[0-2][0-9][0-5][0-9]) ;;
+    *) continue ;;
+  esac
+  [ "$start" != "$end" ] || continue
+  allowed=0
+  if [ "$start" -lt "$end" ]; then
+    case " $days " in *" $day "*) [ "$now" -ge "$start" ] && [ "$now" -lt "$end" ] && allowed=1 ;; esac
+  else
+    case " $days " in *" $day "*) [ "$now" -ge "$start" ] && allowed=1 ;; esac
+    case " $days " in *" $yesterday "*) [ "$now" -lt "$end" ] && allowed=1 ;; esac
+  fi
+  state_file="/tmp/moci-wifi-scheduler/$radio.state"
+  previous=$(cat "$state_file" 2>/dev/null)
+  desired=down
+  [ "$allowed" -eq 1 ] && desired=up
+  [ "$previous" = "$desired" ] && continue
+  if /sbin/wifi "$desired" "$radio" >/dev/null 2>&1; then
+    printf '%s\n' "$desired" > "$state_file"
+    logger -t moci-wifi "radio=$radio scheduled=$desired"
+  else
+    logger -t moci-wifi "radio=$radio schedule failed"
+  fi
+done
+
+# Removing a schedule should not leave previously scheduled radios down.
+for state in /tmp/moci-wifi-scheduler/radio*.state; do
+  [ -f "$state" ] || continue
+  radio=${state##*/}
+  radio=${radio%.state}
+  case "$radio" in radio[0-9]|radio[0-9][0-9]) ;; *) continue ;; esac
+  case "$seen" in *" $radio "*) continue ;; esac
+  if [ "$(cat "$state" 2>/dev/null)" = down ] &&
+     [ "$(uci -q get "wireless.$radio.disabled")" != 1 ]; then
+    /sbin/wifi up "$radio" >/dev/null 2>&1 || :
+  fi
+  rm -f "$state"
+done

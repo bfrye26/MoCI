@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "templates": {
+    "uptime-kuma": {
+      "image": "louislam/uptime-kuma:2",
+      "repository": "louislam/uptime-kuma",
+      "ports": [
+        "3001:3001"
+      ],
+      "volumes": [
+        "uptime-kuma-data:/app/data"
+      ],
+      "description": "Uptime Kuma v2 with persistent SQLite data, preinitialized named volume and non-root UID 1000.",
+      "path": "http://ROUTER_IP:3001/",
+      "needs_write_access": true,
+      "volume_initializer": {
+        "path": "/app/data",
+        "uid": 1000,
+        "gid": 1000
+      },
+      "run_as_user": "1000:1000"
+    },
+    "it-tools": {
+      "image": "corentinth/it-tools:latest",
+      "repository": "corentinth/it-tools",
+      "ports": [
+        "8081:80"
+      ],
+      "volumes": [],
+      "description": "Self-hosted tools served on LAN TCP port 8081.",
+      "path": "http://ROUTER_IP:8081/",
+      "needs_write_access": false
+    },
+    "openspeedtest": {
+      "image": "openspeedtest/latest:latest",
+      "repository": "openspeedtest/latest",
+      "ports": [
+        "3000:3000",
+        "3002:3001"
+      ],
+      "volumes": [],
+      "description": "LAN speed test on TCP 3000 and HTTPS on 3001.",
+      "path": "http://ROUTER_IP:3000/",
+      "needs_write_access": false
+    },
+    "cyberchef": {
+      "image": "mpepping/cyberchef:latest",
+      "repository": "mpepping/cyberchef",
+      "ports": [
+        "8000:8000"
+      ],
+      "volumes": [],
+      "description": "Stateless CyberChef web utilities on LAN TCP 8000.",
+      "path": "http://ROUTER_IP:8000/",
+      "needs_write_access": false
+    },
+    "gotify": {
+      "image": "gotify/server:2",
+      "repository": "gotify/server",
+      "ports": [
+        "8084:8080"
+      ],
+      "volumes": [
+        "gotify-data:/app/data"
+      ],
+      "description": "Gotify notifications on LAN port 8084; generated administrator password shown after first installation.",
+      "path": "http://ROUTER_IP:8084/",
+      "needs_write_access": true,
+      "initial_password_env": "GOTIFY_DEFAULTUSER_PASS",
+      "mem_limit": "384m",
+      "environment": {
+        "GOTIFY_SERVER_PORT": "8080"
+      }
+    }
+  }
+}

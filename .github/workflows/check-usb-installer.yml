@@ -1,0 +1,39 @@
+name: Validate USB installer
+on:
+  push:
+    branches: ['develop/docker-manager']
+    paths:
+      - 'firmware/installer/**'
+      - '.github/workflows/check-usb-installer.yml'
+  pull_request:
+    branches: [dev]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  shell-validation:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check shell syntax
+        run: |
+          bash -n firmware/installer/moci-install
+          bash -n firmware/installer/build-live-iso.sh
+      - name: Basic installer safety contract
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          src=Path('firmware/installer/moci-install').read_text()
+          iso=Path('firmware/installer/build-live-iso.sh').read_text()
+          for required in ('sha256sum -c','--yesno','LIVE_DISK','WAN and LAN must be different','openssl passwd -6','umask 077','resize2fs','resolve_nic','uci -q set network.lan.ipaddr','locate_root()','perform_install()','diagnostics'):
+              assert required in src, required
+          for required in ('iso-hybrid','moci-install','firmware.img.gz','firmware.sha256','lb build'):
+              assert required in iso, required
+          assert 'docker.sock' not in src
+          print('Installer source contract passed')
+          PY
+      - name: Shellcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          shellcheck -S error firmware/installer/moci-install firmware/installer/build-live-iso.sh

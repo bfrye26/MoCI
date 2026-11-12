@@ -6,7 +6,7 @@
 		"network.interface": { "methods": [ "dump" ] },
 		"network.interface.*": { "methods": [ "up", "down", "status" ] },
 		"network.wireless": { "methods": [ "status" ] },
-		"uci": { "methods": [ "get", "set", "add", "delete", "commit" ] },
+		"uci": { "methods": [ "get", "set", "add", "delete", "commit", "apply", "confirm" ] },
 		"file": { "methods": [ "read", "write", "exec" ] },
 		"moci": { "methods": [ "setPassword", "getDHCPLeases", "getPorts", "getBridges", "wgGenKey" ] },
 		"service": { "methods": [ "list" ] }

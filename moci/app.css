@@ -1668,3 +1668,372 @@ select.form-input {
 	font-size: 13px;
 	color: var(--steel-muted);
 }
+
+/* Appearance system. All six themes share semantic tokens so add-ons inherit them. */
+:root {
+  --theme-surface: #171b24;
+  --theme-input: #101319;
+  --theme-hover: rgba(255,255,255,.06);
+  --theme-bg-top: #161a23;
+  --theme-scrollbar: #394154;
+  --theme-success: #43d28f;
+  --theme-link: #d0dcff;
+  --theme-outline: #738bc1;
+}
+:root[data-theme="obsidian"] {
+  --space-black:#0b0d12; --deep-space:#101319; --space-gray:#171b24;
+  --starship-steel:#eef1f5; --steel-muted:#a4adbd;
+  --primary-accent:#b8c4dc; --secondary-accent:#a5b4cb;
+  --glass-bg:rgba(23,27,36,.91); --glass-border:rgba(196,208,229,.18);
+  --theme-surface:#171b24; --theme-input:#101319; --theme-bg-top:#161a23;
+  --theme-link:#c7d7ff; --theme-outline:#b8c4dc;
+}
+:root[data-theme="cloud"] {
+  --space-black:#f5f7fa; --deep-space:#edf1f6; --space-gray:#fff;
+  --starship-steel:#1e293b; --steel-muted:#54667c;
+  --primary-accent:#2463c5; --secondary-accent:#486b9f;
+  --success-green:#147d52; --warning-amber:#925900; --alert-red:#b42332;
+  --glass-bg:rgba(255,255,255,.96); --glass-border:rgba(48,70,103,.19);
+  --glass-shadow:0 8px 32px rgba(35,57,89,.09);
+  --theme-surface:#fff; --theme-input:#f3f6fa; --theme-hover:rgba(36,99,197,.075);
+  --theme-bg-top:#e8f0fa; --theme-scrollbar:#a6b7ce;
+  --theme-link:#1759bd; --theme-outline:#2463c5;
+}
+:root[data-theme="ocean"] {
+  --space-black:#09192f; --deep-space:#0c2340; --space-gray:#112c4a;
+  --starship-steel:#e7f3ff; --steel-muted:#a0c2df;
+  --primary-accent:#38bdf8; --secondary-accent:#6cbce7;
+  --glass-bg:rgba(17,44,74,.91); --glass-border:rgba(92,179,233,.26);
+  --theme-bg-top:#17385f; --theme-input:#0b2039; --theme-hover:rgba(56,189,248,.09);
+  --theme-link:#78d4ff; --theme-outline:#38bdf8;
+}
+:root[data-theme="terminal"] {
+  --space-black:#10191a; --deep-space:#14231e; --space-gray:#172b26;
+  --starship-steel:#e3f8eb; --steel-muted:#9bbca9;
+  --primary-accent:#4ade80; --secondary-accent:#7acda1;
+  --glass-bg:rgba(23,43,38,.91); --glass-border:rgba(100,205,145,.23);
+  --theme-bg-top:#21352b; --theme-input:#10221d; --theme-hover:rgba(74,222,128,.09);
+  --theme-link:#78e8a1; --theme-outline:#4ade80;
+}
+:root[data-theme="amethyst"] {
+  --space-black:#171321; --deep-space:#21182d; --space-gray:#271d36;
+  --starship-steel:#f5efff; --steel-muted:#c1b1d2;
+  --primary-accent:#c4a3ff; --secondary-accent:#b4a0d1;
+  --glass-bg:rgba(39,29,54,.91); --glass-border:rgba(187,145,231,.24);
+  --theme-bg-top:#30213e; --theme-input:#21182e; --theme-hover:rgba(196,163,255,.09);
+  --theme-link:#d1b8ff; --theme-outline:#c4a3ff;
+}
+:root[data-theme="copper"] {
+  --space-black:#121519; --deep-space:#1b1d20; --space-gray:#24282c;
+  --starship-steel:#f3f4f6; --steel-muted:#c7b6a5;
+  --primary-accent:#f2a65a; --secondary-accent:#c79a70;
+  --glass-bg:rgba(36,40,44,.93); --glass-border:rgba(212,160,108,.25);
+  --theme-bg-top:#302821; --theme-input:#1e2022; --theme-hover:rgba(242,166,90,.08);
+  --theme-link:#ffd29c; --theme-outline:#f2a65a;
+}
+body {
+  background:radial-gradient(circle at 50% 0%,var(--theme-bg-top),var(--space-black) 75%);
+  color:var(--starship-steel);
+}
+.theme-picker {display:inline-flex;align-items:center;gap:8px;margin-left:auto;margin-right:12px;color:var(--steel-muted);font:600 10px var(--font-mono);letter-spacing:.06em}
+.theme-picker select {max-width:175px;background:var(--theme-input);border:1px solid var(--glass-border);border-radius:6px;padding:8px 10px;color:var(--starship-steel);font:600 11px var(--font-mono);cursor:pointer}
+.theme-picker select:focus-visible {outline:2px solid var(--theme-outline);outline-offset:2px}
+.theme-picker option {background:var(--space-gray);color:var(--starship-steel)}
+:root[data-theme] .header {background:var(--deep-space);border-color:var(--glass-border)}
+:root[data-theme] .login-card,
+:root[data-theme] .modal-content,
+:root[data-theme] .stat-card,
+:root[data-theme] .hero-card,
+:root[data-theme] .addon-card,
+:root[data-theme] .storage-chart-item,
+:root[data-theme] .docker-app-card,
+:root[data-theme] .docker-hero {
+  background:var(--glass-bg);border-color:var(--glass-border);color:var(--starship-steel)
+}
+:root[data-theme] input:not([type="checkbox"]):not([type="radio"]), 
+:root[data-theme] select,
+:root[data-theme] textarea {
+  background-color:var(--theme-input);color:var(--starship-steel);border-color:var(--glass-border)
+}
+:root[data-theme] .nav a {color:var(--steel-muted)}
+:root[data-theme] .nav a:hover,:root[data-theme] .nav a.active {color:var(--primary-accent)}
+:root[data-theme] .action-btn,:root[data-theme] .action-btn-sm,
+:root[data-theme] .tab-btn,:root[data-theme] .logout-btn {
+  color:var(--starship-steel);background:var(--theme-input);border-color:var(--glass-border)
+}
+:root[data-theme] .action-btn:hover,:root[data-theme] .action-btn-sm:hover,
+:root[data-theme] .logout-btn:hover {background:var(--theme-hover);border-color:var(--primary-accent)}
+:root[data-theme] .tab-btn.active {color:var(--primary-accent);background:transparent;border-bottom-color:var(--primary-accent)}
+:root[data-theme] a {accent-color:var(--primary-accent)}
+:root[data-theme] :focus-visible {outline-color:var(--theme-outline)}
+:root[data-theme="cloud"] .nav a.active,
+:root[data-theme="cloud"] .tab-btn.active {border-color:var(--primary-accent);color:var(--primary-accent)}
+:root[data-theme="cloud"] .page,
+:root[data-theme="cloud"] .data-table,
+:root[data-theme="cloud"] .card,
+:root[data-theme="cloud"] .docker-app-card {color:var(--starship-steel)}
+:root[data-theme="cloud"] .form-input,
+:root[data-theme="cloud"] .diag-input,
+:root[data-theme="cloud"] .docker-compose input,
+:root[data-theme="cloud"] .docker-compose textarea {background:var(--theme-input);color:var(--starship-steel)}
+:root[data-theme="cloud"] ::-webkit-scrollbar-track {background:#e8edf4}
+:root[data-theme="cloud"] ::-webkit-scrollbar-thumb {background:#b4c1d1}
+@media(max-width:900px){.theme-picker{margin-left:0}.theme-picker span{display:none}.theme-picker select{max-width:122px}}
+@media(prefers-reduced-motion:reduce){:root[data-theme] *, :root[data-theme] *::before,:root[data-theme] *::after {transition-duration:.01ms!important}}
+
+/* Native advanced management workspace */
+.advanced-intro,.advanced-note {color:var(--steel-muted);line-height:1.65;margin:10px 0 16px}
+.advanced-nav {display:flex;gap:8px;flex-wrap:wrap;max-height:148px;overflow-y:auto;padding:4px 0 14px;margin-bottom:20px;border-bottom:1px solid var(--glass-border)}
+.advanced-nav .action-btn {display:inline-flex;align-items:center;text-decoration:none;font-size:11px;padding:8px 12px;white-space:nowrap}
+.advanced-grid {display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+.advanced-card {display:flex;flex-direction:column;gap:8px;text-decoration:none;background:var(--glass-bg);border:1px solid var(--glass-border);color:var(--starship-steel);border-radius:10px;padding:18px;min-height:130px}
+.advanced-card:hover,.advanced-card:focus-visible {border-color:var(--primary-accent);background:var(--theme-hover)}
+.advanced-card h3 {font-size:15px;margin:0;color:var(--starship-steel)}
+.advanced-card small {font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--primary-accent)}
+.advanced-card p {font-size:12px;line-height:1.5;color:var(--steel-muted)}
+.advanced-section {padding:20px;margin-bottom:18px}
+.advanced-section h4 {margin-bottom:12px;font-size:15px;overflow-wrap:anywhere}
+.advanced-fields {display:grid;grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:15px}
+.advanced-field {display:flex;flex-direction:column;gap:7px;font-size:12px;overflow-wrap:anywhere;color:var(--steel-muted)}
+.advanced-field input,.advanced-field textarea {color:var(--starship-steel);background:var(--theme-input);border:1px solid var(--glass-border);border-radius:6px;padding:9px;min-width:0}
+.advanced-field input:focus,.advanced-field textarea:focus {outline:2px solid var(--theme-outline);outline-offset:1px}
+.advanced-toolbar {display:flex;gap:10px;flex-wrap:wrap;margin:18px 0}
+.advanced-toolbar .danger {color:var(--alert-red)}
+@media(max-width:640px){.advanced-fields,.advanced-grid{grid-template-columns:minmax(0,1fr)}.advanced-section{padding:14px}}
+
+/* StartWRT-inspired contextual Help Mode, independently implemented for MoCI. */
+.moci-help-button{border:1px solid var(--glass-border);border-radius:6px;padding:9px 12px;background:var(--theme-input);color:var(--starship-steel);cursor:pointer;font:600 11px var(--font-mono)}
+.moci-help-button[aria-expanded="true"]{border-color:var(--primary-accent)}
+.moci-help-panel{margin-bottom:22px;background:var(--glass-bg);color:var(--starship-steel);padding:20px 24px;border:1px solid var(--glass-border);border-radius:10px;box-shadow:var(--glass-shadow)}
+.moci-help-panel .moci-help-heading{display:flex;justify-content:space-between;align-items:center;gap:15px;margin-bottom:12px}
+.moci-help-panel h3{font-size:17px}
+.moci-help-panel p,.moci-help-panel li{font-size:13px;line-height:1.7}
+.moci-help-panel p,.moci-help-panel li{color:var(--steel-muted)}
+.moci-help-panel ul{padding-left:20px;margin:10px 0}
+.moci-help-panel #moci-help-close{border:1px solid var(--glass-border);background:var(--theme-input);color:var(--starship-steel);padding:7px 12px;border-radius:5px;cursor:pointer}
+.moci-help-panel a{display:inline-block;margin-top:8px;color:var(--theme-link);font-size:12px}
+@media(max-width:800px){.moci-help-button{padding:7px 9px}.moci-help-panel{padding:15px}}
+
+/* Cloud Light correction: build the entire UI from light semantic surfaces.
+   Dark-only semi-transparent white components caused grey haze and unreadable content. */
+:root[data-theme="cloud"] {
+  --theme-panel-alt:#f1f5fb;
+  --theme-row-hover:#edf4ff;
+  --theme-divider:#dce5f0;
+  --theme-soft-blue:#e7f0ff;
+  --theme-on-blue:#174b9b;
+  --theme-shadow:0 4px 16px rgba(37,65,104,.075);
+}
+:root[data-theme="cloud"] body{
+  background:linear-gradient(150deg,#f7f9fd 0%,#eff4fa 100%);
+  color:#1c2b40;
+}
+:root[data-theme="cloud"] .header{
+  background:rgba(255,255,255,.98);
+  box-shadow:0 1px 0 rgba(47,74,109,.12),0 3px 12px rgba(41,64,96,.035);
+}
+:root[data-theme="cloud"] .nav a{color:#53677f}
+:root[data-theme="cloud"] .nav a.active,
+:root[data-theme="cloud"] .nav a:hover{
+  color:#1659b2;border-bottom-color:#2463c5;
+}
+:root[data-theme="cloud"] .logo{color:#1b365e}
+:root[data-theme="cloud"] .logo-icon{color:#2463c5}
+:root[data-theme="cloud"] .page h2,
+:root[data-theme="cloud"] .page h3,
+:root[data-theme="cloud"] .page h4,
+:root[data-theme="cloud"] .section-title,
+:root[data-theme="cloud"] .stat-value,
+:root[data-theme="cloud"] .metric-value{color:#1e2d43}
+:root[data-theme="cloud"] .stat-card,
+:root[data-theme="cloud"] .hero-card,
+:root[data-theme="cloud"] .login-card,
+:root[data-theme="cloud"] .modal-content,
+:root[data-theme="cloud"] .addon-card,
+:root[data-theme="cloud"] .advanced-card,
+:root[data-theme="cloud"] .moci-help-panel {
+  background:#fff;border:1px solid #dce5f0;
+  box-shadow:var(--theme-shadow);color:#1e2d43;
+  backdrop-filter:none;
+}
+:root[data-theme="cloud"] .stat-label,
+:root[data-theme="cloud"] .metric-label,
+:root[data-theme="cloud"] .hero-label,
+:root[data-theme="cloud"] .hero-detail-label,
+:root[data-theme="cloud"] .section-title,
+:root[data-theme="cloud"] .data-table th,
+:root[data-theme="cloud"] .form-label,
+:root[data-theme="cloud"] .advanced-note,
+:root[data-theme="cloud"] .advanced-intro{color:#5d718a}
+:root[data-theme="cloud"] .data-table th{
+  background:#f1f5fb;border-bottom:1px solid #dce5f0;
+}
+:root[data-theme="cloud"] .data-table td{
+  border-bottom:1px solid #e4ebf3;color:#25354d;
+}
+:root[data-theme="cloud"] .data-table tbody tr:hover{background:#edf4ff}
+:root[data-theme="cloud"] .tabs{border-bottom-color:#dce5f0}
+:root[data-theme="cloud"] .tab-btn{
+  background:transparent;color:#5c7088;border-color:transparent;
+}
+:root[data-theme="cloud"] .tab-btn:hover{color:#235eaa;background:#edf4ff}
+:root[data-theme="cloud"] .tab-btn.active{
+  color:#1759b4;background:#eaf2ff;border-bottom-color:#2463c5;
+}
+:root[data-theme="cloud"] .action-btn,
+:root[data-theme="cloud"] .action-btn-sm,
+:root[data-theme="cloud"] .logout-btn,
+:root[data-theme="cloud"] .moci-help-button {
+  color:#25405e;background:#f5f8fd;
+  border:1px solid #cddbeb;box-shadow:none;
+}
+:root[data-theme="cloud"] .action-btn:hover,
+:root[data-theme="cloud"] .action-btn-sm:hover,
+:root[data-theme="cloud"] .moci-help-button:hover {
+  background:#e7f0ff;border-color:#2463c5;color:#1759b4;
+}
+:root[data-theme="cloud"] .action-btn.danger,
+:root[data-theme="cloud"] .action-btn-sm.danger{color:#a92836}
+:root[data-theme="cloud"] .badge-success{color:#126b42;background:#e4f6eb;border-color:#b8e4ca}
+:root[data-theme="cloud"] .badge-warning{color:#865100;background:#fff4d8;border-color:#f2d99b}
+:root[data-theme="cloud"] .badge-info{color:#2157a1;background:#eaf2ff;border-color:#bfd8ff}
+:root[data-theme="cloud"] .badge-error{color:#a52637;background:#fff0f1;border-color:#f1c4c9}
+:root[data-theme="cloud"] .log-viewer,
+:root[data-theme="cloud"] .docker-log {
+  background:#f1f5fb!important;color:#283a54!important;border-color:#dce5f0;
+}
+:root[data-theme="cloud"] input:not([type="checkbox"]):not([type="radio"]),
+:root[data-theme="cloud"] select,
+:root[data-theme="cloud"] textarea,
+:root[data-theme="cloud"] .combobox-control{
+  background:#fff;color:#1e2d43;border:1px solid #bfcfe0;
+}
+:root[data-theme="cloud"] input::placeholder,
+:root[data-theme="cloud"] textarea::placeholder{color:#6c819c;opacity:1}
+:root[data-theme="cloud"] input:focus-visible,
+:root[data-theme="cloud"] select:focus-visible,
+:root[data-theme="cloud"] textarea:focus-visible{outline:2px solid #2463c5;outline-offset:1px}
+:root[data-theme="cloud"] .advanced-card:hover{background:#f2f7ff;border-color:#84addf}
+:root[data-theme="cloud"] .advanced-card small{color:#1759b4}
+:root[data-theme="cloud"] .advanced-card p{color:#5d718a}
+:root[data-theme="cloud"] .addon-section-details{background:#f4f7fc;border-color:#dce5f0}
+:root[data-theme="cloud"] .addon-permission-scope{color:#294569;background:#e8eff9}
+:root[data-theme="cloud"] .addon-install-section{color:#1e2d43}
+:root[data-theme="cloud"] .progress-bar{background:#e3eaf3}
+:root[data-theme="cloud"] .combobox-chip{background:#e7f0ff;color:#2157a1}
+:root[data-theme="cloud"] .combobox-option:hover{background:#edf4ff}
+:root[data-theme="cloud"] .moci-help-panel li{color:#526780}
+:root[data-theme="cloud"] .toast{background:#fff;color:#243951;border-color:#dce5f0}
+
+/* StartWRT-inspired Security Profiles, native to MoCI */
+#profiles-content{display:grid;gap:20px}
+.profiles-description{line-height:1.6;color:var(--steel-muted);font-size:13px}
+.profiles-create{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;background:var(--glass-bg);padding:22px;border:1px solid var(--glass-border);border-radius:10px}
+.profiles-create .advanced-field{display:flex;flex-direction:column;gap:8px}
+.profiles-create input[type=text],.profiles-create select{width:100%;border:1px solid var(--glass-border);background:var(--theme-input);color:var(--starship-steel);border-radius:6px;padding:10px}
+.profiles-create .profiles-description,.profiles-create .profiles-check{grid-column:1/-1}
+.profiles-check{display:flex;gap:10px;align-items:start;color:var(--starship-steel);font-size:13px}
+.profiles-check input{margin-top:4px}
+.profiles-create .action-btn{justify-self:start}
+.profiles-create .action-btn:disabled{opacity:.45;cursor:not-allowed}
+.profiles-list{display:grid;gap:13px}
+.profiles-entry{display:flex;align-items:center;gap:20px;flex-wrap:wrap;justify-content:space-between}
+.profiles-entry strong{overflow-wrap:anywhere}
+:root[data-theme="cloud"] .profiles-create{background:#fff;border-color:#dce5f0;box-shadow:0 3px 12px rgba(35,66,104,.05)}
+:root[data-theme="cloud"] .profiles-create input[type=text],:root[data-theme="cloud"] .profiles-create select{background:#fff;border-color:#bfcfe0;color:#1e2d43}
+@media(max-width:640px){.profiles-create{padding:15px;grid-template-columns:minmax(0,1fr)}}
+
+/* Wi-Fi schedules: independent of radio driver and responsive across themes. */
+#schedules-content{display:grid;gap:16px}
+.schedule-days{display:flex;flex-wrap:wrap;gap:12px;grid-column:1/-1;border:1px solid var(--glass-border);border-radius:8px;padding:12px 16px}
+.schedule-days legend{padding:0 7px;color:var(--steel-muted);font-size:12px}
+:root[data-theme="cloud"] .schedule-days{border-color:#dce5f0}
+
+/* StartWRT multi-password Wi-Fi profiles. Passwords never appear in text logs. */
+#wifi-profiles-content{display:grid;gap:16px}
+.wifi-security-warning{padding:14px 18px;color:var(--alert-red);border:1px solid var(--alert-red);border-radius:8px;font-size:13px;line-height:1.6}
+:root[data-theme="cloud"] .wifi-security-warning{color:#a52637;background:#fff5f4;border-color:#e8a5ae}
+
+/* StartWRT-inspired VPN policy editor */
+#vpn-policies-content{display:grid;gap:16px}
+#vpn-policies-content .profiles-create input,
+#vpn-policies-content .profiles-create select{width:100%;min-width:0;background:var(--theme-input);border:1px solid var(--glass-border);border-radius:6px;color:var(--starship-steel);padding:9px}
+:root[data-theme="cloud"] #vpn-policies-content .profiles-create input,
+:root[data-theme="cloud"] #vpn-policies-content .profiles-create select{background:#fff;color:#1e2d43;border-color:#bfcfe0}
+
+/* Compact navigation for business management and StartWRT workspaces. */
+.nav{gap:22px;margin-left:30px;align-items:center}
+.nav-more{position:relative;color:var(--steel-muted);font:600 11px var(--font-mono);letter-spacing:.08em}
+.nav-more summary{list-style:none;cursor:pointer;padding:9px 0;border-bottom:2px solid transparent}
+.nav-more summary::-webkit-details-marker{display:none}
+.nav-more summary::after{content:'⌄';display:inline-block;margin-left:7px;color:var(--steel-muted)}
+.nav-more[open] summary,.nav-more.active summary{color:var(--primary-accent);border-bottom-color:var(--primary-accent)}
+.nav-more-menu{position:absolute;top:calc(100% + 12px);left:-15px;min-width:208px;z-index:210;
+  background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:10px;padding:7px;
+  box-shadow:0 16px 38px rgba(0,0,0,.22);display:flex;flex-direction:column;gap:2px}
+.nav-more-menu a{padding:11px 12px;border-radius:6px;border:0!important;white-space:nowrap;font-size:11px;color:var(--starship-steel)}
+.nav-more-menu a:hover,.nav-more-menu a.active{background:var(--theme-hover);color:var(--primary-accent)}
+:root[data-theme="cloud"] .nav-more-menu{background:#fff;box-shadow:0 12px 25px rgba(37,65,104,.14);border-color:#dce5f0}
+:root[data-theme="cloud"] .nav-more-menu a{color:#36506c}
+@media(max-width:1100px){.nav{gap:14px;margin-left:20px}.theme-picker{margin-right:6px}.theme-picker span{display:none}}
+@media(max-width:768px){
+  .nav{gap:0;align-items:stretch;margin-left:0}
+  .nav-more{position:static}
+  .nav-more summary{padding:16px 32px}
+  .nav-more-menu{position:static;box-shadow:none;border:0;padding:3px 0 8px 24px;min-width:0;border-radius:0;background:var(--glass-bg)}
+  .nav-more-menu a{padding:12px 24px}
+}
+
+/* Ethernet security profile wizard */
+#ethernet-profiles-content{display:grid;gap:16px}
+#ethernet-profiles-content .profiles-create input,
+#ethernet-profiles-content .profiles-create select{width:100%;min-width:0;padding:10px;border-radius:6px;color:var(--starship-steel);border:1px solid var(--glass-border);background:var(--theme-input)}
+:root[data-theme="cloud"] #ethernet-profiles-content .profiles-create input,
+:root[data-theme="cloud"] #ethernet-profiles-content .profiles-create select{color:#1e2d43;background:#fff;border-color:#bfcfe0}
+
+/* Readable diagnostic logs in Cloud Light instead of grey haze and red noise. */
+:root[data-theme="cloud"] .log-viewer {
+  background:#f8fafd!important;
+  color:#304158!important;
+  border:1px solid #dce5f0;
+  box-shadow:inset 0 1px 3px rgba(35,65,98,.025);
+  padding:10px 12px;
+  line-height:1.55;
+}
+:root[data-theme="cloud"] .log-line{
+  color:#374a64;
+  padding:5px 9px;
+  margin:0;
+  border-bottom:1px solid #edf1f6;
+  overflow-wrap:anywhere;
+  word-break:normal;
+}
+:root[data-theme="cloud"] .log-line:nth-child(even){background:#f1f5fa}
+:root[data-theme="cloud"] .log-line.error{
+  color:#9b3340;
+  background:#fff7f7;
+  border-left:3px solid #d86b76;
+}
+:root[data-theme="cloud"] .log-line.warn{
+  color:#8b5b14;
+  background:#fffbf1;
+  border-left:3px solid #e5b75d;
+}
+:root[data-theme="cloud"] .log-line:first-child{border-top-left-radius:5px;border-top-right-radius:5px}
+:root[data-theme="cloud"] .log-line:last-child{border-bottom:0;border-bottom-left-radius:5px;border-bottom-right-radius:5px}
+
+/* Native OpenWrt 25.12+ APK package administration */
+.package-toolbar{
+  display:flex;flex-wrap:wrap;gap:10px;align-items:end;
+  padding:14px 0 20px;margin-bottom:12px;border-bottom:1px solid var(--glass-border);
+}
+.package-toolbar label{display:flex;flex:1 1 230px;flex-direction:column;gap:8px;color:var(--steel-muted);font-size:12px}
+.package-toolbar input{width:100%;min-width:0;background:var(--theme-input);color:var(--starship-steel);border:1px solid var(--glass-border);border-radius:6px;padding:10px}
+.package-search-results{
+  white-space:pre-wrap;overflow-wrap:anywhere;width:100%;max-height:220px;overflow:auto;
+  border:1px solid var(--glass-border);border-radius:8px;padding:13px;
+  background:var(--theme-input);color:var(--starship-steel);font-size:12px;
+}
+.package-search-results[hidden]{display:none}
+:root[data-theme="cloud"] .package-toolbar input,
+:root[data-theme="cloud"] .package-search-results{background:#fff;color:#213551;border-color:#cbd9e8}

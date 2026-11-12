@@ -24,11 +24,7 @@
 					<form id="login-form">
 						<input type="text" id="username" placeholder="Username" autocomplete="username" />
 						<input type="password" id="password" placeholder="Password" autocomplete="current-password" />
-						<label class="remember-label">
-							<input type="checkbox" id="remember-me" class="custom-checkbox" />
-							<span class="checkbox-custom"></span>
-							<span>Remember credentials</span>
-						</label>
+
 						<button type="submit">LOGIN</button>
 						<div id="login-error" class="error"></div>
 					</form>
@@ -73,16 +69,49 @@
 					<button class="menu-toggle" aria-label="Toggle menu" aria-expanded="false">
 						<span></span><span></span><span></span>
 					</button>
-					<nav class="nav">
+					<nav class="nav" aria-label="Main navigation">
 						<a href="#/dashboard" class="active">DASHBOARD</a>
 						<a href="#/network">NETWORK</a>
+						<a href="#/profiles">SECURITY</a>
 						<a href="#/system">SYSTEM</a>
-						<a href="#/addons" data-feature="addons">ADD-ONS</a>
+						<details class="nav-more">
+							<summary>MORE</summary>
+							<div class="nav-more-menu">
+								<a href="#/schedules">WI-FI SCHEDULES</a>
+								<a href="#/ethernet-profiles">ETHERNET PROFILES</a>
+								<a href="#/wifi-profiles">WI-FI PASSWORDS</a>
+								<a href="#/vpn-policies">VPN POLICIES</a>
+								<a href="#/advanced">ADVANCED OPENWRT</a>
+								<a href="#/addons" data-feature="addons">ADD-ONS</a>
+							</div>
+						</details>
 					</nav>
+					<label class="theme-picker" for="moci-theme-select">
+						<span>THEME</span>
+						<select id="moci-theme-select" aria-label="Appearance theme">
+							<option value="obsidian">Obsidian Dark</option>
+							<option value="cloud">Cloud Light</option>
+							<option value="ocean">Ocean Blue</option>
+							<option value="terminal">Terminal Green</option>
+							<option value="amethyst">Amethyst</option>
+							<option value="copper">Graphite Copper</option>
+						</select>
+					</label>
+					<button id="moci-help-toggle" class="moci-help-button" type="button" aria-expanded="false" aria-controls="moci-help-panel">HELP</button>
 					<button id="logout-btn" class="logout-btn">LOGOUT</button>
 				</header>
 
 				<main class="content">
+					<aside id="moci-help-panel" class="moci-help-panel hidden" aria-label="Contextual router help">
+						<div class="moci-help-heading">
+							<h3 id="moci-help-title">Help</h3>
+							<button type="button" id="moci-help-close" aria-label="Close help">CLOSE</button>
+						</div>
+						<p id="moci-help-description"></p>
+						<ul id="moci-help-topics"></ul>
+						<a id="moci-help-reference" href="https://openwrt.org/docs/start" target="_blank" rel="noopener noreferrer">OpenWrt documentation</a>
+					</aside>
+
 					<div id="dashboard-page" class="page">
 						<div class="hero-card" id="wan-status-hero">
 							<div class="hero-status">
@@ -183,6 +212,33 @@
 								<div class="log-line">Loading system logs...</div>
 							</div>
 						</div>
+					</div>
+
+					<div id="vpn-policies-page" class="page hidden">
+						<h2>VPN ROUTING POLICIES</h2>
+						<div id="vpn-policies-content" aria-live="polite"></div>
+					</div>
+					<div id="ethernet-profiles-page" class="page hidden">
+						<h2>ETHERNET SECURITY PROFILES</h2>
+						<div id="ethernet-profiles-content" aria-live="polite"></div>
+					</div>
+					<div id="wifi-profiles-page" class="page hidden">
+						<h2>WI-FI PASSWORD PROFILES</h2>
+						<div id="wifi-profiles-content" aria-live="polite"></div>
+					</div>
+					<div id="schedules-page" class="page hidden">
+						<h2>WI-FI SCHEDULES</h2>
+						<div id="schedules-content" aria-live="polite"></div>
+					</div>
+					<div id="profiles-page" class="page hidden">
+						<h2>SECURITY PROFILES</h2>
+						<div id="profiles-content" aria-live="polite"></div>
+					</div>
+					<div id="advanced-page" class="page hidden">
+						<h2>ADVANCED OPENWRT</h2>
+						<p class="advanced-intro">Native configuration for installed OpenWrt services, failover, routing, monitoring and security.</p>
+						<nav id="advanced-links" class="advanced-nav" aria-label="Advanced functions"></nav>
+						<div id="advanced-content" class="advanced-content" aria-live="polite"></div>
 					</div>
 
 					<div id="network-page" class="page hidden">

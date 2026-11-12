@@ -1,0 +1,25 @@
+#!/bin/sh
+# First boot: enable authenticated JSON-RPC over HTTPS without WAN exposure.
+# Keep HTTP as a recovery route only if certificate creation fails.
+set -eu
+uci -q get uhttpd.main >/dev/null 2>&1 || exit 0
+uci -q set uhttpd.main.ubus_prefix='/ubus'
+if [ ! -s /etc/uhttpd.key ] || [ ! -s /etc/uhttpd.crt ]; then
+  if [ -x /usr/bin/openssl ]; then
+    host=$(uci -q get system.@system[0].hostname || echo moci-router)
+    lan=$(uci -q get network.lan.ipaddr || echo 192.168.50.1)
+    case "$lan" in *[!0-9.]*|'') lan=192.168.50.1 ;; esac
+    umask 077
+    /usr/bin/openssl req -x509 -newkey rsa:3072 -nodes -sha256 -days 730 \
+      -subj "/CN=$host" -addext "subjectAltName=IP:$lan,DNS:$host" \
+      -keyout /etc/uhttpd.key -out /etc/uhttpd.crt >/dev/null 2>&1 || :
+  fi
+fi
+if [ -s /etc/uhttpd.key ] && [ -s /etc/uhttpd.crt ]; then
+  chmod 600 /etc/uhttpd.key
+  uci -q set uhttpd.main.redirect_https='1'
+else
+  logger -t moci 'TLS certificate unavailable: leaving HTTP accessible for recovery'
+fi
+uci -q commit uhttpd
+exit 0

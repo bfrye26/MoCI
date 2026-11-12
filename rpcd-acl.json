@@ -1,83 +1,273 @@
 {
-	"moci": {
-		"description": "ACL permissions for MoCI OpenWrt interface",
-		"read": {
-			"file": {
-				"/usr/lib/opkg/status": ["read"],
-				"/var/lib/opkg/status": ["read"],
-				"/proc/net/dev": ["read"],
-				"/proc/net/arp": ["read"],
-				"/proc/stat": ["read"],
-				"/etc/crontabs/root": ["read"],
-				"/etc/dropbear/authorized_keys": ["read"],
-				"/etc/hosts": ["read"],
-				"/tmp/firmware.bin": ["read"],
-				"/tmp/backup.tar.gz": ["read"],
-				"/usr/libexec/moci-pkg-call list-present": ["exec"],
-				"/usr/libexec/moci-pkg-call list-installed": ["exec"],
-				"/usr/libexec/moci-pkg-call list-available": ["exec"],
-				"/usr/libexec/moci-pkg-call inspect *": ["exec"],
-				"/usr/libexec/moci-pkg-call feeds": ["exec"],
-				"/sbin/logread": ["exec"],
-				"/bin/dmesg": ["exec"],
-				"/bin/ping": ["exec"],
-				"/bin/ping6": ["exec"],
-				"/usr/bin/traceroute": ["exec"],
-				"/usr/bin/traceroute6": ["exec"],
-				"/usr/bin/nslookup": ["exec"],
-				"/bin/df -h": ["exec"]
-			},
-			"ubus": {
-				"network.interface": ["dump"],
-				"network.wireless": ["status"],
-				"uci": ["get"],
-				"file": ["read"],
-				"system": ["info", "board"],
-				"moci": ["getDHCPLeases", "getPorts", "getBridges"],
-				"service": ["list"]
-			},
-			"uci": ["moci"]
-		},
-		"write": {
-			"file": {
-				"/usr/libexec/moci-pkg-call install *": ["exec"],
-				"/usr/libexec/moci-pkg-call remove *": ["exec"],
-				"/usr/libexec/moci-pkg-call update": ["exec"],
-				"/usr/libexec/moci-pkg-call feed-add *": ["exec"],
-				"/usr/libexec/moci-pkg-call feed-remove *": ["exec"],
-				"/usr/bin/etherwake": ["exec"],
-				"/etc/hosts": ["write"],
-				"/etc/crontabs/root": ["write"],
-				"/etc/dropbear/authorized_keys": ["write"],
-				"/tmp/firmware.bin": ["write"],
-				"/etc/init.d/* reload": ["exec"],
-				"/etc/init.d/* start": ["exec"],
-				"/etc/init.d/* stop": ["exec"],
-				"/sbin/sysupgrade --create-backup /tmp/backup.tar.gz": ["exec"],
-				"/sbin/sysupgrade --test /tmp/firmware.bin": ["exec"],
-				"/sbin/sysupgrade /tmp/firmware.bin": ["exec"],
-				"/sbin/sysupgrade -n /tmp/firmware.bin": ["exec"],
-				"/sbin/firstboot -y": ["exec"],
-				"/bin/rm -f /tmp/backup.tar.gz": ["exec"],
-				"/bin/rm -f /tmp/firmware.bin": ["exec"]
-			},
-			"ubus": {
-				"uci": ["set", "add", "delete", "commit"],
-				"file": ["write", "exec"],
-				"system": ["reboot"],
-				"network.interface": ["up", "down"],
-				"moci": ["setPassword", "wgGenKey"]
-			},
-			"uci": [
-				"network",
-				"wireless",
-				"firewall",
-				"dhcp",
-				"system",
-				"qos",
-				"ddns",
-				"moci"
-			]
-		}
-	}
+  "moci": {
+    "description": "ACL permissions for MoCI OpenWrt interface",
+    "read": {
+      "file": {
+        "/usr/lib/opkg/status": [
+          "read"
+        ],
+        "/var/lib/opkg/status": [
+          "read"
+        ],
+        "/proc/net/dev": [
+          "read"
+        ],
+        "/proc/net/arp": [
+          "read"
+        ],
+        "/proc/stat": [
+          "read"
+        ],
+        "/etc/crontabs/root": [
+          "read"
+        ],
+        "/etc/dropbear/authorized_keys": [
+          "read"
+        ],
+        "/etc/hosts": [
+          "read"
+        ],
+        "/tmp/firmware.bin": [
+          "read"
+        ],
+        "/tmp/backup.tar.gz": [
+          "read"
+        ],
+        "/usr/libexec/moci-pkg-call list-present": [
+          "exec"
+        ],
+        "/usr/libexec/moci-pkg-call list-installed": [
+          "exec"
+        ],
+        "/usr/libexec/moci-pkg-call list-available": [
+          "exec"
+        ],
+        "/usr/libexec/moci-pkg-call inspect *": [
+          "exec"
+        ],
+        "/usr/libexec/moci-pkg-call feeds": [
+          "exec"
+        ],
+        "/sbin/logread": [
+          "exec"
+        ],
+        "/bin/dmesg": [
+          "exec"
+        ],
+        "/bin/ping": [
+          "exec"
+        ],
+        "/bin/ping6": [
+          "exec"
+        ],
+        "/usr/bin/traceroute": [
+          "exec"
+        ],
+        "/usr/bin/traceroute6": [
+          "exec"
+        ],
+        "/usr/bin/nslookup": [
+          "exec"
+        ],
+        "/bin/df -h": [
+          "exec"
+        ],
+        "/usr/libexec/moci-pkg-call list-all-installed": [
+          "exec"
+        ],
+        "/usr/libexec/moci-pkg-call search-general *": [
+          "exec"
+        ]
+      },
+      "ubus": {
+        "network.interface": [
+          "dump"
+        ],
+        "network.wireless": [
+          "status"
+        ],
+        "uci": [
+          "get",
+          "configs"
+        ],
+        "file": [
+          "read"
+        ],
+        "system": [
+          "info",
+          "board"
+        ],
+        "moci": [
+          "getDHCPLeases",
+          "getPorts",
+          "getBridges"
+        ],
+        "service": [
+          "list"
+        ]
+      },
+      "uci": [
+        "moci",
+        "network",
+        "wireless",
+        "firewall",
+        "dhcp",
+        "system",
+        "mwan3",
+        "pbr",
+        "banip",
+        "acme",
+        "dropbear",
+        "uhttpd",
+        "lldpd",
+        "sqm",
+        "ddns",
+        "nlbwmon",
+        "luci_statistics",
+        "collectd",
+        "snmpd",
+        "nut",
+        "samba4",
+        "fstab",
+        "rpcd",
+        "moci_wifi_schedule",
+        "smartdns",
+        "watchcat",
+        "vnstat",
+        "irqbalance",
+        "openvpn",
+        "unbound",
+        "https-dns-proxy"
+      ]
+    },
+    "write": {
+      "file": {
+        "/usr/libexec/moci-pkg-call install *": [
+          "exec"
+        ],
+        "/usr/libexec/moci-pkg-call remove *": [
+          "exec"
+        ],
+        "/usr/libexec/moci-pkg-call update": [
+          "exec"
+        ],
+        "/usr/libexec/moci-pkg-call feed-add *": [
+          "exec"
+        ],
+        "/usr/libexec/moci-pkg-call feed-remove *": [
+          "exec"
+        ],
+        "/usr/bin/etherwake": [
+          "exec"
+        ],
+        "/etc/hosts": [
+          "write"
+        ],
+        "/etc/crontabs/root": [
+          "write"
+        ],
+        "/etc/dropbear/authorized_keys": [
+          "write"
+        ],
+        "/tmp/firmware.bin": [
+          "write"
+        ],
+        "/etc/init.d/* reload": [
+          "exec"
+        ],
+        "/etc/init.d/* start": [
+          "exec"
+        ],
+        "/etc/init.d/* stop": [
+          "exec"
+        ],
+        "/sbin/sysupgrade --create-backup /tmp/backup.tar.gz": [
+          "exec"
+        ],
+        "/sbin/sysupgrade --test /tmp/firmware.bin": [
+          "exec"
+        ],
+        "/sbin/sysupgrade /tmp/firmware.bin": [
+          "exec"
+        ],
+        "/sbin/sysupgrade -n /tmp/firmware.bin": [
+          "exec"
+        ],
+        "/sbin/firstboot -y": [
+          "exec"
+        ],
+        "/bin/rm -f /tmp/backup.tar.gz": [
+          "exec"
+        ],
+        "/bin/rm -f /tmp/firmware.bin": [
+          "exec"
+        ],
+        "/usr/libexec/moci-pkg-call install-general *": [
+          "exec"
+        ],
+        "/usr/libexec/moci-pkg-call remove-general *": [
+          "exec"
+        ]
+      },
+      "ubus": {
+        "uci": [
+          "set",
+          "add",
+          "delete",
+          "commit",
+          "apply",
+          "confirm"
+        ],
+        "file": [
+          "write",
+          "exec"
+        ],
+        "system": [
+          "reboot"
+        ],
+        "network.interface": [
+          "up",
+          "down"
+        ],
+        "moci": [
+          "setPassword",
+          "wgGenKey"
+        ]
+      },
+      "uci": [
+        "network",
+        "wireless",
+        "firewall",
+        "dhcp",
+        "system",
+        "qos",
+        "ddns",
+        "moci",
+        "mwan3",
+        "pbr",
+        "banip",
+        "acme",
+        "dropbear",
+        "uhttpd",
+        "lldpd",
+        "sqm",
+        "nlbwmon",
+        "luci_statistics",
+        "collectd",
+        "snmpd",
+        "nut",
+        "samba4",
+        "fstab",
+        "rpcd",
+        "moci_wifi_schedule",
+        "smartdns",
+        "watchcat",
+        "vnstat",
+        "irqbalance",
+        "openvpn",
+        "unbound",
+        "https-dns-proxy"
+      ]
+    }
+  }
 }

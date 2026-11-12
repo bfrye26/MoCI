@@ -1,6 +1,9 @@
 export class OpenWrtCore {
 	constructor() {
-		this.sessionId = localStorage.getItem('ubus_session');
+		this.sessionId = sessionStorage.getItem('ubus_session');
+		// Remove legacy persisted credentials and tokens on load.
+		localStorage.removeItem('saved_credentials');
+		localStorage.removeItem('ubus_session');
 		this.features = {};
 		this.modules = new Map();
 		this.routes = new Map();
@@ -9,6 +12,37 @@ export class OpenWrtCore {
 		this.addons = new Map();
 		this.addonManifests = new Map();
 		this.addonRouteMap = new Map();
+		this.helpOpen = false;
+		this.appearanceThemes = new Set(['obsidian', 'cloud', 'ocean', 'terminal', 'amethyst', 'copper']);
+		this.applyTheme(this.getSavedTheme());
+	}
+
+	getSavedTheme() {
+		try {
+			const stored = localStorage.getItem('moci_appearance_theme');
+			return this.appearanceThemes.has(stored) ? stored : 'obsidian';
+		} catch {
+			return 'obsidian';
+		}
+	}
+
+	applyTheme(theme) {
+		const next = this.appearanceThemes.has(theme) ? theme : 'obsidian';
+		document.documentElement.dataset.theme = next;
+		document.documentElement.style.colorScheme = next === 'cloud' ? 'light' : 'dark';
+		const select = document.getElementById('moci-theme-select');
+		if (select) select.value = next;
+		const meta = document.querySelector('meta[name="theme-color"]');
+		if (meta) meta.content = ({
+			obsidian: '#0b0d12', cloud: '#f5f7fa', ocean: '#09192f',
+			terminal: '#10191a', amethyst: '#171321', copper: '#121519'
+		})[next];
+		return next;
+	}
+
+	setTheme(theme) {
+		const next = this.applyTheme(theme);
+		try { localStorage.setItem('moci_appearance_theme', next); } catch {}
 	}
 
 	registerRoute(path, handler) {
@@ -24,6 +58,12 @@ export class OpenWrtCore {
 			dashboard: 'dashboard',
 			network: 'network',
 			system: 'system',
+			advanced: 'advanced',
+			profiles: 'profiles',
+			schedules: 'schedules',
+			'wifi-profiles': 'wifi-profiles',
+			'ethernet-profiles': 'ethernet-profiles',
+			'vpn-policies': 'vpn-policies',
 			addons: 'addons'
 		};
 		if (routeModuleMap[basePath]) return routeModuleMap[basePath];
@@ -34,6 +74,7 @@ export class OpenWrtCore {
 
 	async handleRouteChange() {
 		if (!this.sessionId) return;
+		this.refreshHelp();
 
 		const hash = window.location.hash.slice(1) || '/dashboard';
 		const [basePath, ...subPaths] = hash.split('/').filter(Boolean);
@@ -46,6 +87,11 @@ export class OpenWrtCore {
 			document.querySelector(`.nav a[href="#/${basePath}"]`) ||
 			document.querySelector(`.nav a[data-addon][href^="#/${basePath}"]`);
 		if (activeLink) activeLink.classList.add('active');
+		const moreMenu=document.querySelector('.nav-more');
+		if(moreMenu){
+			moreMenu.classList.toggle('active',!!activeLink&&moreMenu.contains(activeLink));
+			moreMenu.open=false;
+		}
 
 		if (basePath === 'dashboard') {
 			this.startPolling();
@@ -109,12 +155,7 @@ export class OpenWrtCore {
 			}
 		}
 
-		const savedCreds = this.getSavedCredentials();
-		if (savedCreds) {
-			await this.autoLogin(savedCreds.username, savedCreds.password);
-		} else {
-			this.showLoginView();
-		}
+		this.showLoginView();
 	}
 
 	async loadFeatures() {
@@ -165,6 +206,12 @@ export class OpenWrtCore {
 			dashboard: './modules/dashboard.js',
 			network: './modules/network.js',
 			system: './modules/system.js',
+			advanced: './modules/advanced.js',
+			profiles: './modules/profiles.js',
+			schedules: './modules/wifi-schedules.js',
+			'wifi-profiles': './modules/wifi-profiles.js',
+			'ethernet-profiles': './modules/ethernet-profiles.js',
+			'vpn-policies': './modules/vpn-policies.js',
 			addons: './modules/addons.js'
 		};
 	}
@@ -203,6 +250,12 @@ export class OpenWrtCore {
 			dashboard: ['dashboard'],
 			network: ['network', 'wireless', 'firewall', 'dhcp', 'dns', 'diagnostics', 'wireguard', 'qos', 'ddns'],
 			system: ['system', 'backup', 'packages', 'services', 'ssh_keys', 'storage', 'leds', 'firmware'],
+			advanced: ['system'],
+			profiles: ['firewall'],
+			schedules: ['wireless'],
+			'wifi-profiles': ['wireless'],
+			'ethernet-profiles': ['network'],
+			'vpn-policies': ['wireguard'],
 			addons: ['addons']
 		};
 
@@ -226,8 +279,69 @@ export class OpenWrtCore {
 		}
 	}
 
+	getHelpContent() {
+		const hash=(window.location.hash||'#/dashboard').slice(2).split('/');
+		const section=hash[0]||'dashboard';
+		const tab=hash[1]||'';
+		const topics={
+			dashboard:['Network health','The dashboard shows router CPU, memory and interface activity. WAN availability depends on a working upstream default route.','Check WAN routes and DNS when online status disagrees with real connectivity.','Avoid exposing the administration interface directly to the WAN.'],
+			network:['Network & firewall','Interfaces, device bridges, DHCP, DNS, firewall zones and VPNs all change how traffic crosses your router.','Keep one known-good management address before editing a LAN bridge or VLAN.','Back up settings before changing DHCP, routing or firewall.'],
+			system:['System administration','Manage the router clock, services, packages, SSH, backups, firmware upgrades and storage.','Create a backup before upgrading firmware or modifying storage.','Use a trusted source for packages and verify that the release matches your architecture.'],
+			addons:['Add-ons','MoCI add-ons extend the interface and can request sensitive access to OpenWrt configuration and services.','Review package permissions and origins before installation.','Remove add-ons you no longer use.'],
+			docker:['Docker Applications','Applications runs on Docker Engine. The Docker daemon and management socket have root-equivalent privileges.','Use reviewed images and separate persistent data volumes from the firmware filesystem.','Avoid publishing container administration ports directly onto the WAN.'],
+			advanced:['Advanced OpenWrt','The Advanced workspace edits service-specific OpenWrt UCI sections. Connectivity-sensitive edits should use rollback/confirmation.','A service may require restarting to activate a committed setting.','Device and protocol-specific options are not always interchangeable.']
+		};
+		const [title,description,...items]=topics[section]||topics.advanced;
+		const hints={
+			interfaces:'Interfaces bind IP addresses to devices, bridges and routing protocols.',
+			firewall:'Firewall zones control forwarding, masquerading and traffic rules.',
+			wireless:'Wireless isolation and per-SSID credentials depend on driver and hostapd support.',
+			vpn:'WireGuard tunnels need appropriate addresses, keys, allowed IPs and routes.',
+			dhcp:'DHCP leases and reservations must not conflict with statically configured addresses.',
+			dns:'DNS forwarding affects name resolution and privacy for LAN clients.',
+			mounts:'Use persistent filesystems for Docker volumes and shared data.',
+			upgrade:'Verify firmware checksums and preserve a recovery image.'
+		};
+		if(tab&&hints[tab])items.unshift(hints[tab]);
+		return {title:section.charAt(0).toUpperCase()+section.slice(1)+' help',description,items};
+	}
+	refreshHelp() {
+		if(!this.helpOpen)return;
+		const details=this.getHelpContent();
+		const title=document.getElementById('moci-help-title');
+		const description=document.getElementById('moci-help-description');
+		const list=document.getElementById('moci-help-topics');
+		if(title)title.textContent=details.title;
+		if(description)description.textContent=details.description;
+		if(list) {
+			list.replaceChildren();
+			for(const item of details.items) {
+				const li=document.createElement('li');
+				li.textContent=item;
+				list.appendChild(li);
+			}
+		}
+	}
+	setHelpOpen(open) {
+		this.helpOpen=Boolean(open);
+		const panel=document.getElementById('moci-help-panel');
+		const toggle=document.getElementById('moci-help-toggle');
+		panel?.classList.toggle('hidden',!this.helpOpen);
+		if(toggle)toggle.setAttribute('aria-expanded',String(this.helpOpen));
+		this.refreshHelp();
+	}
 	attachEventListeners() {
 		document.getElementById('logout-btn')?.addEventListener('click', () => this.logout());
+		document.getElementById('moci-help-toggle')?.addEventListener('click', () => this.setHelpOpen(!this.helpOpen));
+		document.getElementById('moci-help-close')?.addEventListener('click', () => this.setHelpOpen(false));
+		document.addEventListener('click', event=>{
+			const menu=document.querySelector('.nav-more');
+			if(menu?.open&&!menu.contains(event.target))menu.open=false;
+		});
+		this.applyTheme(this.getSavedTheme());
+		document.getElementById('moci-theme-select')?.addEventListener('change', event => {
+			this.setTheme(event.target.value);
+		});
 
 		const menuToggle = document.querySelector('.menu-toggle');
 		const nav = document.querySelector('.nav');
@@ -277,34 +391,7 @@ export class OpenWrtCore {
 		}
 	}
 
-	getSavedCredentials() {
-		try {
-			const saved = localStorage.getItem('saved_credentials');
-			return saved ? JSON.parse(saved) : null;
-		} catch {
-			return null;
-		}
-	}
-
-	saveCredentials(username, password) {
-		localStorage.setItem('saved_credentials', JSON.stringify({ username, password }));
-	}
-
-	clearSavedCredentials() {
-		localStorage.removeItem('saved_credentials');
-	}
-
-	async autoLogin(username, password) {
-		try {
-			await this.login(username, password, true);
-		} catch (err) {
-			console.error('Auto-login failed:', err);
-			this.clearSavedCredentials();
-			this.showLoginView();
-		}
-	}
-
-	async login(username, password, rememberMe = false) {
+	async login(username, password) {
 		const response = await fetch('/ubus', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
@@ -328,11 +415,7 @@ export class OpenWrtCore {
 
 		if (data.result && data.result[1] && data.result[1].ubus_rpc_session) {
 			this.sessionId = data.result[1].ubus_rpc_session;
-			localStorage.setItem('ubus_session', this.sessionId);
-
-			if (rememberMe) {
-				this.saveCredentials(username, password);
-			}
+			sessionStorage.setItem('ubus_session', this.sessionId);
 
 			await this.initSession();
 		} else {
@@ -355,8 +438,7 @@ export class OpenWrtCore {
 		} catch {}
 
 		this.stopPolling();
-		localStorage.removeItem('ubus_session');
-		this.clearSavedCredentials();
+		sessionStorage.removeItem('ubus_session');
 		this.sessionId = null;
 		this.showLoginView();
 	}
@@ -367,16 +449,14 @@ export class OpenWrtCore {
 		document.getElementById('main-view').classList.add('hidden');
 
 		const loginForm = document.getElementById('login-form');
-		const rememberCheckbox = document.getElementById('remember-me');
 
 		loginForm.onsubmit = async e => {
 			e.preventDefault();
 			const username = document.getElementById('username').value;
 			const password = document.getElementById('password').value;
-			const rememberMe = rememberCheckbox?.checked || false;
 
 			try {
-				await this.login(username, password, rememberMe);
+				await this.login(username, password);
 			} catch (err) {
 				console.error('Login error:', err);
 				this.showToast('Login failed: ' + err.message, 'error');
@@ -526,10 +606,12 @@ export class OpenWrtCore {
 	}
 
 	formatMemory(mem) {
-		const total = (mem.total / 1024 / 1024).toFixed(0);
-		const free = (mem.free / 1024 / 1024).toFixed(0);
-		const used = total - free;
-		const percent = ((used / total) * 100).toFixed(0);
+		const totalBytes = Math.max(1,Number(mem.total)||1);
+		// "available" excludes reclaimable cache; free alone exaggerates RAM pressure.
+		const availableBytes = Math.max(0,Math.min(totalBytes,Number(mem.available ?? mem.free ?? 0)));
+		const total = Math.round(totalBytes / 1024 / 1024);
+		const used = Math.round((totalBytes - availableBytes) / 1024 / 1024);
+		const percent = Math.round((1 - availableBytes / totalBytes) * 100);
 		return `${used}MB / ${total}MB (${percent}%)`;
 	}
 

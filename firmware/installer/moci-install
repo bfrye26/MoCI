@@ -1,0 +1,279 @@
+#!/usr/bin/env bash
+# MoCI guided UEFI installer. Keep this file compatible with Debian Bookworm bash.
+set -Eeuo pipefail
+umask 077
+IMAGE=${MOCI_IMAGE:-/opt/moci/firmware.img.gz}
+CHECKSUM=${MOCI_CHECKSUM:-/opt/moci/firmware.sha256}
+ROOT=/mnt/moci-install
+LOG=/tmp/moci-installer.log
+TARGET=''; WAN=''; LAN=''; HOSTNAME='moci-router'; LAN_IP='192.168.50.1'
+PASSWORD_HASH=''; WRITTEN_DISK=''; ROOT_PART=''; LAST_ERROR=''
+
+action() { whiptail --title 'MoCI installer' "$@" 3>&1 1>&2 2>&3; }
+message() { whiptail --title 'MoCI installer' --msgbox "$1" 14 78 || :; }
+record() { printf '[%s] %s\n' "$(date -Is)" "$*" >> "$LOG"; }
+problem() { LAST_ERROR=$1; record "ERROR: $1"; return 1; }
+cleanup() { if mountpoint -q "$ROOT"; then umount "$ROOT" || :; fi; }
+trap cleanup EXIT
+if (( EUID != 0 )); then echo 'Run the installer as root using sudo.' >&2; exit 1; fi
+for dep in whiptail lsblk blkid sha256sum gzip dd sgdisk parted partprobe udevadm e2fsck resize2fs openssl awk findmnt blockdev mount umount mountpoint; do
+  command -v "$dep" >/dev/null || { echo "Missing required program: $dep" >&2; exit 1; }
+done
+: > "$LOG"
+[[ -s "$IMAGE" && -s "$CHECKSUM" ]] || { message 'Installer image or checksum is missing.'; exit 1; }
+(cd "$(dirname "$CHECKSUM")" && sha256sum -c "$(basename "$CHECKSUM")") >> "$LOG" 2>&1 || { message 'Bundled firmware image failed checksum verification.'; exit 1; }
+
+LIVE_SOURCE=$(findmnt -n -o SOURCE /run/live/medium 2>/dev/null || true)
+LIVE_DISK=''
+if [[ "$LIVE_SOURCE" == /dev/* ]]; then
+  parent=$(lsblk -nro PKNAME "$LIVE_SOURCE" | head -n1 || true)
+  [[ -z "$parent" ]] || LIVE_DISK="/dev/$parent"
+fi
+
+select_disk() {
+  local dev typ bytes desc selection
+  local -a disks=()
+  while read -r dev typ; do
+    [[ "$typ" == disk && "$dev" != "$LIVE_DISK" ]] || continue
+    bytes=$(blockdev --getsize64 "$dev" 2>/dev/null || echo 0)
+    ((bytes >= 17179869184)) || continue
+    desc=$(lsblk -dn -o SIZE,MODEL "$dev" | xargs)
+    disks+=("$dev" "${desc:-Disk}")
+  done < <(lsblk -dnpo NAME,TYPE)
+  ((${#disks[@]})) || { message 'No eligible disk (16 GB or larger) was detected.'; return 1; }
+  selection=$(action --menu 'Select DESTINATION disk. This disk will be ERASED.' 21 82 12 "${disks[@]}") || return 0
+  [[ -b "$selection" && "$(lsblk -dn -o TYPE "$selection")" == disk && "$selection" != "$LIVE_DISK" ]] || { message 'Invalid disk selected.'; return 1; }
+  if [[ "$selection" != "$TARGET" ]]; then WRITTEN_DISK=''; ROOT_PART=''; fi
+  TARGET=$selection
+}
+
+select_network() {
+  local nic mac wan lan
+  local -a nics=()
+  for link in /sys/class/net/*; do
+    nic=${link##*/}
+    [[ "$nic" != lo && -r "$link/address" ]] || continue
+    mac=$(<"$link/address")
+    [[ "$mac" =~ ^([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}$ ]] || continue
+    nics+=("$nic" "$mac")
+  done
+  ((${#nics[@]} >= 4)) || { message 'Two Ethernet interfaces are required. Check the virtual NICs or physical ports.'; return 1; }
+  wan=$(action --menu 'Choose WAN/uplink interface:' 20 78 12 "${nics[@]}") || return 0
+  lan=$(action --menu 'Choose LAN/client interface:' 20 78 12 "${nics[@]}") || return 0
+  [[ "$wan" != "$lan" ]] || { message 'WAN and LAN must be different interfaces. Please choose again.'; return 1; }
+  WAN=$wan; LAN=$lan
+}
+
+set_hostname() {
+  local v
+  while v=$(action --inputbox 'Router hostname:' 10 75 "$HOSTNAME"); do
+    if [[ "$v" =~ ^[a-z][a-z0-9-]{0,39}$ && "$v" != *- ]]; then HOSTNAME=$v; return 0; fi
+    message 'Hostname must be lowercase letters, digits or hyphens, start with a letter, and not end in a hyphen.'
+  done
+}
+
+valid_ip() {
+  local a b c d octet
+  [[ "$1" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || return 1
+  IFS=. read -r a b c d <<< "$1"
+  for octet in "$a" "$b" "$c" "$d"; do ((10#$octet <= 255)) || return 1; done
+  ((10#$a > 0 && 10#$a < 224 && 10#$d > 0 && 10#$d < 255))
+}
+
+set_lan_ip() {
+  local v
+  while v=$(action --inputbox 'LAN IPv4 address (255.255.255.0 subnet):' 10 75 "$LAN_IP"); do
+    if valid_ip "$v"; then LAN_IP=$v; return 0; fi
+    message 'Invalid LAN IPv4 host address. Please correct it.'
+  done
+}
+
+set_password() {
+  local pw verify
+  while pw=$(action --passwordbox 'Administrator password (any nonempty password accepted; 12+ recommended):' 11 78); do
+    if [[ -z "$pw" ]]; then message 'Password cannot be empty. Choose another password.'; continue; fi
+    if ((${#pw} < 12)); then
+      action --yesno 'This password is shorter than 12 characters. A longer password is strongly recommended. Use it anyway?' 12 78 || continue
+    fi
+    verify=$(action --passwordbox 'Confirm administrator password:' 10 76) || { unset pw; return 0; }
+    if [[ "$pw" != "$verify" ]]; then
+      message 'Passwords did not match. Please try again.'; unset pw verify; continue
+    fi
+    PASSWORD_HASH=$(printf '%s\n' "$pw" | openssl passwd -6 -stdin)
+    unset pw verify
+    return 0
+  done
+  return 0
+}
+
+preflight() {
+  [[ -n "$TARGET" && -b "$TARGET" && "$(lsblk -dn -o TYPE "$TARGET")" == disk && "$TARGET" != "$LIVE_DISK" ]] || problem 'Select a valid destination disk.' || return 1
+  [[ -n "$WAN" && -n "$LAN" && "$WAN" != "$LAN" ]] || problem 'Choose two different Ethernet interfaces.' || return 1
+  [[ -r "/sys/class/net/$WAN/address" && -r "/sys/class/net/$LAN/address" ]] || problem 'Selected Ethernet interfaces are no longer present.' || return 1
+  [[ -n "$PASSWORD_HASH" ]] || problem 'Choose an administrator password.' || return 1
+  valid_ip "$LAN_IP" || problem 'Choose a valid LAN address.' || return 1
+  local node
+  while read -r node; do
+    [[ -z "$(lsblk -n -o MOUNTPOINTS "$node" | tr -d '[:space:]')" ]] || problem "Destination $node is mounted. Unmount it before installation." || return 1
+  done < <(lsblk -nrpo NAME "$TARGET")
+}
+
+rescan_target() {
+  sync
+  sgdisk -e "$TARGET" >> "$LOG" 2>&1 || record 'Warning: GPT backup relocation failed or was unnecessary.'
+  blockdev --rereadpt "$TARGET" >> "$LOG" 2>&1 || record 'Warning: partition table reread deferred.'
+  partprobe "$TARGET" >> "$LOG" 2>&1 || record 'Warning: partprobe could not refresh the table.'
+  udevadm settle --timeout=20 >> "$LOG" 2>&1 || :
+  lsblk -rpn -o NAME,TYPE,FSTYPE,SIZE "$TARGET" >> "$LOG" 2>&1 || :
+}
+
+locate_root() {
+  local candidate kind fstype tries
+  ROOT_PART=''
+  mkdir -p "$ROOT"
+  for tries in 1 2 3 4 5; do
+    rescan_target
+    while read -r candidate kind; do
+      [[ "$kind" == part ]] || continue
+      fstype=$(blkid -o value -s TYPE "$candidate" 2>/dev/null || true)
+      record "Checking $candidate: detected filesystem '${fstype:-unknown}'"
+      [[ "$fstype" == ext4 ]] || continue
+      # noload prevents recovery changes during read-only filesystem probing.
+      if mount -t ext4 -o ro,noload "$candidate" "$ROOT" >> "$LOG" 2>&1; then
+        if [[ -f "$ROOT/etc/openwrt_release" || ( -f "$ROOT/etc/shadow" && -d "$ROOT/etc/config" ) ]]; then
+          ROOT_PART=$candidate
+        fi
+        umount "$ROOT" >> "$LOG" 2>&1 || return 1
+        [[ -z "$ROOT_PART" ]] || return 0
+      fi
+    done < <(lsblk -nrpo NAME,TYPE "$TARGET")
+    sleep 1
+  done
+  record 'Partition details:'
+  lsblk -f "$TARGET" >> "$LOG" 2>&1 || :
+  blkid >> "$LOG" 2>&1 || :
+  problem 'Could not locate an OpenWrt ext4 root partition. See Diagnostics. The image may have an unexpected partition layout.'
+}
+
+configure_router() {
+  local wan_mac lan_mac hash_tmp partno fs_status
+  wan_mac=$(<"/sys/class/net/$WAN/address")
+  lan_mac=$(<"/sys/class/net/$LAN/address")
+  partno=$(cat "/sys/class/block/${ROOT_PART##*/}/partition" 2>/dev/null) || problem 'Cannot determine root partition number.' || return 1
+  if ! parted -s "$TARGET" "resizepart $partno 100%" >> "$LOG" 2>&1; then problem 'Could not expand the root partition. Check diagnostics.'; return 1; fi
+  rescan_target
+  fs_status=0
+  e2fsck -f -p "$ROOT_PART" >> "$LOG" 2>&1 || fs_status=$?
+  if (( fs_status > 1 )); then problem "Filesystem check failed (code $fs_status)."; return 1; fi
+  if ! resize2fs "$ROOT_PART" >> "$LOG" 2>&1; then problem 'Unable to expand ext4 root filesystem.'; return 1; fi
+  mkdir -p "$ROOT"
+  if ! mount -t ext4 "$ROOT_PART" "$ROOT" >> "$LOG" 2>&1; then problem 'Unable to mount OpenWrt root partition for configuration.'; return 1; fi
+  if [[ ! -f "$ROOT/etc/shadow" ]]; then cleanup; problem 'OpenWrt root filesystem does not contain /etc/shadow.'; return 1; fi
+  hash_tmp="$ROOT/etc/shadow.moci-new"
+  if ! awk -F: -v pw="$PASSWORD_HASH" 'BEGIN {OFS=":"} $1=="root" {$2=pw; found=1} {print} END {if (!found) exit 1}' "$ROOT/etc/shadow" > "$hash_tmp"; then
+    rm -f "$hash_tmp"; cleanup; problem 'Could not update the root account.'; return 1
+  fi
+  chmod 600 "$hash_tmp"
+  mv "$hash_tmp" "$ROOT/etc/shadow"
+  # Use a new local certificate containing the exact selected LAN IPv4 address.
+  # The private key never leaves the installed root filesystem.
+  if [[ ! -s "$ROOT/etc/uhttpd.key" || ! -s "$ROOT/etc/uhttpd.crt" ]]; then
+    umask 077
+    if ! openssl req -x509 -newkey rsa:3072 -nodes -sha256 -days 730 \
+      -subj "/CN=$HOSTNAME" \
+      -addext "subjectAltName=IP:$LAN_IP,DNS:$HOSTNAME" \
+      -keyout "$ROOT/etc/uhttpd.key" -out "$ROOT/etc/uhttpd.crt" >> "$LOG" 2>&1; then
+      cleanup
+      problem 'Unable to generate secure management certificate. Check diagnostics.'
+      return 1
+    fi
+    chmod 600 "$ROOT/etc/uhttpd.key"
+    chmod 644 "$ROOT/etc/uhttpd.crt"
+  fi
+  mkdir -p "$ROOT/etc/uci-defaults"
+  cat > "$ROOT/etc/uci-defaults/95-moci-installer" <<SETUP
+#!/bin/sh
+resolve_nic() {
+  for net in /sys/class/net/*; do
+    [ -r "\$net/address" ] || continue
+    [ "\$(cat "\$net/address")" = "\$1" ] && { basename "\$net"; return 0; }
+  done
+  return 1
+}
+wan=\$(resolve_nic '$wan_mac') || exit 1
+lan=\$(resolve_nic '$lan_mac') || exit 1
+[ "\$wan" != "\$lan" ] || exit 1
+uci -q set system.@system[0].hostname='$HOSTNAME'
+[ "\$(uci -q get network.@device[0].name)" = 'br-lan' ] || exit 1
+uci -q delete network.@device[0].ports
+uci -q add_list network.@device[0].ports="\$lan"
+uci -q set network.lan=interface
+uci -q set network.lan.proto=static
+uci -q set network.lan.device='br-lan'
+uci -q set network.lan.ipaddr='$LAN_IP'
+uci -q set network.lan.netmask='255.255.255.0'
+uci -q set network.wan=interface
+uci -q set network.wan.proto=dhcp
+uci -q set network.wan.device="\$wan"
+uci -q commit network
+uci -q commit system
+exit 0
+SETUP
+  chmod 755 "$ROOT/etc/uci-defaults/95-moci-installer"
+  sync
+  if ! umount "$ROOT" >> "$LOG" 2>&1; then problem 'Could not unmount installed root filesystem.'; return 1; fi
+  return 0
+}
+
+perform_install() {
+  LAST_ERROR=''
+  preflight || return 1
+  local warning
+  if [[ "$WRITTEN_DISK" != "$TARGET" ]]; then
+    warning="ERASE ALL DATA ON $TARGET?\n\nWAN: $WAN\nLAN: $LAN\nHostname: $HOSTNAME\nLAN IP: $LAN_IP\n\nThis operation is destructive and cannot be undone."
+    action --yesno "$warning" 19 80 || return 0
+    record "Writing firmware image to $TARGET"
+    action --infobox "Writing firmware to $TARGET. Please do not power off." 9 70 || :
+    if ! gzip -dc "$IMAGE" | dd of="$TARGET" bs=4M conv=fsync status=none 2>> "$LOG"; then
+      problem 'Firmware write failed. Disk state is unknown. Check diagnostics before retrying.'; return 1
+    fi
+    sync
+    WRITTEN_DISK=$TARGET
+  else
+    action --yesno "Firmware was already written to $TARGET in this session. Retry partition detection and configuration WITHOUT rewriting it?" 12 78 || return 0
+  fi
+  if ! locate_root; then return 1; fi
+  record "Found OpenWrt root: $ROOT_PART"
+  configure_router || return 1
+  WRITTEN_DISK=''
+  message "Installation completed.\n\nRemove the installer ISO, reboot from SSD in UEFI mode and open https://$LAN_IP/moci/\n\nA locally generated certificate requires browser trust approval. Test in a VM first."
+  return 0
+}
+
+message 'Welcome to MoCI x86-64 UEFI Setup. Configure disk, interfaces, hostname, LAN IP and administrator password. You may edit settings before installing. Failures return to this menu, with diagnostics available.'
+while :; do
+  selected=$(action --menu "Destination: ${TARGET:-not selected} | WAN: ${WAN:-unset} | LAN: ${LAN:-unset}\nHostname: $HOSTNAME | LAN IP: $LAN_IP | Password: $([[ -n "$PASSWORD_HASH" ]] && echo set || echo unset)" 23 86 11 \
+    disk 'Select destination disk' \
+    network 'Configure WAN and LAN' \
+    hostname 'Edit router hostname' \
+    address 'Edit LAN IPv4 address' \
+    password 'Set/change administrator password' \
+    install 'Install / resume installation' \
+    diagnostics 'View installation diagnostics' \
+    quit 'Exit installer without further changes') || break
+  case "$selected" in
+    disk) select_disk || : ;;
+    network) select_network || : ;;
+    hostname) set_hostname || : ;;
+    address) set_lan_ip || : ;;
+    password) set_password || : ;;
+    diagnostics) action --textbox "$LOG" 22 92 || : ;;
+    install)
+      if ! perform_install && [[ -n "$LAST_ERROR" ]]; then
+        message "$LAST_ERROR\n\nReturn to setup, open Diagnostics or retry the installation. No automatic disk rewrite will occur on a retry during this session."
+      fi
+      ;;
+    quit) break ;;
+  esac
+done
+exit 0

@@ -33,7 +33,8 @@ export default class DashboardModule {
 		if (uptimeEl) uptimeEl.textContent = this.core.formatUptime(systemInfo.uptime);
 
 		const memTotal = systemInfo.memory.total || 1;
-		const memPercent = (((memTotal - systemInfo.memory.free) / memTotal) * 100).toFixed(0);
+		const available = Number(systemInfo.memory.available ?? systemInfo.memory.free ?? 0);
+		const memPercent = Math.max(0,Math.min(100,((memTotal - available) / memTotal) * 100)).toFixed(0);
 		if (memoryEl) memoryEl.textContent = this.core.formatMemory(systemInfo.memory);
 		if (memoryBarEl) memoryBarEl.style.width = memPercent + '%';
 	}
@@ -52,6 +53,7 @@ export default class DashboardModule {
 			await this.updateSystemLog();
 			await this.updateConnections();
 			this.initBandwidthGraph();
+			this.updateBandwidthGraph();
 			this.renderAddonWidgets();
 		} catch (err) {
 			console.error('Failed to load dashboard:', err);
@@ -302,8 +304,11 @@ export default class DashboardModule {
 		if (!canvas) return;
 		this.bandwidthCanvas = canvas;
 		this.bandwidthCtx = canvas.getContext('2d');
-		canvas.width = canvas.offsetWidth;
-		canvas.height = 200;
+		const dpr=Math.min(window.devicePixelRatio||1,2);
+		const width=Math.max(canvas.offsetWidth,320);
+		canvas.width=Math.round(width*dpr);
+		canvas.height=Math.round(200*dpr);
+		this.bandwidthCtx.setTransform(dpr,0,0,dpr,0,0);
 	}
 
 	drawSeries(data, max, stepX, padding, height, fillColor, strokeColor) {
@@ -335,16 +340,19 @@ export default class DashboardModule {
 		if (!this.bandwidthCtx || !this.bandwidthCanvas) return;
 
 		const ctx = this.bandwidthCtx;
-		const { width, height } = this.bandwidthCanvas;
+		const scale=Math.min(window.devicePixelRatio||1,2);
+		const width=this.bandwidthCanvas.width/scale;
+		const height=this.bandwidthCanvas.height/scale;
 		const padding = 20;
 		const downData = this.bandwidthHistory.down;
 		const upData = this.bandwidthHistory.up;
 
-		if (downData.length < 2) return;
-
 		ctx.clearRect(0, 0, width, height);
 
-		ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+		const vars=getComputedStyle(document.documentElement);
+		const accent=vars.getPropertyValue('--primary-accent').trim()||'#b8c4dc';
+		const secondary=vars.getPropertyValue('--secondary-accent').trim()||'#a5b4cb';
+		ctx.strokeStyle=vars.getPropertyValue('--glass-border').trim()||'rgba(100,100,100,.14)';
 		ctx.lineWidth = 1;
 		for (let i = 0; i <= 4; i++) {
 			const y = padding + (i * (height - padding * 2)) / 4;
@@ -354,10 +362,15 @@ export default class DashboardModule {
 			ctx.stroke();
 		}
 
+		if(downData.length < 2){
+			ctx.fillStyle=vars.getPropertyValue('--steel-muted').trim()||'#8893a2';
+			ctx.textAlign='center';ctx.font='12px sans-serif';
+			ctx.fillText('Collecting network samples…',width/2,height/2);
+			return;
+		}
 		const max = Math.max(...downData, ...upData, 100);
 		const stepX = (width - padding * 2) / (downData.length - 1);
-
-		this.drawSeries(downData, max, stepX, padding, height, 'rgba(226, 226, 229, 0.15)', 'rgba(226, 226, 229, 0.9)');
-		this.drawSeries(upData, max, stepX, padding, height, 'rgba(226, 226, 229, 0.08)', 'rgba(226, 226, 229, 0.5)');
+		this.drawSeries(downData, max, stepX, padding, height, 'rgba(66,132,205,0.12)', accent);
+		this.drawSeries(upData, max, stepX, padding, height, 'rgba(109,136,174,0.07)', secondary);
 	}
 }

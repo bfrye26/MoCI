@@ -1,0 +1,43 @@
+{
+  "moci-docker-viewer": {
+    "description": "Read Docker inventories through restricted adapter",
+    "read": {
+      "ubus": {
+        "moci-docker": [
+          "status",
+          "containers",
+          "stacks",
+          "images",
+          "volumes",
+          "networks",
+          "storage",
+          "logs",
+          "catalog",
+          "managed_stacks",
+          "diagnostics",
+          "container_stats"
+        ]
+      }
+    }
+  },
+  "moci-docker-deployer": {
+    "description": "Explicitly approved template and managed stack operations",
+    "write": {
+      "ubus": {
+        "moci-docker": [
+          "deploy",
+          "install_catalog",
+          "stack_action",
+          "container_action",
+          "prepare_app",
+          "prepare_custom",
+          "volume_action",
+          "network_action",
+          "image_action",
+          "set_deployments",
+          "stack_config"
+        ]
+      }
+    }
+  }
+}

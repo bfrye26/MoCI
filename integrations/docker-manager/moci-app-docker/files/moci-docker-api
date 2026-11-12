@@ -1,0 +1,729 @@
+#!/usr/bin/env python3
+"""MoCI Docker RPC adapter. Docker socket access stays on the router, not in JavaScript.
+
+WARNING: Docker socket access is root-equivalent. Do not allow write operations
+from a root-equivalent MoCI browser session. The deployment methods fail closed
+until non-root rpcd permission isolation has passed live integration tests.
+"""
+import fcntl
+import http.client
+import json
+import os
+import re
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import urllib.parse
+
+DOCKER_SOCKET='/var/run/docker.sock'
+ROOT='/etc/moci-docker'
+STACKS='/srv/moci-docker/stacks'
+MAX_REPLY=1024*1024
+MAX_SPEC=16384
+NAME=re.compile(r'^[a-z][a-z0-9-]{0,39}$')
+IMAGE=re.compile(r'^[A-Za-z0-9][A-Za-z0-9._/-]*@sha256:[0-9a-f]{64}$')
+CUSTOM_TAG=re.compile(r'^(?:(?:docker\.io|ghcr\.io|lscr\.io|quay\.io|registry\.gitlab\.com)/)?[a-z0-9][a-z0-9._/-]{2,95}:[A-Za-z0-9][A-Za-z0-9._-]{0,79}$')
+IDENT=re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$|^[a-f0-9]{12,64}$')
+READ_METHODS=['status','containers','stacks','images','volumes','networks','storage','logs','container_stats','catalog','managed_stacks','diagnostics']
+WRITE_METHODS=['stack_config','deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action','set_deployments']
+# Deployments are opt-in: secure default for a router control plane.
+# The root administrator must explicitly create this local-only enable file.
+WRITES_ENABLED=False
+ENABLE_FILE=ROOT+'/enable-deployments'
+def writes_enabled():
+    try:
+        st=os.stat(ENABLE_FILE)
+        return st.st_uid==0 and (st.st_mode & 0o022)==0 and open(ENABLE_FILE,encoding='ascii').read(32).strip()=='enabled'
+    except (OSError,UnicodeError):
+        return False
+
+
+class UnixHTTP(http.client.HTTPConnection):
+    def __init__(self):
+        super().__init__('localhost',timeout=8)
+    def connect(self):
+        self.sock=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+        self.sock.settimeout(8)
+        self.sock.connect(DOCKER_SOCKET)
+
+def docker(method,path):
+    conn=UnixHTTP()
+    try:
+        conn.request(method,'/v1.41'+path,headers={'Host':'docker'})
+        res=conn.getresponse()
+        body=res.read(MAX_REPLY+1)
+        if len(body)>MAX_REPLY or res.status>=400:
+            raise ValueError('Docker request failed')
+        return json.loads(body) if body else {}
+    finally: conn.close()
+
+def ident(s):
+    if not isinstance(s,str) or not IDENT.fullmatch(s):
+        raise ValueError('Invalid Docker identifier')
+    return urllib.parse.quote(s,safe='')
+
+def policy():
+    with open(ROOT+'/allowed-images.json',encoding='utf-8') as f:
+        data=json.load(f)
+    entries=data.get('images')
+    if not isinstance(entries,list) or len(entries)>100 or any(not isinstance(i,str) or not IMAGE.fullmatch(i) for i in entries):
+        raise ValueError('Invalid image policy')
+    return set(entries)
+
+def pins():
+    with open(ROOT+'/app-pins.json',encoding='utf-8') as f:
+        data=json.load(f)
+    if not isinstance(data,dict) or any(not NAME.fullmatch(k) or not IMAGE.fullmatch(v) for k,v in data.items()):
+        raise ValueError('Invalid approved application pins')
+    return data
+
+def template_specs():
+    with open(ROOT+'/app-templates.json',encoding='utf-8') as f:
+        data=json.load(f)
+    if data.get('schema')!=1 or not isinstance(data.get('templates'),dict):
+        raise ValueError('Invalid template catalogue')
+    return data['templates']
+
+def lan_ip():
+    # Query kernel directly instead of depending on which BusyBox/iproute2
+    # flags happen to be available in the selected OpenWrt image.
+    sock=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+    try:
+        raw=fcntl.ioctl(sock.fileno(),0x8915,b'br-lan'+bytes(250))
+        ip=socket.inet_ntoa(raw[20:24])
+    except OSError as exc:
+        raise ValueError('LAN IPv4 address unavailable') from exc
+    finally:
+        sock.close()
+    octets=[int(o) for o in ip.split('.')]
+    if not (octets[0]==10 or (octets[0]==172 and 16<=octets[1]<=31)
+            or (octets[0]==192 and octets[1]==168)):
+        raise ValueError('LAN IPv4 address is not private')
+    return ip
+
+def catalog():
+    with open(ROOT+'/app-catalog.json',encoding='utf-8') as f:
+        data=json.load(f)
+    if data.get('schema')!=1 or not isinstance(data.get('apps'),list):
+        raise ValueError('Invalid catalogue')
+    approved=policy()
+    pinned=pins()
+    templates=template_specs()
+    apps=[]
+    for app in data['apps'][:100]:
+        appid=app.get('id')
+        if not isinstance(appid,str) or not NAME.fullmatch(appid): continue
+        image=pinned.get(appid)
+        ready=bool(writes_enabled() and appid in templates and app.get('template_available') and app.get('risk') in ('review',None) and image in approved and image.split('@')[0]==app.get('repository')) if image else False
+        can_prepare=bool(writes_enabled() and appid in templates and app.get('risk') in ('review',None) and app.get('template_available'))
+        installed=os.path.isfile(STACKS+'/'+appid+'/compose.json')
+        url=None
+        if appid in templates and installed:
+            raw_url=templates[appid].get('path')
+            if isinstance(raw_url,str) and re.fullmatch(r'http://ROUTER_IP:[0-9]{4,5}/?',raw_url):
+                try:url=raw_url.replace('ROUTER_IP',lan_ip())
+                except ValueError:pass
+        apps.append({k:app.get(k) for k in ('id','name','description','category','repository','profile','complexity','risk') } |
+                    {'ready':ready,'can_prepare':can_prepare,'installed':installed,'url':url})
+    return {'catalog':apps}
+
+def spec_validate(spec, app_id=None, advanced=False):
+    if not isinstance(spec,dict) or set(spec)!={'services'}:
+        raise ValueError('Only services supported')
+    services=spec['services']
+    if not isinstance(services,dict) or not 1<=len(services)<=8:
+        raise ValueError('Service count out of bounds')
+    allow=policy()
+    safe={}
+    ports_used=set()
+    named_volumes=set()
+    for name,svc in services.items():
+        if not isinstance(name,str) or not NAME.fullmatch(name) or not isinstance(svc,dict) or set(svc)-{'image','ports','volumes','environment','depends_on','mem_limit','command','user','read_only'}:
+            raise ValueError('Unsupported Compose service')
+        image=svc.get('image')
+        if not isinstance(image,str) or image not in allow or not IMAGE.fullmatch(image):
+            raise ValueError('Image digest not approved')
+        ports=svc.get('ports',[])
+        volumes=svc.get('volumes',[])
+        if not isinstance(ports,list) or len(ports)>8 or not isinstance(volumes,list) or len(volumes)>4:
+            raise ValueError('Invalid service mappings')
+        for p in ports:
+            if not isinstance(p,str) or not re.fullmatch(r'[0-9.]{7,15}:[0-9]{4,5}:[0-9]{1,5}',p):
+                raise ValueError('Only explicit LAN IPv4 TCP ports allowed')
+            if p.split(':',1)[0]!='127.0.0.1' and p.split(':',1)[0]!=lan_ip():
+                raise ValueError('Ports can bind only to loopback or LAN interface')
+            port=int(p.split(':')[1])
+            if not 1024<=port<=65535 or port in ports_used:
+                raise ValueError('Port not allowed or duplicated')
+            ports_used.add(port)
+        for v in volumes:
+            if not isinstance(v,str) or not re.fullmatch(r'[a-z][a-z0-9_-]{0,39}:/[A-Za-z0-9_./-]{1,120}',v) or '..' in v.split(':')[1].split('/'):
+                raise ValueError('Only named volumes with safe paths allowed')
+            named_volumes.add(v.split(':',1)[0])
+        environment=svc.get('environment',{})
+        if not isinstance(environment,dict) or len(environment)>48:
+            raise ValueError('Environment must contain no more than 48 key/value entries')
+        for k,v in environment.items():
+            if not isinstance(k,str) or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,80}',k):
+                raise ValueError('Invalid environment variable name')
+            if not isinstance(v,(str,int,bool)) or len(str(v).encode('utf-8'))>2048:
+                raise ValueError('Invalid environment variable value')
+        command=svc.get('command',None)
+        if command is not None:
+            if not isinstance(command,list) or not 1<=len(command)<=12:
+                raise ValueError('Custom command must be a 1–12 element string list')
+            if any(not isinstance(token,str) or not token or len(token.encode('utf-8'))>512 or
+                   any(ord(c)<32 for c in token) for token in command):
+                raise ValueError('Invalid command argument')
+        dependencies=svc.get('depends_on',[])
+        if not isinstance(dependencies,list) or len(dependencies)>7:
+            raise ValueError('Invalid service dependencies')
+        if any(not isinstance(x,str) or x not in services or x==name for x in dependencies):
+            raise ValueError('Service dependency refers to an unknown or self service')
+        requested_memory=svc.get('mem_limit','512m')
+        if not isinstance(requested_memory,str) or not re.fullmatch(r'(?:[1-9][0-9]{0,3})[mMgG]',requested_memory):
+            raise ValueError('Memory limit must use megabytes or gigabytes')
+        mem_value=int(requested_memory[:-1])*(1024 if requested_memory[-1].lower()=='g' else 1)
+        if mem_value<64 or mem_value>8192:
+            raise ValueError('Memory limit must be between 64MB and 8GB')
+        requested_user=svc.get('user','65534:65534')
+        requested_read_only=svc.get('read_only',True)
+        if type(requested_read_only) is not bool:
+            raise ValueError('read_only must be a boolean')
+        if not isinstance(requested_user,str) or not re.fullmatch(r'[0-9]{1,5}:[0-9]{1,5}',requested_user):
+            raise ValueError('User must be an explicit UID:GID')
+        requested_ids=[int(value) for value in requested_user.split(':')]
+        if any(uid>65534 for uid in requested_ids):
+            raise ValueError('User ID outside allowed range')
+        if (not requested_read_only or requested_user!='65534:65534') and not advanced and app_id is None:
+            raise ValueError('Writable containers and custom users require advanced deployment confirmation')
+        managed={'labels':{'com.moci.managed':'true'},'image':image,'ports':ports,'volumes':volumes,
+                 'read_only':requested_read_only,'user':requested_user,'cap_drop':['ALL'],
+                 'security_opt':['no-new-privileges:true'],'pids_limit':128,
+                 'restart':'unless-stopped','mem_limit':requested_memory,
+                 'environment':{key:str(value).lower() if isinstance(value,bool) else str(value)
+                                for key,value in environment.items()}}
+        if dependencies:managed['depends_on']=dependencies
+        if command is not None:managed['command']=command
+        if app_id:
+            approved_template=template_specs().get(app_id)
+            if not isinstance(approved_template,dict) or app_id not in pins() or image!=pins()[app_id]:
+                raise ValueError('Unapproved application profile')
+            approved_ports=[lan_ip()+':'+x for x in approved_template.get('ports',[])]
+            if sorted(ports)!=sorted(approved_ports) or sorted(volumes)!=sorted(approved_template.get('volumes',[])):
+                raise ValueError('Application service differs from approved template')
+            if approved_template.get('needs_write_access') is True:
+                # Explicitly reviewed application requires writeable rootfs;
+                # never allow this through arbitrary custom Compose.
+                managed['read_only']=False
+                managed.pop('user')
+                profile_user=approved_template.get('run_as_user')
+                if profile_user is not None:
+                    if not isinstance(profile_user,str) or not re.fullmatch(r'[1-9][0-9]{0,4}:[1-9][0-9]{0,4}',profile_user):
+                        raise ValueError('Invalid approved app user')
+                    managed['user']=profile_user
+        safe[name]=managed
+    return {'services':safe,'volumes':{key:{} for key in sorted(named_volumes)}}
+
+def compose(name,arguments):
+    base=STACKS+'/'+name
+    # OpenWrt ships Compose both as Docker CLI plugin and standalone symlink.
+    # Prefer the plugin and fall back to the standalone executable.
+    plugin=subprocess.run(['/usr/bin/docker','compose','version'],
+        stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=12,check=False)
+    command=(['/usr/bin/docker','compose'] if plugin.returncode==0 else ['/usr/bin/docker-compose'])
+    if command[0]=='/usr/bin/docker-compose' and not os.path.isfile(command[0]):
+        raise ValueError('Docker Compose is not installed in the firmware')
+    result=subprocess.run(command+['--project-name','moci-'+name,
+        '--file',base+'/compose.json']+arguments,
+        stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=180,
+        env={'PATH':'/usr/bin:/bin','DOCKER_HOST':'unix:///var/run/docker.sock'},
+        check=False)
+    if result.returncode:
+        error=result.stderr.decode('utf-8','replace')[-1000:]
+        raise ValueError('Compose operation failed: '+error)
+    return result.stdout[:4096].decode('utf-8','replace')
+
+def initialize_approved_volume(app_id,spec):
+    """Initialize only a reviewed named-volume mount for a fixed app image.
+
+    Runs a one-shot root process without network or host mounts, with only
+    CAP_CHOWN. The application itself never receives root permissions.
+    """
+    template=template_specs().get(app_id,{})
+    initializer=template.get('volume_initializer')
+    if not initializer:
+        return
+    if not isinstance(initializer,dict) or set(initializer)!={'path','uid','gid'}:
+        raise ValueError('Invalid approved volume initializer')
+    uid=initializer['uid'];gid=initializer['gid'];path=initializer['path']
+    if any(not isinstance(value,int) or isinstance(value,bool) or not 1<=value<=65534 for value in (uid,gid)):
+        raise ValueError('Invalid volume owner')
+    if not isinstance(path,str) or not re.fullmatch(r'/[A-Za-z0-9_-]+(?:/[A-Za-z0-9_.-]+)*',path):
+        raise ValueError('Invalid volume initialization mount')
+    service=spec['services'].get('app')
+    if not isinstance(service,dict):
+        raise ValueError('Approved app must use the app service')
+    named=[v.split(':',1)[0] for v in service['volumes'] if v.split(':',1)[1]==path]
+    if len(named)!=1:
+        raise ValueError('Approved mount was not found in app')
+    volume='moci-'+app_id+'_'+named[0]
+    if not re.fullmatch(r'[a-z][a-z0-9_-]{0,100}',volume):
+        raise ValueError('Invalid Docker volume name')
+    subprocess.run(['/usr/bin/docker','volume','create','--label','com.moci.managed=true',volume],
+       stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,timeout=15,check=True)
+    # Never pass untrusted shell fragments. Owner and path are positional args.
+    init=['/usr/bin/docker','run','--rm','--network','none','--read-only',
+          '--user','0:0','--cap-drop','ALL','--cap-add','CHOWN',
+          '--security-opt','no-new-privileges:true','--pids-limit','64',
+          '--memory','128m','--mount',
+          'type=volume,source='+volume+',target='+path,
+          '--entrypoint','/bin/sh',service['image'],'-c',
+          'chown "$1" "$2"','moci-volume-init',str(uid)+':'+str(gid),path]
+    result=subprocess.run(init,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,
+                          timeout=45,check=False)
+    if result.returncode:
+        raise ValueError('Approved volume initialization failed')
+
+def deploy(name,raw,app_id=None,advanced=False):
+    if not isinstance(name,str) or not NAME.fullmatch(name) or not isinstance(raw,str) or len(raw.encode())>MAX_SPEC:
+        raise ValueError('Invalid stack deployment')
+    validated=spec_validate(json.loads(raw),app_id=app_id,advanced=advanced)
+    value=json.dumps(validated,indent=2,sort_keys=True).encode()
+    root=STACKS+'/'+name
+    os.makedirs(root,mode=0o700,exist_ok=True)
+    with open(root+'/.lock','a+b') as lock:
+        fcntl.flock(lock,fcntl.LOCK_EX)
+        path=root+'/compose.json'
+        if os.path.islink(path): raise ValueError('Unsafe stack path')
+        before=open(path,'rb').read(MAX_SPEC+1) if os.path.exists(path) else None
+        fd,tmp=tempfile.mkstemp(dir=root,prefix='.pending-')
+        try:
+            with os.fdopen(fd,'wb') as f:
+                os.fchmod(f.fileno(),0o600);f.write(value);f.flush();os.fsync(f.fileno())
+            os.replace(tmp,path)
+            try:
+                if app_id:
+                    initialize_approved_volume(app_id,validated)
+                compose(name,['up','-d','--wait','--remove-orphans'])
+            except Exception as failure:
+                # A failed `up` may leave newly created containers running.
+                # Roll back the on-disk spec AND reconcile the Docker project.
+                if before is None:
+                    try:
+                        compose(name,['down','--remove-orphans'])
+                    except Exception:
+                        pass  # Return original deployment error, preserve named volumes.
+                    if os.path.exists(path):
+                        os.unlink(path)
+                else:
+                    oldfd,oldtmp=tempfile.mkstemp(dir=root,prefix='.rollback-')
+                    try:
+                        with os.fdopen(oldfd,'wb') as oldfile:
+                            os.fchmod(oldfile.fileno(),0o600)
+                            oldfile.write(before)
+                            oldfile.flush()
+                            os.fsync(oldfile.fileno())
+                        os.replace(oldtmp,path)
+                    finally:
+                        if os.path.exists(oldtmp):os.unlink(oldtmp)
+                    try:
+                        compose(name,['up','-d','--wait','--remove-orphans'])
+                    except Exception as rollback_error:
+                        raise ValueError('Deployment failed and previous application could not be restored; review Docker logs') from rollback_error
+                raise failure
+        finally:
+            if os.path.exists(tmp): os.unlink(tmp)
+    return {'deployed':True,'name':name}
+
+def docker_json(method,path,payload=None):
+    if method not in ('POST','DELETE'):
+        raise ValueError('Unsupported Docker method')
+    conn=UnixHTTP()
+    try:
+        body=json.dumps(payload).encode('utf-8') if payload is not None else None
+        headers={'Host':'docker'}
+        if body is not None:headers['Content-Type']='application/json'
+        conn.request(method,'/v1.41'+path,body=body,headers=headers)
+        res=conn.getresponse()
+        raw=res.read(MAX_REPLY+1)
+        if len(raw)>MAX_REPLY or res.status>=400:
+            raise ValueError('Docker operation refused')
+        return json.loads(raw) if raw else {'ok':True}
+    finally:conn.close()
+
+def managed_volume_action(name,action):
+    if not isinstance(name,str) or not re.fullmatch(r'moci-[a-z][a-z0-9-]{1,40}',name):
+        raise ValueError('Volumes must use moci- prefix')
+    if action=='create':
+        return docker_json('POST','/volumes/create',{'Name':name,
+          'Labels':{'com.moci.managed':'true'}})
+    if action=='remove':
+        info=docker('GET','/volumes/'+urllib.parse.quote(name,safe=''))
+        if (info.get('Labels') or {}).get('com.moci.managed')!='true':
+            raise ValueError('Volume is not MoCI-managed')
+        return docker_json('DELETE','/volumes/'+urllib.parse.quote(name,safe=''))
+    raise ValueError('Unsupported volume action')
+
+def managed_network_action(name,action):
+    if not isinstance(name,str) or not re.fullmatch(r'moci-[a-z][a-z0-9-]{1,40}',name):
+        raise ValueError('Networks must use moci- prefix')
+    if action=='create':
+        return docker_json('POST','/networks/create',{'Name':name,'Driver':'bridge',
+          'Internal':True,'CheckDuplicate':True,
+          'Labels':{'com.moci.managed':'true'}})
+    if action=='remove':
+        value=docker('GET','/networks/'+urllib.parse.quote(name,safe=''))
+        if (value.get('Labels') or {}).get('com.moci.managed')!='true':
+            raise ValueError('Network is not MoCI-managed')
+        return docker_json('DELETE','/networks/'+urllib.parse.quote(name,safe=''))
+    raise ValueError('Unsupported network action')
+
+def managed_image_action(image_id,action):
+    if action!='remove':
+        raise ValueError('Unsupported image action')
+    if not isinstance(image_id,str) or not re.fullmatch(r'sha256:[a-f0-9]{64}',image_id):
+        raise ValueError('Invalid image identifier')
+    # Docker refuses removal if images are used by active containers.
+    return docker_json('DELETE','/images/'+urllib.parse.quote(image_id,safe=''))
+
+def managed_container_action(cid,action):
+    if action not in ('start','stop','restart','remove'):
+        raise ValueError('Unknown container action')
+    container=ident(cid)
+    details=docker('GET','/containers/'+container+'/json')
+    labels=(details.get('Config') or {}).get('Labels') or {}
+    if labels.get('com.moci.managed')!='true':
+        raise ValueError('Only MoCI-managed containers can be controlled')
+    # Docker API requires POST for lifecycle controls, DELETE for managed removal.
+    if action=='remove':
+        return docker_json('DELETE','/containers/'+container+'?v=0&force=0')
+    return docker_no_reply('POST','/containers/'+container+'/'+action+'?t=10')
+
+def docker_no_reply(method,path):
+    conn=UnixHTTP()
+    try:
+        conn.request(method,'/v1.41'+path,headers={'Host':'docker'})
+        res=conn.getresponse()
+        res.read(4096)
+        if res.status not in (204,304):
+            raise ValueError('Docker operation failed')
+        return {'ok':True}
+    finally:
+        conn.close()
+
+def diagnostics():
+    checks=[]
+    def report(name,ok,detail):
+        checks.append({'name':name,'ok':bool(ok),'detail':str(detail)[:160]})
+    try:
+        info=docker('GET','/version')
+        report('Docker Engine',bool(info.get('Version')),'Version '+str(info.get('Version','unknown')))
+    except Exception:
+        report('Docker Engine',False,'Daemon socket or service unavailable')
+    try:
+        docker_compose=subprocess.run(['/usr/bin/docker','compose','version'],
+            stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=12,check=False)
+        plugin_ok=docker_compose.returncode==0
+    except (OSError,subprocess.SubprocessError):
+        plugin_ok=False
+    binary='/usr/bin/docker-compose'
+    exists=plugin_ok or os.path.isfile(binary)
+    report('Docker Compose',exists,'Installed' if exists else 'Missing Compose CLI plugin')
+    if exists:
+        try:
+            command=['/usr/bin/docker','compose','version','--short'] if plugin_ok else [binary,'version','--short']
+            process=subprocess.run(command,capture_output=True,
+                text=True,timeout=8,check=False)
+            report('Compose executable',process.returncode==0,
+                (process.stdout or process.stderr).strip()[:100] if process.returncode==0 else 'Could not execute plugin')
+        except (OSError,subprocess.SubprocessError):
+            report('Compose executable',False,'Compose executable failed')
+    for label,path in [('Stacks directory',STACKS),('Policy directory',ROOT)]:
+        exists=os.path.isdir(path)
+        report(label,exists,'Present' if exists else 'Not created yet')
+    for label,name in [('Image allowlist','allowed-images.json'),('Approved image pins','app-pins.json'),
+                       ('App catalogue','app-catalog.json'),('App templates','app-templates.json')]:
+        try:
+            with open(ROOT+'/'+name,encoding='utf-8') as source:
+                json.load(source)
+            report(label,True,'Valid JSON')
+        except (OSError,ValueError):
+            report(label,False,'Missing or invalid JSON')
+    try:
+        ip=lan_ip()
+        report('LAN interface',True,ip)
+    except ValueError:
+        report('LAN interface',False,'No private br-lan IPv4 address')
+    report('Deployment approval',writes_enabled(),
+           'Explicitly enabled' if writes_enabled() else 'Read-only by default')
+    return {'diagnostics':checks,'ready':all(x['ok'] for x in checks
+            if x['name'] not in ('Deployment approval','Stacks directory'))}
+
+def decode_docker_logs(raw):
+    """Decode Docker's 8-byte stdout/stderr framing into readable text.
+
+    Containers with a TTY return an unframed byte stream, which is preserved.
+    Truncated final frames are intentionally omitted.
+    """
+    if not isinstance(raw,bytes):
+        raise ValueError('Invalid Docker log response')
+    if len(raw)<8 or raw[0] not in (1,2) or raw[1:4]!=bytes(3):
+        return raw.decode('utf-8','replace')
+    offset=0
+    output=[]
+    while offset+8<=len(raw):
+        header=raw[offset:offset+8]
+        if header[0] not in (1,2) or header[1:4]!=bytes(3):
+            break
+        length=int.from_bytes(header[4:8],'big')
+        if length>65536 or offset+8+length>len(raw):
+            break
+        output.append(raw[offset+8:offset+8+length].decode('utf-8','replace'))
+        offset+=8+length
+    return ''.join(output)
+
+def summarize_container_stats(data):
+    if not isinstance(data,dict):
+        raise ValueError('Docker statistics unavailable')
+    cpu=data.get('cpu_stats') or {}
+    prev=data.get('precpu_stats') or {}
+    present=(cpu.get('cpu_usage') or {}).get('total_usage',0)
+    previous=(prev.get('cpu_usage') or {}).get('total_usage',0)
+    total=cpu.get('system_cpu_usage',0)
+    baseline=prev.get('system_cpu_usage',0)
+    cpus=cpu.get('online_cpus') or len((cpu.get('cpu_usage') or {}).get('percpu_usage') or []) or 1
+    cpu_delta=max(0,int(present)-int(previous))
+    sys_delta=max(0,int(total)-int(baseline))
+    usage=min(100*int(cpus),100.0*cpu_delta/sys_delta*cpus) if sys_delta else 0.0
+    memory=data.get('memory_stats') or {}
+    memory_total=max(0,int(memory.get('usage') or 0))
+    stats=memory.get('stats') or {}
+    cached=max(0,int(stats.get('inactive_file',stats.get('cache',0)) or 0))
+    used=max(0,memory_total-cached)
+    limit=max(0,int(memory.get('limit') or 0))
+    networks=data.get('networks') or {}
+    rx=sum(max(0,int(n.get('rx_bytes') or 0)) for n in networks.values() if isinstance(n,dict))
+    tx=sum(max(0,int(n.get('tx_bytes') or 0)) for n in networks.values() if isinstance(n,dict))
+    return {'cpu_percent':round(usage,2),'memory_used':used,'memory_limit':limit,
+            'memory_percent':round(100.0*used/limit,1) if limit else 0.0,
+            'network_rx':rx,'network_tx':tx}
+
+def run(method,args):
+    if method=='set_deployments':
+        # Authenticated deployer-role RPC. Never an arbitrary command runner.
+        enable=args.get('enabled')
+        phrase=args.get('confirmation')
+        if type(enable) is not bool or not isinstance(phrase,str):
+            raise ValueError('Invalid deployment mode request')
+        required='ENABLE LOCAL DOCKER MANAGEMENT' if enable else 'DISABLE'
+        if phrase!=required:
+            raise ValueError('Deployment mode change was not confirmed')
+        command=subprocess.run(['/usr/sbin/moci-docker-policy',
+                                'enable' if enable else 'disable'],
+                               stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,
+                               timeout=10,check=False)
+        if command.returncode:
+            raise ValueError('Deployment mode could not be changed')
+        if writes_enabled()!=enable:
+            raise ValueError('Deployment mode could not be verified')
+        return {'enabled':enable}
+    if method in WRITE_METHODS and method!='set_deployments' and not writes_enabled():
+        raise ValueError('Deployment disabled pending non-root authentication verification')
+    if method=='prepare_app':
+        app_id=args.get('id')
+        if not isinstance(app_id,str) or not NAME.fullmatch(app_id):
+            raise ValueError('Invalid application ID')
+        # CLI accepts only root-owned, reviewed templates; never arbitrary tags from browsers.
+        command=subprocess.run(['/usr/sbin/moci-docker-policy','prepare',app_id],
+                  capture_output=True,text=True,timeout=125,check=False)
+        if command.returncode:
+            raise ValueError('Application preparation failed; consult router logs')
+        return {'prepared':True,'id':app_id}
+    if method=='prepare_custom':
+        tag=args.get('image')
+        if not isinstance(tag,str) or len(tag)>150 or not CUSTOM_TAG.fullmatch(tag):
+            raise ValueError('Invalid image tag')
+        result=subprocess.run(['/usr/sbin/moci-docker-policy','prepare-custom',tag],
+            stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=175,check=False)
+        if result.returncode:
+            raise ValueError('Image preparation failed; verify registry access and image tag')
+        match=re.search(r'Approved immutable digest:\s*([A-Za-z0-9._/-]+@sha256:[0-9a-f]{64})',result.stdout)
+        if not match or not IMAGE.fullmatch(match.group(1)):
+            raise ValueError('No valid immutable digest returned')
+        return {'prepared':True,'digest':match.group(1)}
+    if method=='container_action':
+        return managed_container_action(args.get('id'),args.get('action'))
+    if method=='volume_action':
+        return managed_volume_action(args.get('name'),args.get('action'))
+    if method=='network_action':
+        return managed_network_action(args.get('name'),args.get('action'))
+    if method=='image_action':
+        return managed_image_action(args.get('id'),args.get('action'))
+    if method=='diagnostics':return diagnostics()
+    if method=='status':
+        try:
+            v=docker('GET','/version')
+            return {'available':True,'version':v.get('Version','?'),'read_only':not writes_enabled()}
+        except Exception:
+            return {'available':False,'message':'Docker Engine unavailable','read_only':True}
+    if method=='catalog':return catalog()
+    if method=='managed_stacks':
+        return {'managed_stacks':[n for n in sorted(os.listdir(STACKS)) if NAME.fullmatch(n) and os.path.isfile(STACKS+'/'+n+'/compose.json')][:100]} if os.path.isdir(STACKS) else {'managed_stacks':[]}
+    if method=='stack_config':
+        name=args.get('name')
+        if not isinstance(name,str) or not NAME.fullmatch(name):
+            raise ValueError('Invalid stack name')
+        path=STACKS+'/'+name+'/compose.json'
+        if os.path.islink(path) or not os.path.isfile(path):
+            raise ValueError('Managed Compose configuration not found')
+        with open(path,'rb') as source:
+            raw=source.read(MAX_SPEC+1)
+        if len(raw)>MAX_SPEC:
+            raise ValueError('Managed Compose configuration is too large')
+        parsed=json.loads(raw.decode('utf-8'))
+        if not isinstance(parsed,dict) or not isinstance(parsed.get('services'),dict):
+            raise ValueError('Invalid managed Compose configuration')
+        return {'name':name,'config':parsed,'contains_secrets':bool(any(
+            bool(entry.get('environment')) for entry in parsed['services'].values()
+            if isinstance(entry,dict)))};
+    if method=='storage':
+        result=[]
+        for path in ('/','/overlay','/mnt/data'):
+            if os.path.isdir(path):
+                u=shutil.disk_usage(path)
+                result.append({'Mount':path,'Total':u.total,'Used':u.used,'Free':u.free})
+        return {'storage':result}
+    if method=='containers':
+        data=docker('GET','/containers/json?all=1')
+        return {'containers':[{'Managed':(x.get('Labels') or {}).get('com.moci.managed')=='true','Id':x.get('Id',''),'Names':', '.join(n.lstrip('/') for n in x.get('Names',[])),'Image':x.get('Image',''),'State':x.get('State',''),'Status':x.get('Status','')} for x in data[:500]]}
+    if method=='stacks':
+        data=docker('GET','/containers/json?all=1')
+        stacks={}
+        for x in data[:500]:
+            labels=x.get('Labels') or {}
+            project=labels.get('com.docker.compose.project')
+            if project and len(project)<100: stacks[project]=stacks.get(project,0)+1
+        return {'stacks':[{'Name':n,'Containers':count} for n,count in stacks.items()]}
+    if method=='images':
+        return {'images':[{'Id':x.get('Id',''),'Tags':x.get('RepoTags') or [],'Size':x.get('Size',0)} for x in docker('GET','/images/json')[:500]]}
+    if method=='volumes':
+        return {'volumes':[{'Name':x.get('Name',''),'Driver':x.get('Driver','')} for x in (docker('GET','/volumes').get('Volumes') or [])[:500]]}
+    if method=='networks':
+        return {'networks':[{'Name':x.get('Name',''),'Driver':x.get('Driver','')} for x in docker('GET','/networks')[:500]]}
+    if method=='container_stats':
+        cid=ident(args.get('id'))
+        return {'stats':summarize_container_stats(docker('GET','/containers/'+cid+'/stats?stream=false&one-shot=true'))}
+    if method=='logs':
+        # No log access via arbitrary shell; use bounded Docker logs endpoint.
+        x=ident(args.get('id'))
+        conn=UnixHTTP()
+        try:
+            conn.request('GET','/v1.41/containers/'+x+'/logs?stdout=1&stderr=1&tail=100',headers={'Host':'docker'})
+            res=conn.getresponse()
+            if res.status>=400: raise ValueError('Docker logs unavailable')
+            raw=res.read(65537)[:65536]
+            return {'logs':decode_docker_logs(raw)}
+        finally: conn.close()
+    if method=='deploy':
+        advanced=args.get('confirmation')=='ALLOW ADVANCED CONTAINER'
+        return deploy(args.get('name'),args.get('spec'),advanced=advanced)
+    if method=='install_catalog':
+        app_id=args.get('id')
+        if not isinstance(app_id,str) or not NAME.fullmatch(app_id):
+            raise ValueError('Invalid application ID')
+        listing=catalog()['catalog']
+        selected=next((a for a in listing if a['id']==app_id),None)
+        if not selected or not selected['ready']:
+            raise ValueError('Application requires approval before installation')
+        image=pins()[app_id]
+        template=template_specs().get(app_id)
+        if not isinstance(template,dict) or template.get('repository')!=image.split('@',1)[0]:
+            raise ValueError('Unapproved application template')
+        mappings=template.get('ports',[])
+        if not isinstance(mappings,list) or len(mappings)>8:
+            raise ValueError('Invalid application ports')
+        # Only the LAN IP can be bound: never 0.0.0.0 or WAN.
+        ip=lan_ip()
+        ports=[]
+        for value in mappings:
+            if not isinstance(value,str) or not re.fullmatch(r'[0-9]{4,5}:[0-9]{1,5}',value):
+                raise ValueError('Invalid reviewed LAN port')
+            ports.append(ip+':'+value)
+        volumes=template.get('volumes',[])
+        service={'image':image,'ports':ports,'volumes':volumes}
+        for key in ('environment','command','mem_limit'):
+            if key in template:
+                service[key]=template[key]
+        initial_secret=None
+        secret_env=template.get('initial_password_env')
+        if secret_env is not None:
+            # Permit only explicitly reviewed credential variables; no arbitrary
+            # shell commands or free-form image-supplied secret names.
+            if app_id!='gotify' or secret_env!='GOTIFY_DEFAULTUSER_PASS':
+                raise ValueError('Unapproved initial credential profile')
+            previous=STACKS+'/'+app_id+'/compose.json'
+            password=None
+            if os.path.isfile(previous) and not os.path.islink(previous):
+                try:
+                    existing=json.load(open(previous,encoding='utf-8'))
+                    password=existing['services']['app']['environment'].get(secret_env)
+                except (OSError,ValueError,KeyError,TypeError,AttributeError):
+                    password=None
+            if not isinstance(password,str) or len(password)<20:
+                password=os.urandom(24).hex()
+                initial_secret=password
+            env=service.setdefault('environment',{})
+            env[secret_env]=password
+        result=deploy(app_id,json.dumps({'services':{'app':service}}),app_id=app_id)
+        if initial_secret:
+            result['initial_credentials']={'username':'admin','password':initial_secret}
+        return result
+
+    if method=='stack_action':
+        name=args.get('name');action=args.get('action')
+        if not isinstance(name,str) or not NAME.fullmatch(name) or action not in ('start','stop','remove') or not os.path.isfile(STACKS+'/'+name+'/compose.json'):
+            raise ValueError('Invalid managed stack operation')
+        if action=='remove':
+            # Remove managed containers and their network; retain named volumes
+            # so uninstall does not silently destroy business data.
+            compose(name,['down','--remove-orphans'])
+            directory=STACKS+'/'+name
+            path=directory+'/compose.json'
+            if os.path.islink(path):
+                raise ValueError('Unsafe Compose path')
+            os.unlink(path)
+        else:
+            compose(name,{'start':['up','-d','--wait'],'stop':['stop']}[action])
+        return {'ok':True,'name':name,'action':action,
+                'data_preserved':action=='remove'}
+    raise ValueError('Unknown method')
+
+METHODS={'set_deployments':{'enabled':'bool','confirmation':'str'}}
+METHODS.update({k:({} if k not in ('logs','container_stats','stack_config','deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action') else {'logs':{'id':'str'},'container_stats':{'id':'str'},'stack_config':{'name':'str'},'deploy':{'name':'str','spec':'str','confirmation':'str'},'prepare_app':{'id':'str'},'prepare_custom':{'image':'str'},'install_catalog':{'id':'str'},'stack_action':{'name':'str','action':'str'},'container_action':{'id':'str','action':'str'},'volume_action':{'name':'str','action':'str'},'network_action':{'name':'str','action':'str'},'image_action':{'id':'str','action':'str'}}[k]) for k in READ_METHODS+WRITE_METHODS if k!='set_deployments'})
+if __name__=='__main__':
+    if len(sys.argv)==2 and sys.argv[1]=='list':
+        print(json.dumps(METHODS))
+    elif len(sys.argv)==3 and sys.argv[1]=='call':
+        try:
+            args=json.load(sys.stdin)
+            if not isinstance(args,dict):raise ValueError('Invalid RPC arguments')
+            print(json.dumps(run(sys.argv[2],args)))
+        except ValueError as error:
+            # Only return safe, human-readable validation messages to the UI.
+            # Docker/Compose stderr can contain registry URLs or credentials,
+            # so it is intentionally not forwarded to browsers.
+            message=str(error)
+            if message.startswith('Compose operation failed:'):
+                message='Compose failed to start or update the service. Check Docker Diagnostics and container logs.'
+            elif any(secret in message.lower() for secret in ('authorization:', 'password=', 'token=', 'secret=', 'api_key=', 'bearer ')):
+                message='The operation failed. Sensitive error details are not shown.'
+            elif len(message)>180 or any(ord(c)<32 for c in message):
+                message='The operation failed. Consult local router logs.'
+            print(json.dumps({'error':message}))
+        except Exception:
+            print(json.dumps({'error':'Operation denied or failed. Consult local router logs.'}))
+    else:
+        sys.exit(1)

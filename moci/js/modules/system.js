@@ -263,43 +263,134 @@ export default class SystemModule {
 		}
 	}
 
+
+	async packageCommand(action,packageName='') {
+		if(!['list-all-installed','search-general','install-general','remove-general'].includes(action))
+			throw new Error('Unsupported package operation');
+		if(action!=='list-all-installed'&&!/^[a-zA-Z0-9][a-zA-Z0-9._+-]{0,99}$/.test(packageName))
+			throw new Error('Invalid package name or search term');
+		const args=[action];
+		if(packageName)args.push(packageName);
+		const [status,result]=await this.core.ubusCall('file','exec',{
+			command:'/usr/libexec/moci-pkg-call',params:args
+		},{timeout:120000});
+		if(status!==0||!result||result.code!==0)
+			throw new Error((result?.stderr||'Package operation failed').slice(0,250));
+		return String(result.stdout||'');
+	}
+
 	async loadPackages() {
-		await this.core.loadResource('packages-table', 3, 'packages', async () => {
-			const [status, result] = await this.core.ubusCall('file', 'read', { path: '/usr/lib/opkg/status' });
-			if (status !== 0 || !result?.data) throw new Error('No data');
-
-			const packages = [];
-			for (const block of result.data.split('\n\n')) {
-				let pkg = {};
-				for (const line of block.split('\n')) {
-					if (line.startsWith('Package: ')) pkg.name = line.substring(9);
-					else if (line.startsWith('Version: ')) pkg.version = line.substring(9);
+		const tab=document.getElementById('tab-software');
+		const table=document.querySelector('#packages-table tbody');
+		if(!tab||!table)return;
+		let toolbar=tab.querySelector('#moci-package-toolbar');
+		if(!toolbar){
+			toolbar=document.createElement('div');
+			toolbar.id='moci-package-toolbar';
+			toolbar.className='package-toolbar';
+			const label=document.createElement('label');
+			label.textContent='Search signed OpenWrt package repositories';
+			const input=document.createElement('input');
+			input.id='moci-package-input';
+			input.type='search';
+			input.maxLength=100;
+			input.placeholder='Package name, e.g. htop';
+			input.autocomplete='off';
+			label.appendChild(input);
+			const search=document.createElement('button');
+			search.type='button';search.className='action-btn';search.textContent='SEARCH';
+			const add=document.createElement('button');
+			add.type='button';add.className='action-btn';add.textContent='INSTALL';
+			const refresh=document.createElement('button');
+			refresh.type='button';refresh.className='action-btn';refresh.textContent='REFRESH INSTALLED';
+			const results=document.createElement('pre');
+			results.id='moci-package-results';
+			results.className='package-search-results';
+			results.hidden=true;
+			const run=async(action)=>{
+				const name=input.value.trim();
+				if(!name){
+					this.core.showToast('Enter a package name or search term','error');
+					return;
 				}
-				if (pkg.name) packages.push(pkg);
+				if(action==='install-general'&&!window.confirm('Install signed repository package '+name+'? This may add dependencies and services to your router.'))return;
+				if(action==='install-general'&&window.prompt('Type INSTALL '+name+' to confirm:','')!=='INSTALL '+name)return;
+				search.disabled=true;add.disabled=true;
+				try{
+					const output=await this.packageCommand(action,name);
+					results.hidden=false;
+					results.textContent=output.trim()||'Operation completed.';
+					this.core.showToast(action==='install-general'?'Package installed':'Search completed','success');
+					if(action==='install-general')await this.loadPackages();
+				}catch(error){this.core.showToast(error.message,'error');}
+				finally{search.disabled=false;add.disabled=false;}
+			};
+			search.addEventListener('click',()=>run('search-general'));
+			add.addEventListener('click',()=>run('install-general'));
+			refresh.addEventListener('click',()=>this.loadPackages());
+			input.addEventListener('keydown',event=>{
+				if(event.key==='Enter'){event.preventDefault();run('search-general');}
+			});
+			toolbar.append(label,search,add,refresh,results);
+			const card=table.closest('.stat-card');
+			card?.insertBefore(toolbar,table);
+		}
+		table.replaceChildren();
+		const loading=document.createElement('tr');
+		const cell=document.createElement('td');
+		cell.colSpan=3;cell.textContent='Loading installed packages…';
+		loading.appendChild(cell);table.appendChild(loading);
+		try{
+			const output=await this.packageCommand('list-all-installed');
+			const packages=output.split(/\r?\n/).filter(Boolean).map(line=>{
+				const [name,version]=line.split('\t');
+				return {name,version:version||'unknown'};
+			}).filter(p=>/^[a-zA-Z0-9][a-zA-Z0-9._+-]{0,99}$/.test(p.name));
+			packages.sort((a,b)=>a.name.localeCompare(b.name));
+			table.replaceChildren();
+			if(!packages.length){
+				const row=document.createElement('tr');
+				const empty=document.createElement('td');
+				empty.colSpan=3;empty.textContent='No installed packages found.';
+				row.appendChild(empty);table.appendChild(row);return;
 			}
-
-			const display = packages.slice(0, 100);
-			let html = display
-				.map(
-					p => `<tr>
-				<td>${this.core.escapeHtml(p.name)}</td>
-				<td>${this.core.escapeHtml(p.version)}</td>
-				<td>${this.core.renderBadge('success', 'Installed')}</td>
-			</tr>`
-				)
-				.join('');
-			if (packages.length > 100) {
-				html += `<tr><td colspan="3" style="text-align:center;color:var(--steel-muted)">Showing 100 of ${packages.length} packages</td></tr>`;
-			}
-			const tbody = document.querySelector('#packages-table tbody');
-			if (tbody) {
-				if (packages.length === 0) {
-					this.core.renderEmptyTable(tbody, 3, 'No packages found');
-				} else {
-					tbody.innerHTML = html;
+			const nonremovable=/^(apk|base-files|kernel|busybox|procd|ubus|ubusd|rpcd|uhttpd|uhttpd-mod-ubus|moci|netifd|firewall4|dnsmasq|dnsmasq-full|dropbear|libc|opkg|fstools|block-mount)$/;
+			for(const pkg of packages.slice(0,1000)){
+				const row=document.createElement('tr');
+				for(const value of [pkg.name,pkg.version]){
+					const td=document.createElement('td');td.textContent=value;row.appendChild(td);
 				}
+				const actions=document.createElement('td');
+				if(nonremovable.test(pkg.name)||/^(libubus|libuci|libubox|kmod-)/.test(pkg.name)){
+					actions.textContent='Protected';
+				}else{
+					const remove=document.createElement('button');
+					remove.type='button';remove.className='action-btn danger';remove.textContent='REMOVE';
+					remove.addEventListener('click',async()=>{
+						if(!window.confirm('Remove '+pkg.name+'? Dependencies and active services may be affected. Create a backup first.'))return;
+						if(window.prompt('Type REMOVE '+pkg.name+' to confirm:','')!=='REMOVE '+pkg.name)return;
+						remove.disabled=true;
+						try{
+							await this.packageCommand('remove-general',pkg.name);
+							this.core.showToast(pkg.name+' removed','success');
+							await this.loadPackages();
+						}catch(error){this.core.showToast(error.message,'error');remove.disabled=false;}
+					});
+					actions.append(remove);
+				}
+				row.appendChild(actions);table.appendChild(row);
 			}
-		});
+			if(packages.length>1000){
+				const row=document.createElement('tr'),td=document.createElement('td');
+				td.colSpan=3;td.textContent='Showing the first 1,000 of '+packages.length+' installed packages.';
+				row.appendChild(td);table.appendChild(row);
+			}
+		}catch(error){
+			table.replaceChildren();
+			const row=document.createElement('tr'),td=document.createElement('td');
+			td.colSpan=3;td.textContent='Package database unavailable: '+error.message;
+			row.appendChild(td);table.appendChild(row);
+		}
 	}
 
 	async loadStartup() {
