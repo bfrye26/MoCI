@@ -34,7 +34,8 @@
           "volume_action",
           "network_action",
           "image_action",
-          "set_deployments"
+          "set_deployments",
+          "stack_config"
         ]
       }
     }
