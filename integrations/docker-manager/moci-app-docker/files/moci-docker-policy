@@ -83,8 +83,12 @@ def main(args):
         entry=next((app for app in apps if app.get('id')==name),None)
         if not entry or not entry.get('template_available'):
             fatal('app does not have a reviewed template')
-        if entry.get('complexity')!='easy' or entry.get('risk') not in ('review',None):
-            fatal('app is not approved for simple installation')
+        templates=load('app-templates.json').get('templates',{})
+        template=templates.get(name)
+        if not isinstance(template,dict) or template.get('repository')!=entry.get('repository'):
+            fatal('app does not have an approved installation profile')
+        if entry.get('risk') not in ('review',None):
+            fatal('app is marked as security or router critical')
         if image.split('@',1)[0]!=entry.get('repository'):
             fatal('image repository does not match catalogue entry')
         if image not in load('allowed-images.json').get('images',[]):
