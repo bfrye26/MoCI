@@ -2119,3 +2119,8 @@ body {
 .upnp-workspace .profiles-create{margin:16px 0 24px;max-width:690px}
 :root[data-theme="cloud"] .upnp-warning{background:#fff7e8;color:#654923}
 :root[data-theme="cloud"] .upnp-permissions p{background:white;border-color:#dce5f0}
+
+.upnp-range-editor{display:grid;grid-template-columns:repeat(2,minmax(140px,1fr));gap:12px;max-width:680px;margin:18px 0}
+.upnp-range-editor h4{grid-column:1/-1;margin:0 0 2px}
+.upnp-range-editor input{max-width:100%;padding:9px 10px;background:var(--theme-input);border:1px solid var(--glass-border);border-radius:6px;color:var(--starship-steel)}
+@media(max-width:560px){.upnp-range-editor{grid-template-columns:1fr}}
