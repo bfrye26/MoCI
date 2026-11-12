@@ -79,7 +79,7 @@ export default class EthernetProfilesModule{
     const reserved=this.allReservedPorts();
     const free=this.ports.filter(port=>!reserved.has(port));
     const owned=Object.entries(this.network).filter(([name,value])=>
-      name.startsWith('moci_')&&value?.['.type']==='interface'&&value.proto==='static'&&NIC.test(value.device||''));
+      name.startsWith('moci_')&&value?.['.type']==='interface'&&value.proto==='static'&&value.moci_port_profile==='1'&&NIC.test(value.device||''));
     const usedInterfaces=new Set(owned.map(([,v])=>v.device));
     const form=this.el('form',undefined,'profiles-create');
     const name=this.el('input');name.required=true;name.placeholder='office';name.pattern='[a-z][a-z0-9]{1,19}';name.maxLength=20;
@@ -112,11 +112,11 @@ export default class EthernetProfilesModule{
       const conflict=Object.values(this.network).some(v=>v?.['.type']==='interface'&&
         typeof v.ipaddr==='string'&&v.ipaddr.split('.').slice(0,3).join('.')===addr.split('.').slice(0,3).join('.'));
       if(conflict){this.core.showToast('Subnet overlaps another interface','error');return;}
-      if(!window.confirm('Assign '+dev+' to '+logical+' at '+addr+'/24 with DHCP and '+(internet.value?'WAN forwarding':'no WAN forwarding')+'? This changes routing and firewall rules.'))return;
+      if(!window.confirm('Assign '+dev+' to '+logical+' at '+addr+'/24 with DHCP and '+(internet.checked?'WAN forwarding':'no WAN forwarding')+'? This changes routing and firewall rules.'))return;
       this.busy=true;button.disabled=true;
       try{
         await this.add('network','interface',logical);
-        await this.set('network',logical,{proto:'static',device:dev,ipaddr:addr,netmask:'255.255.255.0'});
+        await this.set('network',logical,{proto:'static',device:dev,ipaddr:addr,netmask:'255.255.255.0',moci_port_profile:'1'});
         await this.add('dhcp','dhcp',logical);
         await this.set('dhcp',logical,{interface:logical,start:'100',limit:'150',leasetime:'12h',ignore:'0'});
         const zone='moci_zone_'+label;
