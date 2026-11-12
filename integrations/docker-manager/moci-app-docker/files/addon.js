@@ -226,6 +226,13 @@ export default class ApplicationsAddon {
         <label>Environment variables, one per line (KEY=value). Do not use this form for sensitive credentials.
           <textarea id="docker-env-maps" rows="3" spellcheck="false" placeholder="APP_MODE=production"></textarea>
         </label>
+        <label>Container UID:GID (default 65534:65534)
+          <input id="docker-user" maxlength="11" placeholder="65534:65534" value="65534:65534">
+        </label>
+        <label class="docker-advanced-warning">
+          <input type="checkbox" id="docker-writable">
+          Allow a writable container filesystem for applications that require it
+        </label>
         <label>Memory limit
           <select id="docker-memory-limit">
             <option value="256m">256 MB</option>
@@ -279,8 +286,14 @@ export default class ApplicationsAddon {
             throw new Error('Credentials need a protected secret workflow; do not enter them here.');
           environment[key]=line.slice(pos+1);
         }
+        const requestedUser=target.querySelector('#docker-user').value.trim()||'65534:65534';
+        if(!/^[0-9]{1,5}:[0-9]{1,5}$/.test(requestedUser))
+          throw new Error('Container user must be an explicit UID:GID.');
+        const writable=target.querySelector('#docker-writable').checked;
         const service={image:digest,ports:mappedPorts,volumes,environment,
           mem_limit:target.querySelector('#docker-memory-limit').value};
+        if(requestedUser!=='65534:65534')service.user=requestedUser;
+        if(writable)service.read_only=false;
         target.querySelector('#docker-spec').value=JSON.stringify({services:{app:service}},null,2);
         this.core.showToast('Compose JSON generated. Review it before deploying.','success');
       }catch(error){this.core.showToast(error.message,'error');}
@@ -304,8 +317,17 @@ export default class ApplicationsAddon {
     });
     target.querySelector('#docker-deploy').addEventListener('click',async()=>{
       const name=target.querySelector('#docker-name').value.trim(),spec=target.querySelector('#docker-spec').value;
-      if(!window.confirm('Deploy stack '+name+'?'))return;
-      try{await this.rpc('deploy',{name,spec});await this.renderView('managed_stacks');}
+      let configuration;
+      try{configuration=JSON.parse(spec);}catch(e){this.core.showToast('Compose JSON is invalid','error');return;}
+      const unsafe=Object.values(configuration.services||{}).some(service=>
+        service?.read_only===false||(service?.user&&service.user!=='65534:65534'));
+      if(!window.confirm('Deploy stack '+name+'?'+(unsafe?' ADVANCED MODE: the container can run under a different UID or write to its root filesystem.':'')))return;
+      let confirmation='';
+      if(unsafe){
+        confirmation=window.prompt('Type ALLOW ADVANCED CONTAINER to authorize custom runtime permissions:','');
+        if(confirmation!=='ALLOW ADVANCED CONTAINER'){this.core.showToast('Advanced deployment not confirmed','error');return;}
+      }
+      try{await this.rpc('deploy',{name,spec,confirmation});await this.renderView('managed_stacks');}
       catch(e){this.core.showToast(e.message,'error');}
     });
   }
