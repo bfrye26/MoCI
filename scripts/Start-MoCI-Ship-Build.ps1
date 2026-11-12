@@ -19,5 +19,4 @@ Write-Host '[MoCI] Preparing the pinned local build in Ubuntu.'
 $payload | & $wsl -d $Distro --exec bash -c "umask 077; tr -d '\r\n' | base64 -d > '$linuxPath'"
 if ($LASTEXITCODE -ne 0) { throw "Could not stage builder in $Distro (exit $LASTEXITCODE)." }
 & $wsl -d $Distro --exec bash $linuxPath $Mode.ToLowerInvariant() "$Jobs"
-if ($LASTEXITCODE -ne 0) { throw "MoCI local build failed (exit $LASTEXITCODE). See the output log path above." }
-
+if ($LASTEXITCODE -ne 0) { throw "MoCI local build failed (exit $LASTEXITCODE). Read the diagnostic above; if build preparation started, its log path is printed there." }

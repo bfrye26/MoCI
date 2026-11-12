@@ -65,8 +65,13 @@ Ubuntu-24.04 by default and accepts `-Distro` for an existing alternate name.
 
 It pins firmware source to the CI-tested commit
 `45f23be12abec6dfbd16bc71e739c4203ad375b8`, creates a separate worktree under
-~/Projects, and reuses ~/Projects/openwrt compilation outputs. It requires
-the existing OpenWrt checkout to be v25.12.6 with no tracked source edits.
+~/Projects, and reuses ~/Projects/openwrt compilation outputs when that tree
+is clean and its commit matches the v25.12.6 tag. If it differs or has tracked
+edits, the launcher preserves it and automatically prepares a separate
+~/Projects/openwrt-ship-v25.12.6 checkout. Existing downloaded package archives
+are reused when available. Compiled objects from a different release are
+not reused, so that first build may take longer. A modified or incomplete
+separate checkout is refused without overwriting it.
 The original MoCI checkout is preserved. Each run saves its build log, prior
 and used OpenWrt configs, source versions and image checksums under a unique
 ~/Projects/MoCI-output/ship-* directory. It does not flash the VM or any disk.
