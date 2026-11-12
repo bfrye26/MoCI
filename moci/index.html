@@ -87,10 +87,21 @@
 							<option value="copper">Graphite Copper</option>
 						</select>
 					</label>
+					<button id="moci-help-toggle" class="moci-help-button" type="button" aria-expanded="false" aria-controls="moci-help-panel">HELP</button>
 					<button id="logout-btn" class="logout-btn">LOGOUT</button>
 				</header>
 
 				<main class="content">
+					<aside id="moci-help-panel" class="moci-help-panel hidden" aria-label="Contextual router help">
+						<div class="moci-help-heading">
+							<h3 id="moci-help-title">Help</h3>
+							<button type="button" id="moci-help-close" aria-label="Close help">CLOSE</button>
+						</div>
+						<p id="moci-help-description"></p>
+						<ul id="moci-help-topics"></ul>
+						<a id="moci-help-reference" href="https://openwrt.org/docs/start" target="_blank" rel="noopener noreferrer">OpenWrt documentation</a>
+					</aside>
+
 					<div id="dashboard-page" class="page">
 						<div class="hero-card" id="wan-status-hero">
 							<div class="hero-status">
