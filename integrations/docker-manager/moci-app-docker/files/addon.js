@@ -190,7 +190,7 @@ export default class ApplicationsAddon {
         return;
       }
       if(!window.confirm('Install approved app '+b.dataset.install+'? This will create persistent Docker data and publish the reviewed application port on your router LAN.'))return;
-      const needsPrepare=b.dataset.installAction==='prepare'||(b.dataset.installAction==='update'&&b.dataset.canPrepare==='true');
+      const needsPrepare=b.dataset.installAction==='prepare'||b.dataset.installAction==='update';
       const originalLabel=b.textContent;
       b.dataset.needsPrepare=needsPrepare?'true':'false';
       b.disabled=true;
