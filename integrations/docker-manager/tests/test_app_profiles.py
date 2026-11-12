@@ -20,7 +20,7 @@ class ReviewedAppProfileTests(unittest.TestCase):
             'uptime-kuma':{'repository':'louislam/uptime-kuma',
                            'ports':['3001:3001'],
                            'volumes':['uptime-kuma-data:/app/data'],
-                           'needs_write_access':True,'needs_root_for_volume_init':True},
+                           'needs_write_access':True,'volume_initializer':{'uid':1000,'gid':1000,'path':'/app/data'}},
         }}
         app={'services':{'app':{'image':image,'ports':['192.168.50.1:3001:3001'],
                                 'volumes':['uptime-kuma-data:/app/data']}}}
@@ -30,13 +30,34 @@ class ReviewedAppProfileTests(unittest.TestCase):
             with patch.object(api,'ROOT',root), patch.object(api,'policy',return_value={image}), patch.object(api,'lan_ip',return_value='192.168.50.1'):
                 spec=api.spec_validate(app,app_id='uptime-kuma')
                 self.assertFalse(spec['services']['app']['read_only'])
-                self.assertEqual(spec['services']['app']['user'],'0:0')
+                self.assertNotIn('user',spec['services']['app'])
                 self.assertEqual(spec['services']['app']['cap_drop'],['ALL'])
                 self.assertEqual(spec['services']['app']['security_opt'],['no-new-privileges:true'])
                 self.assertEqual(spec['volumes'],{'uptime-kuma-data':{}})
                 locked=api.spec_validate(app)
                 self.assertTrue(locked['services']['app']['read_only'])
                 self.assertEqual(locked['services']['app']['user'],'65534:65534')
+
+    def test_approved_volume_initialization_uses_fixed_bounded_command(self):
+        image='louislam/uptime-kuma@sha256:'+'a'*64
+        with tempfile.TemporaryDirectory() as root:
+            Path(root,'app-templates.json').write_text(json.dumps({'schema':1,'templates':{
+                'uptime-kuma':{'repository':'louislam/uptime-kuma',
+                               'volume_initializer':{'path':'/app/data','uid':1000,'gid':1000}}}}))
+            spec={'services':{'app':{'image':image,'volumes':['uptime-kuma-data:/app/data']}}}
+            with patch.object(api,'ROOT',root):
+                with patch.object(api.subprocess,'run') as run:
+                    run.return_value.returncode=0
+                    api.initialize_approved_volume('uptime-kuma',spec)
+                    self.assertEqual(run.call_count,2)
+                    one_shot=run.call_args.args[0]
+                    self.assertIn('--network',one_shot)
+                    self.assertIn('none',one_shot)
+                    self.assertIn('--cap-drop',one_shot)
+                    self.assertIn('ALL',one_shot)
+                    self.assertIn('--cap-add',one_shot)
+                    self.assertIn('CHOWN',one_shot)
+                    self.assertIn('moci-uptime-kuma_uptime-kuma-data',one_shot)
 
     def test_cannot_steal_writable_profile(self):
         image='example/safe@sha256:'+'a'*64
