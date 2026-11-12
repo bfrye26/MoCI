@@ -16,7 +16,8 @@ async function buildJS() {
 		'moci/js/modules/addons.js',
 		'moci/js/modules/advanced.js',
 		'moci/js/modules/profiles.js',
-		'moci/js/modules/wifi-schedules.js'
+		'moci/js/modules/wifi-schedules.js',
+		'moci/js/modules/wifi-profiles.js'
 	];
 
 	await mkdir(join(distDir, 'js/modules'), { recursive: true });
