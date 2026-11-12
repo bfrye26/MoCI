@@ -122,6 +122,32 @@ export default class UpnpModule {
       existingList.append(p);
     }
     root.append(form,this.el('h3','Existing permission rules'),existingList);
+    const allowRules=rules.filter(([,v])=>v.action==='allow');
+    const manageable=allowRules.length===1;
+    let minExternal,maxExternal,minInternal,maxInternal;
+    if(manageable){
+      const [ruleId,rule]=allowRules[0];
+      const externalRange=String(rule.ext_ports||'1024-65535').split('-').map(Number);
+      const internalRange=String(rule.int_ports||'1024-65535').split('-').map(Number);
+      const policy=this.el('div',undefined,'upnp-range-editor');
+      const heading=this.el('h4','Approved automatic port ranges');
+      const input=(title,value)=>{
+        const wrap=this.el('label',title,'advanced-field');
+        const field=this.el('input');field.type='number';field.min='1024';field.max='65535';
+        field.required=true;field.value=String(value);
+        wrap.append(field);policy.append(wrap);return field;
+      };
+      policy.append(heading);
+      minExternal=input('Minimum incoming WAN port',externalRange[0]);
+      maxExternal=input('Maximum incoming WAN port',externalRange[1]??externalRange[0]);
+      minInternal=input('Minimum device port',internalRange[0]);
+      maxInternal=input('Maximum device port',internalRange[1]??internalRange[0]);
+      form.appendChild(policy);
+      this.allowRuleSection=ruleId;
+    }else{
+      this.allowRuleSection=null;
+      form.append(this.el('p','This router has multiple custom permission rules or no allow rule. MoCI will preserve them. Review their order using OpenWrt Tools > UPnP Configuration before enabling automatic mappings.','upnp-warning'));
+    }
 
     const save=this.el('button','SAVE & APPLY UPnP SETTINGS','action-btn');
     save.type='submit';form.append(save);
@@ -133,6 +159,14 @@ export default class UpnpModule {
       if(enabled.checked && !upnp.checked && !pmp.checked){
         this.core.showToast('Select UPnP or NAT-PMP before enabling','error');return;
       }
+      let range=null;
+      if(this.allowRuleSection){
+        const nums=[minExternal,maxExternal,minInternal,maxInternal].map(field=>Number(field.value));
+        if(nums.some(n=>!PORT(n)||n<1024)||nums[0]>nums[1]||nums[2]>nums[3]){
+          this.core.showToast('Automatic port ranges must be 1024–65535, with minimum not exceeding maximum','error');return;
+        }
+        range={ext_ports:nums[0]+'-'+nums[1],int_ports:nums[2]+'-'+nums[3]};
+      }
       if(enabled.checked && !window.confirm('Allow trusted LAN clients to request incoming WAN ports? This may expose services directly to the internet.'))return;
       this.busy=true;save.disabled=true;
       try{
@@ -142,6 +176,7 @@ export default class UpnpModule {
           enable_natpmp:pmp.checked?'1':'0',
           secure_mode:'1',internal_iface:internal.value,external_iface:'wan',
           log_output:'1'}});
+        if(range)await this.rpc('uci','set',{config:'upnpd',section:this.allowRuleSection,values:range});
         await this.rpc('uci','commit',{config:'upnpd'});
         const result=await this.optional('file','exec',{command:'/etc/init.d/miniupnpd',params:['restart']});
         if(!result||Number(result.code||0)!==0){
