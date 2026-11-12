@@ -135,6 +135,12 @@ jobs:
                                   'cat','/app/data/moci-smoke-test'],text=True).strip()
                   assert marker=='smoke','Persistent volume lost data after container recreation'
                   print('Uptime Kuma installation, LAN HTTP and data persistence passed')
+              except Exception:
+                  print('Uptime Kuma container diagnostic logs:')
+                  subprocess.run(['/usr/bin/docker','logs','--tail','100','moci-uptime-kuma-app-1'],check=False)
+                  subprocess.run(['/usr/bin/docker','inspect','--format',
+                    '{{json .State}}','moci-uptime-kuma-app-1'],check=False)
+                  raise
               finally:
                   try:api.compose('uptime-kuma',['down','--volumes','--remove-orphans'])
                   except Exception as error:print('Cleanup warning:',error)
