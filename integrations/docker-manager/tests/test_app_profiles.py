@@ -90,6 +90,30 @@ class ReviewedAppProfileTests(unittest.TestCase):
                                     self.assertEqual(spec2['services']['app']['environment']
                                                      ['GOTIFY_DEFAULTUSER_PASS'],password)
 
+    def test_custom_runtime_requires_advanced_confirmation(self):
+        image='example/safe@sha256:'+'a'*64
+        payload={'services':{'app':{'image':image,'read_only':False,'user':'1000:1000'}}}
+        with patch.object(api,'policy',return_value={image}):
+            with self.assertRaisesRegex(ValueError,'advanced deployment confirmation'):
+                api.spec_validate(payload)
+            approved=api.spec_validate(payload,advanced=True)
+            app=approved['services']['app']
+            self.assertFalse(app['read_only'])
+            self.assertEqual(app['user'],'1000:1000')
+            self.assertEqual(app['cap_drop'],['ALL'])
+            self.assertEqual(app['security_opt'],['no-new-privileges:true'])
+            payload['services']['app']['privileged']=True
+            with self.assertRaisesRegex(ValueError,'Unsupported Compose service'):
+                api.spec_validate(payload,advanced=True)
+
+    def test_advanced_deploy_rpc_requires_exact_confirmation_phrase(self):
+        with patch.object(api,'writes_enabled',return_value=True):
+            with patch.object(api,'deploy',return_value={'deployed':True}) as send:
+                api.run('deploy',{'name':'test','spec':'{}','confirmation':'ALLOW ADVANCED CONTAINER'})
+                self.assertTrue(send.call_args.kwargs['advanced'])
+                api.run('deploy',{'name':'test','spec':'{}','confirmation':'wrong'})
+                self.assertFalse(send.call_args.kwargs['advanced'])
+
     def test_cannot_steal_writable_profile(self):
         image='example/safe@sha256:'+'a'*64
         templates={'schema':1,'templates':{'safe':{
