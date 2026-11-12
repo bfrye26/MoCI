@@ -76,6 +76,7 @@ export default class NetworkModule {
 					routes: () => this.loadRoutes(),
 					wireless: () => this.loadWireless(),
 					firewall: () => this.loadFirewall(),
+					upnp: () => this.loadUpnp(),
 					dhcp: () => this.loadDHCP(),
 					dns: () => this.loadDNS(),
 					ddns: () => this.loadDDNS(),
@@ -93,6 +94,14 @@ export default class NetworkModule {
 			const tab = subPaths[0] || 'interfaces';
 			this.subTabs.showSubTab(tab);
 		});
+	}
+
+	async loadUpnp(){
+		if(!this.upnp){
+			const {default: UpnpModule}=await import('./upnp.js');
+			this.upnp=new UpnpModule(this.core);
+		}
+		await this.upnp.load(document.getElementById('tab-upnp'));
 	}
 
 	setupModals() {
