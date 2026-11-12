@@ -19,7 +19,7 @@ import urllib.parse
 
 DOCKER_SOCKET='/var/run/docker.sock'
 ROOT='/etc/moci-docker'
-STACKS='/mnt/data/moci-docker/stacks'
+STACKS='/srv/moci-docker/stacks'
 MAX_REPLY=1024*1024
 MAX_SPEC=16384
 NAME=re.compile(r'^[a-z][a-z0-9-]{0,39}$')
@@ -78,6 +78,28 @@ def pins():
         raise ValueError('Invalid approved application pins')
     return data
 
+def template_specs():
+    with open(ROOT+'/app-templates.json',encoding='utf-8') as f:
+        data=json.load(f)
+    if data.get('schema')!=1 or not isinstance(data.get('templates'),dict):
+        raise ValueError('Invalid template catalogue')
+    return data['templates']
+
+def lan_ip():
+    import ipaddress
+    result=subprocess.run(['/sbin/ip','-4','-o','addr','show','dev','br-lan'],
+                          capture_output=True,text=True,timeout=5,check=False)
+    if result.returncode:
+        raise ValueError('LAN interface is unavailable')
+    for token in result.stdout.split():
+        try:
+            ip=ipaddress.ip_interface(token).ip
+            if ip.is_private and not ip.is_loopback:
+                return str(ip)
+        except ValueError:
+            pass
+    raise ValueError('LAN IPv4 address unavailable')
+
 def catalog():
     with open(ROOT+'/app-catalog.json',encoding='utf-8') as f:
         data=json.load(f)
@@ -85,12 +107,13 @@ def catalog():
         raise ValueError('Invalid catalogue')
     approved=policy()
     pinned=pins()
+    templates=template_specs()
     apps=[]
     for app in data['apps'][:100]:
         appid=app.get('id')
         if not isinstance(appid,str) or not NAME.fullmatch(appid): continue
         image=pinned.get(appid)
-        ready=bool(writes_enabled() and app.get('template_available') and app.get('complexity')=='easy' and app.get('risk') in ('review',None) and image in approved and image.split('@')[0]==app.get('repository')) if image else False
+        ready=bool(writes_enabled() and appid in templates and app.get('template_available') and app.get('risk') in ('review',None) and image in approved and image.split('@')[0]==app.get('repository')) if image else False
         apps.append({k:app.get(k) for k in ('id','name','description','category','repository','profile','complexity','risk') } | {'ready':ready})
     return {'catalog':apps}
 
@@ -114,8 +137,10 @@ def spec_validate(spec):
         if not isinstance(ports,list) or len(ports)>8 or not isinstance(volumes,list) or len(volumes)>4:
             raise ValueError('Invalid service mappings')
         for p in ports:
-            if not isinstance(p,str) or not re.fullmatch(r'127\.0\.0\.1:[0-9]{4,5}:[0-9]{1,5}',p):
-                raise ValueError('Only local TCP ports allowed')
+            if not isinstance(p,str) or not re.fullmatch(r'[0-9.]{7,15}:[0-9]{4,5}:[0-9]{1,5}',p):
+                raise ValueError('Only explicit LAN IPv4 TCP ports allowed')
+            if p.split(':',1)[0] not in ('127.0.0.1',lan_ip()):
+                raise ValueError('Ports can bind only to loopback or LAN interface')
             port=int(p.split(':')[1])
             if not 1024<=port<=65535 or port in ports_used:
                 raise ValueError('Port not allowed or duplicated')
@@ -240,11 +265,21 @@ def run(method,args):
         if not selected or not selected['ready']:
             raise ValueError('Application requires approval before installation')
         image=pins()[app_id]
-        # Only reviewed, noncritical single-service templates may install
-        # through this path. Network facing ports require a separate review.
-        if selected.get('risk') not in ('review',None) or selected.get('complexity')!='easy':
-            raise ValueError('Application requires advanced setup')
-        return deploy(app_id,json.dumps({'services':{'app':{'image':image}}}))
+        template=template_specs().get(app_id)
+        if not isinstance(template,dict) or template.get('repository')!=image.split('@',1)[0]:
+            raise ValueError('Unapproved application template')
+        mappings=template.get('ports',[])
+        if not isinstance(mappings,list) or len(mappings)>8:
+            raise ValueError('Invalid application ports')
+        # Only the LAN IP can be bound: never 0.0.0.0 or WAN.
+        ip=lan_ip()
+        ports=[]
+        for value in mappings:
+            if not isinstance(value,str) or not re.fullmatch(r'[0-9]{4,5}:[0-9]{1,5}',value):
+                raise ValueError('Invalid reviewed LAN port')
+            ports.append(ip+':'+value)
+        volumes=template.get('volumes',[])
+        return deploy(app_id,json.dumps({'services':{'app':{'image':image,'ports':ports,'volumes':volumes}}}))
 
     if method=='stack_action':
         name=args.get('name');action=args.get('action')
