@@ -134,6 +134,7 @@ def catalog():
     pinned=pins()
     templates=template_specs()
     deploy_enabled=writes_enabled()
+    runtime={entry['name']:entry for entry in managed_stacks().get('managed_stacks',[])}
     apps=[]
     for app in data['apps'][:100]:
         appid=app.get('id')
@@ -159,12 +160,11 @@ def catalog():
         elif approved_image: state='ready'
         elif reviewed: state='prepare'
         else: state='manual'
-        url=None
-        if reviewed and installed:
-            raw_url=template.get('path')
-            if isinstance(raw_url,str) and re.fullmatch(r'http://ROUTER_IP:[0-9]{4,5}/?',raw_url):
-                try:url=raw_url.replace('ROUTER_IP',lan_ip())
-                except ValueError:pass
+        # Never show an installed app as openable based on its Compose
+        # file alone. Docker must report an actually running managed stack.
+        # This is still a local runtime indication, not a LAN HTTP probe.
+        stack=runtime.get(appid) or {}
+        url=stack.get('url') if reviewed and installed and stack.get('state')=='running' else None
         if not deploy_enabled:
             reason='Enable local Docker management to deploy applications'
         elif reviewed and not approved_image:
