@@ -139,7 +139,7 @@ def spec_validate(spec, app_id=None):
     ports_used=set()
     named_volumes=set()
     for name,svc in services.items():
-        if not isinstance(name,str) or not NAME.fullmatch(name) or not isinstance(svc,dict) or set(svc)-{'image','ports','volumes'}:
+        if not isinstance(name,str) or not NAME.fullmatch(name) or not isinstance(svc,dict) or set(svc)-{'image','ports','volumes','environment','depends_on','mem_limit'}:
             raise ValueError('Unsupported Compose service')
         image=svc.get('image')
         if not isinstance(image,str) or image not in allow or not IMAGE.fullmatch(image):
@@ -161,10 +161,32 @@ def spec_validate(spec, app_id=None):
             if not isinstance(v,str) or not re.fullmatch(r'[a-z][a-z0-9_-]{0,39}:/[A-Za-z0-9_./-]{1,120}',v) or '..' in v.split(':')[1].split('/'):
                 raise ValueError('Only named volumes with safe paths allowed')
             named_volumes.add(v.split(':',1)[0])
+        environment=svc.get('environment',{})
+        if not isinstance(environment,dict) or len(environment)>48:
+            raise ValueError('Environment must contain no more than 48 key/value entries')
+        for k,v in environment.items():
+            if not isinstance(k,str) or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,80}',k):
+                raise ValueError('Invalid environment variable name')
+            if not isinstance(v,(str,int,bool)) or len(str(v).encode('utf-8'))>2048:
+                raise ValueError('Invalid environment variable value')
+        dependencies=svc.get('depends_on',[])
+        if not isinstance(dependencies,list) or len(dependencies)>7:
+            raise ValueError('Invalid service dependencies')
+        if any(not isinstance(x,str) or x not in services or x==name for x in dependencies):
+            raise ValueError('Service dependency refers to an unknown or self service')
+        requested_memory=svc.get('mem_limit','512m')
+        if not isinstance(requested_memory,str) or not re.fullmatch(r'(?:[1-9][0-9]{0,3})[mMgG]',requested_memory):
+            raise ValueError('Memory limit must use megabytes or gigabytes')
+        mem_value=int(requested_memory[:-1])*(1024 if requested_memory[-1].lower()=='g' else 1)
+        if mem_value<64 or mem_value>8192:
+            raise ValueError('Memory limit must be between 64MB and 8GB')
         managed={'labels':{'com.moci.managed':'true'},'image':image,'ports':ports,'volumes':volumes,
                  'read_only':True,'user':'65534:65534','cap_drop':['ALL'],
-                 'security_opt':['no-new-privileges:true'],'pids_limit':128,'mem_limit':'512m',
-                 'restart':'unless-stopped'}
+                 'security_opt':['no-new-privileges:true'],'pids_limit':128,
+                 'restart':'unless-stopped','mem_limit':requested_memory,
+                 'environment':{key:str(value).lower() if isinstance(value,bool) else str(value)
+                                for key,value in environment.items()}}
+        if dependencies:managed['depends_on']=dependencies
         if app_id:
             approved_template=template_specs().get(app_id)
             if not isinstance(approved_template,dict) or app_id not in pins() or image!=pins()[app_id]:
