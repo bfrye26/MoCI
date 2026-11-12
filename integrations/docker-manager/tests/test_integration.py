@@ -22,6 +22,15 @@ class DockerContract(unittest.TestCase):
                 api.run(method,{})
     def test_rpc_methods_are_declared(self):
         self.assertEqual(set(api.METHODS),set(api.READ_METHODS+api.WRITE_METHODS))
+    def test_docker_logs_strip_stdout_stderr_frame_headers(self):
+        text=b'hello from app\\n'
+        warning=b'warning\\n'
+        raw=(bytes([1,0,0,0])+len(text).to_bytes(4,'big')+text+
+             bytes([2,0,0,0])+len(warning).to_bytes(4,'big')+warning)
+        self.assertEqual(api.decode_docker_logs(raw),'hello from app\\nwarning\\n')
+        self.assertEqual(api.decode_docker_logs(b'plain TTY\\n'),'plain TTY\\n')
+        self.assertEqual(api.decode_docker_logs(raw[:-2]),'hello from app\\n')
+
     def test_deny_untrusted_image(self):
         with patch.object(api,'policy',return_value=set()):
             with self.assertRaisesRegex(ValueError,'not approved'):
