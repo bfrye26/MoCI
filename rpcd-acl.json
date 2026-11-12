@@ -86,6 +86,9 @@
         ],
         "/usr/libexec/moci-service-inspect inspect *": [
           "exec"
+        ],
+        "/usr/libexec/moci-service-inspect summary": [
+          "exec"
         ]
       },
       "ubus": {
