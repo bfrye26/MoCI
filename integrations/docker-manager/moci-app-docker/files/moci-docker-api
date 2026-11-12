@@ -26,7 +26,7 @@ NAME=re.compile(r'^[a-z][a-z0-9-]{0,39}$')
 IMAGE=re.compile(r'^[A-Za-z0-9][A-Za-z0-9._/-]*@sha256:[0-9a-f]{64}$')
 CUSTOM_TAG=re.compile(r'^(?:(?:docker\.io|ghcr\.io|lscr\.io|quay\.io|registry\.gitlab\.com)/)?[a-z0-9][a-z0-9._/-]{2,95}:[A-Za-z0-9][A-Za-z0-9._-]{0,79}$')
 IDENT=re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$|^[a-f0-9]{12,64}$')
-READ_METHODS=['status','containers','stacks','images','volumes','networks','storage','logs','container_stats','catalog','managed_stacks','diagnostics']
+READ_METHODS=['status','containers','stacks','images','volumes','networks','storage','logs','container_stats','catalog','managed_stacks','stack_config','diagnostics']
 WRITE_METHODS=['deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action','set_deployments']
 # Deployments are opt-in: secure default for a router control plane.
 # The root administrator must explicitly create this local-only enable file.
@@ -572,6 +572,23 @@ def run(method,args):
     if method=='catalog':return catalog()
     if method=='managed_stacks':
         return {'managed_stacks':[n for n in sorted(os.listdir(STACKS)) if NAME.fullmatch(n) and os.path.isfile(STACKS+'/'+n+'/compose.json')][:100]} if os.path.isdir(STACKS) else {'managed_stacks':[]}
+    if method=='stack_config':
+        name=args.get('name')
+        if not isinstance(name,str) or not NAME.fullmatch(name):
+            raise ValueError('Invalid stack name')
+        path=STACKS+'/'+name+'/compose.json'
+        if os.path.islink(path) or not os.path.isfile(path):
+            raise ValueError('Managed Compose configuration not found')
+        with open(path,'rb') as source:
+            raw=source.read(MAX_SPEC+1)
+        if len(raw)>MAX_SPEC:
+            raise ValueError('Managed Compose configuration is too large')
+        parsed=json.loads(raw.decode('utf-8'))
+        if not isinstance(parsed,dict) or not isinstance(parsed.get('services'),dict):
+            raise ValueError('Invalid managed Compose configuration')
+        return {'name':name,'config':parsed,'contains_secrets':bool(any(
+            bool(entry.get('environment')) for entry in parsed['services'].values()
+            if isinstance(entry,dict)))};
     if method=='storage':
         result=[]
         for path in ('/','/overlay','/mnt/data'):
@@ -685,7 +702,7 @@ def run(method,args):
     raise ValueError('Unknown method')
 
 METHODS={'set_deployments':{'enabled':'bool','confirmation':'str'}}
-METHODS.update({k:({} if k not in ('logs','container_stats','deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action') else {'logs':{'id':'str'},'container_stats':{'id':'str'},'deploy':{'name':'str','spec':'str','confirmation':'str'},'prepare_app':{'id':'str'},'prepare_custom':{'image':'str'},'install_catalog':{'id':'str'},'stack_action':{'name':'str','action':'str'},'container_action':{'id':'str','action':'str'},'volume_action':{'name':'str','action':'str'},'network_action':{'name':'str','action':'str'},'image_action':{'id':'str','action':'str'}}[k]) for k in READ_METHODS+WRITE_METHODS if k!='set_deployments'})
+METHODS.update({k:({} if k not in ('logs','container_stats','stack_config','deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action') else {'logs':{'id':'str'},'container_stats':{'id':'str'},'stack_config':{'name':'str'},'deploy':{'name':'str','spec':'str','confirmation':'str'},'prepare_app':{'id':'str'},'prepare_custom':{'image':'str'},'install_catalog':{'id':'str'},'stack_action':{'name':'str','action':'str'},'container_action':{'id':'str','action':'str'},'volume_action':{'name':'str','action':'str'},'network_action':{'name':'str','action':'str'},'image_action':{'id':'str','action':'str'}}[k]) for k in READ_METHODS+WRITE_METHODS if k!='set_deployments'})
 if __name__=='__main__':
     if len(sys.argv)==2 and sys.argv[1]=='list':
         print(json.dumps(METHODS))
