@@ -158,6 +158,13 @@ def current_owned():
     return (ZONE in data,sorted(rules))
 
 def reconcile(desired):
+    # Do not steal interfaces that an existing fw4 zone already owns. The
+    # VirtualBox prototype used temporary firewall.docker.device entries;
+    # operators must remove those explicitly before enabling this service.
+    previous=call('/sbin/uci','-q','get','firewall.docker.device',ok=False)
+    legacy=set(previous.stdout.split())
+    if any(device in legacy for device in desired['devices']):
+        raise ValueError('Docker bridge still assigned to legacy docker zone; remove manual test device entries first')
     state=json.dumps(desired,sort_keys=True,separators=(',',':'))
     digest=hashlib.sha256(state.encode()).hexdigest()
     existing=STATE.read_text().strip() if STATE.is_file() else ''
