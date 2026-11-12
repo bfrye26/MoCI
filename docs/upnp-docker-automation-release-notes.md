@@ -106,3 +106,28 @@ official image tags, health/readiness endpoints, storage, user UID, required
 secrets, resource limits, WAN/host device access and migration paths.
 Privileged categories (reverse proxies, DNS servers, Docker socket managers,
 host monitoring agents) require separate explicit approval workflows.
+
+## System service startup: verified status
+
+The original **System > Startup** page could report success for a rejected or
+failing init command, and counted the mere presence of a procd instance as
+"running". The new controls:
+
+- Request `ubus service list` with `verbose: true`, reading each instance's
+  **actual** `running` value.
+- Inspect both ubus RPC status and `file.exec`'s `code` and `stderr`.
+- Keep the action pending only while an init script runs and a bounded
+  procd-state confirmation is in progress.
+- Show **Started**, **Stopped**, **Failed** or **Status unconfirmed**, never
+  an indefinite Starting state. The user can refresh manually.
+- Ask for extra confirmation before stopping connectivity-critical services.
+
+A process can still fail to start because of its configuration, permissions,
+missing hardware or a runtime dependency. This UI fix reports the failure
+rather than pretending the action succeeded. Check `logread -e SERVICE`
+and `ubus call service list '{"name":"SERVICE","verbose":true}'` for diagnosis.
+
+The service-control patch is safe to update independently on the VirtualBox
+test VM by copying only `moci/index.html`, `moci/app.css` and
+`moci/js/modules/system.js`; it does not restart services, modify firewall
+rules or replace the working login code.
