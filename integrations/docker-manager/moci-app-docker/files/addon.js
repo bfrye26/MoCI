@@ -8,7 +8,7 @@ export default class ApplicationsAddon {
     this.profile = 'all';
   }
   async rpc(method, args={}) {
-    const write = ['deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action'].includes(method);
+    const write = ['deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action','set_deployments'].includes(method);
     const [status, data] = await this.core.ubusCall('moci-docker', method, args, {timeout:write?240000:25000});
     if (status !== 0 || !data || data.error) throw new Error(data?.error || 'The requested operation failed');
     return data;
@@ -22,11 +22,33 @@ export default class ApplicationsAddon {
       const status = await this.rpc('status');
       this.readOnly = status.read_only !== false;
       this.page.innerHTML = `<div class="page-header"><h1>Applications</h1></div>
-        <div class="docker-hero"><div><strong>Docker Engine</strong><p>${this.esc(status.available ? 'Version ' + status.version : 'Not running')}</p></div><span>${this.readOnly?'Monitoring only. Administrator approval required.':'Approved managed operations enabled'}</span></div>
+        <div class="docker-hero"><div><strong>Docker Engine</strong><p>${this.esc(status.available ? 'Version ' + status.version : 'Not running')}</p></div>
+          <div class="docker-management-mode">
+            <span>${this.readOnly?'Monitoring only':'Approved managed operations enabled'}</span>
+            <button type="button" class="action-btn" id="docker-mode-toggle">${this.readOnly?'Enable Docker management':'Disable Docker management'}</button>
+          </div>
+        </div>
         <nav class="docker-nav" aria-label="Application tools">
         ${[['catalog','App Store'],['containers','Containers'],['stacks','Compose Projects'],['managed_stacks','Managed Stacks'],['images','Images'],['volumes','Volumes'],['networks','Networks'],['storage','Storage'],['diagnostics','Diagnostics']].map(([id,name])=>`<button type="button" class="action-btn" data-view="${id}">${name}</button>`).join('')}
         </nav><section id="docker-content" aria-live="polite"></section>`;
       this.page.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>this.renderView(b.dataset.view)));
+      this.page.querySelector('#docker-mode-toggle')?.addEventListener('click',async event=>{
+        const button=event.currentTarget;
+        const enable=this.readOnly;
+        const phrase=enable?'ENABLE LOCAL DOCKER MANAGEMENT':'DISABLE';
+        if(!window.confirm((enable?'Enable':'Disable')+' Docker management on this router? Docker management has root-equivalent access. Use only trusted administrator accounts and never expose this UI to WAN.'))return;
+        const confirmation=window.prompt('Type '+phrase+' to confirm:','');
+        if(confirmation!==phrase){if(confirmation!==null)this.core.showToast('Confirmation did not match','error');return;}
+        button.disabled=true;
+        try {
+          await this.rpc('set_deployments',{enabled:enable,confirmation});
+          this.core.showToast(enable?'Docker management enabled':'Docker management disabled','success');
+          await this.render();
+        }catch(error){
+          this.core.showToast('Deployment mode change failed: '+error.message,'error');
+          button.disabled=false;
+        }
+      });
       await this.renderView('catalog');
     } catch (e) {this.page.innerHTML = `<div class="page-header"><h1>Applications</h1></div><p role="alert">${this.esc(e.message)}</p>`;}
   }
