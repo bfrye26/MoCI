@@ -25,7 +25,8 @@
         "moci-docker": [
           "deploy",
           "install_catalog",
-          "stack_action"
+          "stack_action",
+          "container_action"
         ]
       }
     }
