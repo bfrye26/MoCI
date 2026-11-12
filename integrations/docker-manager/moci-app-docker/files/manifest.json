@@ -2,7 +2,7 @@
   "id": "docker",
   "entry": "addon.js",
   "name": "Applications",
-  "version": "0.9.0",
+  "version": "0.10.0-rc.1",
   "description": "Native Docker, Compose and homelab catalogue",
   "author": {
     "name": "MoCI Docker contributors"
