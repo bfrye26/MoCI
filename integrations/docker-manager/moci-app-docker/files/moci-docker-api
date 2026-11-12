@@ -365,6 +365,31 @@ def spec_validate(spec, app_id=None, advanced=False):
             approved_ports=[lan_ip()+':'+x for x in approved_template.get('ports',[])]
             if sorted(ports)!=sorted(approved_ports) or sorted(volumes)!=sorted(approved_template.get('volumes',[])):
                 raise ValueError('Application service differs from approved template')
+            # A reviewed app profile is a server-owned exact recipe, not
+            # a way for the caller to smuggle extra environment or commands.
+            expected_environment={
+                k:(v.replace('ROUTER_IP',lan_ip()) if isinstance(v,str) else str(v))
+                for k,v in approved_template.get('environment',{}).items()}
+            expected_secrets={
+                'gotify':'GOTIFY_DEFAULTUSER_PASS',
+                'grafana':'GF_SECURITY_ADMIN_PASSWORD',
+                'homarr':'SECRET_ENCRYPTION_KEY'
+            }
+            secret_env=approved_template.get('initial_password_env',
+                        approved_template.get('generated_secret_env'))
+            if secret_env is not None:
+                if expected_secrets.get(app_id)!=secret_env:
+                    raise ValueError('Unapproved generated secret profile')
+                secret_value=managed['environment'].get(secret_env,'')
+                if not re.fullmatch(r'[0-9a-f]{48,128}',secret_value):
+                    raise ValueError('Invalid generated application secret')
+                expected_environment[secret_env]=secret_value
+            if managed['environment']!=expected_environment:
+                raise ValueError('Application environment differs from reviewed template')
+            if managed.get('command')!=approved_template.get('command'):
+                raise ValueError('Application command differs from reviewed template')
+            if requested_memory!=approved_template.get('mem_limit','512m'):
+                raise ValueError('Application memory setting differs from reviewed template')
             approved_tmpfs=approved_template.get('tmpfs',[])
             if approved_tmpfs:
                 # Only the reviewed IT Tools image is allowed the Nginx scratch
@@ -859,28 +884,34 @@ def run(method,args):
         for key in ('environment','command','mem_limit'):
             if key in template:
                 service[key]=template[key]
+        # Generate and retain installation secrets entirely server-side. The
+        # browser cannot select an encryption key or reset an existing one.
         initial_secret=None
-        secret_env=template.get('initial_password_env')
+        secret_env=template.get('initial_password_env',template.get('generated_secret_env'))
         if secret_env is not None:
-            # Permit only explicitly reviewed credential variables; no arbitrary
-            # shell commands or free-form image-supplied secret names.
-            credentials={'gotify':'GOTIFY_DEFAULTUSER_PASS',
-                         'grafana':'GF_SECURITY_ADMIN_PASSWORD'}
-            if credentials.get(app_id)!=secret_env:
-                raise ValueError('Unapproved initial credential profile')
+            audited={'gotify':'GOTIFY_DEFAULTUSER_PASS',
+                     'grafana':'GF_SECURITY_ADMIN_PASSWORD',
+                     'homarr':'SECRET_ENCRYPTION_KEY'}
+            if audited.get(app_id)!=secret_env:
+                raise ValueError('Unapproved generated application secret')
             previous=STACKS+'/'+app_id+'/compose.json'
-            password=None
+            old_secret=None
             if os.path.isfile(previous) and not os.path.islink(previous):
                 try:
-                    existing=json.load(open(previous,encoding='utf-8'))
-                    password=existing['services']['app']['environment'].get(secret_env)
+                    with open(previous,encoding='utf-8') as f:
+                        prior=json.load(f)
+                    old_secret=prior['services']['app']['environment'].get(secret_env)
                 except (OSError,ValueError,KeyError,TypeError,AttributeError):
-                    password=None
-            if not isinstance(password,str) or len(password)<20:
-                password=os.urandom(24).hex()
-                initial_secret=password
-            env=service.setdefault('environment',{})
-            env[secret_env]=password
+                    old_secret=None
+            if not isinstance(old_secret,str) or not re.fullmatch(r'[0-9a-f]{48,128}',old_secret):
+                old_secret=os.urandom(32).hex()
+                if template.get('initial_password_env'):initial_secret=old_secret
+            service.setdefault('environment',{})[secret_env]=old_secret
+        if isinstance(service.get('environment'),dict):
+            service['environment']={
+                key:value.replace('ROUTER_IP',ip) if isinstance(value,str) else value
+                for key,value in service['environment'].items()}
+
         result=deploy(app_id,json.dumps({'services':{'app':service}}),app_id=app_id)
         if initial_secret:
             result['initial_credentials']={'username':'admin','password':initial_secret}
