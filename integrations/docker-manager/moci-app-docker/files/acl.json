@@ -28,7 +28,8 @@
           "install_catalog",
           "stack_action",
           "container_action",
-          "prepare_app"
+          "prepare_app",
+          "prepare_custom"
         ]
       }
     }
