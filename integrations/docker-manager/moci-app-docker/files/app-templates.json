@@ -53,6 +53,21 @@
       "description": "Stateless CyberChef web utilities on LAN TCP 8000.",
       "path": "http://ROUTER_IP:8000/",
       "needs_write_access": false
+    },
+    "gotify": {
+      "image": "gotify/server:2",
+      "repository": "gotify/server",
+      "ports": [
+        "8084:80"
+      ],
+      "volumes": [
+        "gotify-data:/app/data"
+      ],
+      "description": "Self-hosted notification server. MoCI creates a unique initial admin password, shown once after install.",
+      "path": "http://ROUTER_IP:8084/",
+      "needs_write_access": true,
+      "initial_password_env": "GOTIFY_DEFAULTUSER_PASS",
+      "mem_limit": "384m"
     }
   }
 }
