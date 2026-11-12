@@ -25,7 +25,7 @@ jobs:
           from pathlib import Path
           src=Path('firmware/installer/moci-install').read_text()
           iso=Path('firmware/installer/build-live-iso.sh').read_text()
-          for required in ('sha256sum -c firmware.sha256','--yesno','live_disk','WAN and LAN cannot be the same','openssl passwd -6','umask 077','resize2fs','resolve_nic','uci -q set network.lan.ipaddr'):
+          for required in ('sha256sum -c','--yesno','LIVE_DISK','WAN and LAN must be different','openssl passwd -6','umask 077','resize2fs','resolve_nic','uci -q set network.lan.ipaddr','locate_root()','perform_install()','diagnostics'):
               assert required in src, required
           for required in ('iso-hybrid','moci-install','firmware.img.gz','firmware.sha256','lb build'):
               assert required in iso, required
