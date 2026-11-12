@@ -8,7 +8,7 @@ export default class ApplicationsAddon {
     this.profile = 'all';
   }
   async rpc(method, args={}) {
-    const write = ['deploy','install_catalog','stack_action','container_action'].includes(method);
+    const write = ['deploy','prepare_app','install_catalog','stack_action','container_action'].includes(method);
     const [status, data] = await this.core.ubusCall('moci-docker', method, args, {timeout:write?150000:25000});
     if (status !== 0 || !data || data.error) throw new Error(data?.error || 'The requested operation failed');
     return data;
@@ -69,7 +69,7 @@ export default class ApplicationsAddon {
       <div class="docker-filters" role="group" aria-label="Application categories">
       ${categories.map(c=>`<button type="button" class="action-btn" data-category="${this.esc(c)}" aria-pressed="${this.category===c}">${this.esc(c)}</button>`).join('')}</div>
       <p class="docker-result-count" aria-live="polite"></p>
-      <div class="docker-app-grid">${apps.map(a=>`<article class="docker-app-card" data-app-category="${this.esc(a.category)}" data-app-profile="${this.esc(a.profile||'both')}"><small>${this.esc(a.category)} · ${this.esc(a.complexity||'review')} setup</small><h3>${this.esc(a.name)}</h3><p>${this.esc(a.description)}</p>${a.risk&&a.risk!=='review'?`<p class="docker-app-warning">Attention: ${this.esc(a.risk.replaceAll('-',' '))}</p>`:''}<footer><span>${a.ready?'Approved':'Setup required'}</span><button type="button" class="action-btn" data-install="${this.esc(a.id)}" ${a.ready?'':'disabled'}>Install</button></footer></article>`).join('')}</div>`;
+      <div class="docker-app-grid">${apps.map(a=>`<article class="docker-app-card" data-app-category="${this.esc(a.category)}" data-app-profile="${this.esc(a.profile||'both')}"><small>${this.esc(a.category)} · ${this.esc(a.complexity||'review')} setup</small><h3>${this.esc(a.name)}</h3><p>${this.esc(a.description)}</p>${a.risk&&a.risk!=='review'?`<p class="docker-app-warning">Attention: ${this.esc(a.risk.replaceAll('-',' '))}</p>`:''}<footer><span>${a.ready?'Approved':a.can_prepare?'Ready to prepare':'Setup required'}</span><button type="button" class="action-btn" data-install="${this.esc(a.id)}" ${a.ready||a.can_prepare?'':'disabled'}>${a.ready?'Install':a.can_prepare?'Prepare & install':'Install'}</button></footer></article>`).join('')}</div>`;
     const updateFilters=()=>{
       let visible=0;
       root.querySelectorAll('[data-app-category]').forEach(card=>{
@@ -87,9 +87,18 @@ export default class ApplicationsAddon {
     updateFilters();
     root.querySelectorAll('[data-install]').forEach(b=>b.addEventListener('click',async()=>{
       if(!window.confirm('Install approved app '+b.dataset.install+'? This will create persistent Docker data and publish the reviewed application port on your router LAN.'))return;
+      const needsPrepare=b.textContent.includes('Prepare');
+      b.dataset.needsPrepare=needsPrepare?'true':'false';
       b.disabled=true;
-      b.textContent='INSTALLING…';
-      try{await this.rpc('install_catalog',{id:b.dataset.install});this.core.showToast('Deployment completed','success');await this.renderView('managed_stacks');}
+      b.textContent=needsPrepare?'PREPARING…':'INSTALLING…';
+      try{
+        if(b.textContent.includes('Prepare')||b.dataset.needsPrepare==='true'){
+          await this.rpc('prepare_app',{id:b.dataset.install});
+          b.dataset.needsPrepare='false';
+          this.core.showToast('Image digest approved; deploying…','info');
+        }
+        await this.rpc('install_catalog',{id:b.dataset.install});this.core.showToast('Deployment completed','success');await this.renderView('managed_stacks');
+      }
       catch(e){this.core.showToast('Install failed: '+e.message,'error');b.disabled=false;b.textContent='RETRY INSTALL';}
     }));
   }
