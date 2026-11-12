@@ -111,4 +111,53 @@ assert.equal(vm.serviceIsOneShot('dropbear'),false);
   await module.loadBootServiceNames();
   assert.equal(module.serviceAutostart({},'cron'),'UNKNOWN');
 }
+
+assert.equal(vm.serviceIsOneShot('urandom_seed'),true);
+assert.equal(vm.serviceIsOneShot('nut-server'),false);
+assert.equal(vm.serviceIsOneShot('banip'),false);
+assert.equal(vm.serviceIsOneShot('luci_statistics'),true);
+{
+  const module=Object.create(SystemModule.prototype);
+  module.serviceContext={BANIP_ENABLED:'no',BANIP_STATE:'disabled',NUT_DRIVER_CONFIGURED:'no'};
+  assert.equal(module.serviceDisplay('urandom_seed',false,null,null).label,'BOOT TASK');
+  assert.equal(module.serviceDisplay('banip',false,null,null).label,'APP DISABLED');
+  assert.equal(module.serviceDisplay('nut-server',false,null,null).label,'SETUP NEEDED');
+  assert.equal(module.serviceNeedsSetup('nut-server'),true);
+  assert.equal(module.serviceNeedsSetup('banip'),true);
+  module.serviceContext={BANIP_ENABLED:'yes',BANIP_STATE:'active',NUT_DRIVER_CONFIGURED:'yes'};
+  assert.equal(module.serviceDisplay('banip',false,null,null).label,'ACTIVE');
+  assert.equal(module.serviceNeedsSetup('banip'),false);
+  assert.equal(module.serviceNeedsSetup('nut-server'),false);
+}
+{
+  const module=Object.create(SystemModule.prototype);
+  module.serviceContext=null;
+  module.core={ubusCall:async()=>[0,{code:0,stdout:'BANIP_ENABLED=no\\nBANIP_STATE=disabled\\nNUT_DRIVER_CONFIGURED=no\\n'}]};
+  const context=await module.loadServiceContext(true);
+  assert.equal(context.BANIP_ENABLED,'no');
+  assert.equal(context.BANIP_STATE,'disabled');
+  assert.equal(context.NUT_DRIVER_CONFIGURED,'no');
+}
+{
+  const {module,state}=makeServiceCore({running:false,name:'nut-server'});
+  module.loadServiceContext=async()=>({NUT_DRIVER_CONFIGURED:'no'});
+  module.serviceContext={NUT_DRIVER_CONFIGURED:'no'};
+  await module.toggleService('nut-server');
+  assert.equal(state.toasts.at(-1)[1],'info');
+  assert.equal(state.calls.filter(c=>c[0]==='file' && c[1]==='exec').length,0);
+}
+{
+  const {module,state}=makeServiceCore({running:false,name:'banip'});
+  module.loadServiceContext=async()=>({BANIP_ENABLED:'no',BANIP_STATE:'disabled'});
+  module.serviceContext={BANIP_ENABLED:'no',BANIP_STATE:'disabled'};
+  await module.toggleService('banip');
+  assert.equal(state.toasts.at(-1)[1],'info');
+  assert.equal(state.calls.filter(c=>c[0]==='file' && c[1]==='exec').length,0);
+}
+{
+  const module=Object.create(SystemModule.prototype);
+  module.loadServiceContext=async()=>({BANIP_STATE:'active'});
+  assert.equal(await module.waitForApplicationState('banip',true),true);
+  assert.equal(await module.waitForApplicationState('banip',false),false);
+}
 console.log('System service controls: verified process status, bounded action feedback and errors');
