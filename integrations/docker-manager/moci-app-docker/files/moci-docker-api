@@ -208,6 +208,10 @@ def spec_validate(spec, app_id=None):
                 # never allow this through arbitrary custom Compose.
                 managed['read_only']=False
                 managed.pop('user')
+                if approved_template.get('needs_root_for_volume_init') is True:
+                    # Trusted app only, still no capabilities, no host network,
+                    # no host bind mounts and no privilege escalation.
+                    managed['user']='0:0'
         safe[name]=managed
     return {'services':safe,'volumes':{key:{} for key in sorted(named_volumes)}}
 
