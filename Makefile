@@ -50,6 +50,7 @@ define Package/moci/install
 	$(INSTALL_DATA) ./dist/moci/js/modules/wifi-schedules.js $(1)/www/moci/js/modules/
 	$(INSTALL_DATA) ./dist/moci/js/modules/wifi-profiles.js $(1)/www/moci/js/modules/
 	$(INSTALL_DATA) ./dist/moci/js/modules/vpn-policies.js $(1)/www/moci/js/modules/
+	$(INSTALL_DATA) ./dist/moci/js/modules/ethernet-profiles.js $(1)/www/moci/js/modules/
 
 	$(INSTALL_DIR) $(1)/www/moci/js/addons
 
