@@ -1,0 +1,38 @@
+name: Docker Store contracts (no router needed)
+on:
+  pull_request:
+    paths:
+      - 'integrations/docker-manager/moci-app-docker/**'
+      - 'tests/docker-store-contract.py'
+      - '.github/workflows/docker-store-contract.yml'
+  workflow_dispatch:
+jobs:
+  static-and-frontend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile Python adapters and test harness
+        run: |
+          python -m py_compile integrations/docker-manager/moci-app-docker/files/moci-docker-api
+          python -m py_compile integrations/docker-manager/moci-app-docker/files/moci-docker-policy
+          python -m py_compile tests/docker-store-contract.py
+      - name: Check all catalogue entries and install-security contracts
+        run: python tests/docker-store-contract.py
+      - name: Check MoCI frontend and Docker add-on JavaScript
+        run: |
+          node --check moci/js/core.js
+          node --check integrations/docker-manager/moci-app-docker/files/addon.js
+      - name: Build frontend package
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          test -s dist/moci/js/core.js
+          test -s dist/moci/index.html
