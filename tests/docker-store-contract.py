@@ -243,7 +243,7 @@ class DockerStoreContract(unittest.TestCase):
     def test_homarr_generated_encryption_secret_is_required(self):
         digest='ghcr.io/homarr-labs/homarr@sha256:'+('e'*64)
         base={'image':digest,'ports':['192.168.50.1:7575:7575'],
-              'volumes':['homarr-appdata:/appdata']}
+              'volumes':['homarr-appdata:/appdata'],'mem_limit':'768m'}
         policy={'policy':lambda:{digest},'pins':lambda:{'homarr':digest},
                 'template_specs':lambda:TEMPLATES,'lan_ip':lambda:'192.168.50.1'}
         with patch.dict(API['spec_validate'].__globals__,policy):
