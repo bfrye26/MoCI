@@ -122,7 +122,8 @@
         "nut",
         "samba4",
         "fstab",
-        "rpcd"
+        "rpcd",
+        "moci_wifi_schedule"
       ]
     },
     "write": {
@@ -237,7 +238,8 @@
         "nut",
         "samba4",
         "fstab",
-        "rpcd"
+        "rpcd",
+        "moci_wifi_schedule"
       ]
     }
   }
