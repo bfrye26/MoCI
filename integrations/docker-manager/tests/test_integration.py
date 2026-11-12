@@ -22,6 +22,25 @@ class DockerContract(unittest.TestCase):
                 api.run(method,{})
     def test_rpc_methods_are_declared(self):
         self.assertEqual(set(api.METHODS),set(api.READ_METHODS+api.WRITE_METHODS))
+    def test_container_stats_calculation_and_readonly_rpc(self):
+        payload={
+            'cpu_stats':{'cpu_usage':{'total_usage':280},'system_cpu_usage':1000,'online_cpus':2},
+            'precpu_stats':{'cpu_usage':{'total_usage':180},'system_cpu_usage':600},
+            'memory_stats':{'usage':2000000,'limit':4000000,'stats':{'inactive_file':500000}},
+            'networks':{'eth0':{'rx_bytes':1000,'tx_bytes':2500},
+                        'eth1':{'rx_bytes':2000,'tx_bytes':3500}}
+        }
+        result=api.summarize_container_stats(payload)
+        self.assertEqual(result['cpu_percent'],50.0)
+        self.assertEqual(result['memory_used'],1500000)
+        self.assertEqual(result['memory_percent'],37.5)
+        self.assertEqual(result['network_rx'],3000)
+        self.assertEqual(result['network_tx'],6000)
+        with patch.object(api,'docker',return_value=payload) as getter:
+            out=api.run('container_stats',{'id':'a'*12})
+            self.assertEqual(out['stats']['cpu_percent'],50.0)
+            getter.assert_called_once_with('GET','/containers/'+'a'*12+'/stats?stream=false&one-shot=true')
+
     def test_docker_logs_strip_stdout_stderr_frame_headers(self):
         text=b'hello from app\\n'
         warning=b'warning\\n'
