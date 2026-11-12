@@ -21,6 +21,8 @@ jobs:
           for script in moci/js/modules/*.js; do node --check "$script"; done
           sh -n files/moci-wifi-scheduler
           sh -n files/init-moci-wifi-scheduler
+      - name: Validate release route and package contracts
+        run: node tests/release-interface-contract.mjs
       - name: Reject stored password regression
         run: |
           ! grep -R -nE "localStorage\.setItem\(['\"]saved_credentials|saveCredentials\(|autoLogin\(|Remember credentials" moci
