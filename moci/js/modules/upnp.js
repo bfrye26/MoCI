@@ -62,6 +62,7 @@ export default class UpnpModule {
         this.optional('file','read',{path:'/var/run/miniupnpd.leases'})]);
       this.render(root,instance,{
         service:Object.values(service?.miniupnpd?.instances||{}).some(value=>value?.running===true),
+        serviceKnown:service!==null,
         behindNat:this.privateWan((interfaces?.interface||[]).find(v=>v.interface==='wan')), 
         mappings:this.leaseRows(leases?.data)
       });
@@ -82,24 +83,33 @@ export default class UpnpModule {
   render(root,cfg,status){
     root.replaceChildren();
     root.append(this.el('h3','UPnP & Automatic Port Mapping'),
-      this.el('p','Control which trusted clients can request inbound ports. UPnP and NAT-PMP/PCP are disabled by default; secure mode remains enforced, and automatic requests from the WAN are never accepted.','profiles-description'));
+      this.el('p','Choose which trusted devices may request incoming ports. The saved settings below reflect this router. Secure mode is enforced, and requests from the WAN are never accepted.','profiles-description'));
     const indicators=this.el('div',undefined,'upnp-status-cards');
     const badge=(name,value)=>{
       const card=this.el('div',undefined,'stat-card');
       card.append(this.el('div',name,'stat-label'),this.el('strong',value));
       return card;
     };
-    indicators.append(badge('Service',status.service?'Installed / service registered':'Not running or status unavailable'),
+    indicators.append(badge('Service',status.service?'Running':status.serviceKnown?'Not running':'Status unavailable'),
       badge('Automatic mappings',String(status.mappings.length)),
       badge('Router WAN',status.behindNat?'Private / upstream NAT':'Not detected as private'));
     root.appendChild(indicators);
     if(status.behindNat)root.append(this.el('p','This router is behind another NAT device (as in VirtualBox). UPnP here cannot automatically open ports on the upstream router.','upnp-warning'));
 
-    const form=this.el('form',undefined,'profiles-create');
-    const enabled=this.flag(form,'Enable automatic port mapping',cfg.enabled==='1');
-    const upnp=this.flag(form,'Allow UPnP IGD (game consoles and local applications)',cfg.enable_upnp==='1');
-    const pmp=this.flag(form,'Allow NAT-PMP / PCP',cfg.enable_natpmp==='1');
-    this.flag(form,'Secure mode: clients may forward ports only to their own IP (required)',true,true);
+    if(!status.service && cfg.enabled==='1')root.append(this.el('p',
+      'UPnP is enabled in the configuration, but the daemon is not running. Check System > Startup > miniupnpd > Details for the actual startup error before relying on port mapping.',
+      'upnp-warning upnp-runtime-warning'));
+    const form=this.el('form',undefined,'profiles-create upnp-form');
+    const settings=this.el('div',undefined,'upnp-controls-grid');
+    const protocols=this.el('section',undefined,'upnp-controls-card');
+    protocols.append(this.el('h4','Protocol access'));
+    const routing=this.el('section',undefined,'upnp-controls-card');
+    routing.append(this.el('h4','Trusted network scope'));
+    settings.append(protocols,routing);form.append(settings);
+    const enabled=this.flag(protocols,'Enable automatic port mapping',cfg.enabled==='1');
+    const upnp=this.flag(protocols,'Allow UPnP IGD (game consoles and local applications)',cfg.enable_upnp==='1');
+    const pmp=this.flag(protocols,'Allow NAT-PMP / PCP',cfg.enable_natpmp==='1');
+    this.flag(protocols,'Secure mode: clients may forward ports only to their own IP (required)',true,true);
     const internal=this.el('select');
     const lan=this.el('option','LAN (trusted management network)');lan.value='lan';internal.append(lan);
     const configured=String(cfg.internal_iface||'lan');
@@ -108,11 +118,11 @@ export default class UpnpModule {
       other.value=configured;internal.append(other);
     }
     internal.value=configured;
-    this.field(form,'Trusted client interfaces',internal);
+    this.field(routing,'Trusted client interfaces',internal);
     const external=this.el('select');
     const wan=this.el('option','WAN');wan.value='wan';external.append(wan);
     external.value='wan';
-    this.field(form,'External IPv4 interface',external);
+    this.field(routing,'External IPv4 interface',external);
     const rules=Object.entries(this.cfg).filter(([,v])=>v?.['.type']==='perm_rule');
     root.append(this.el('p','Port permission policy is ordered. Requests are evaluated against the rules below, with deny as the fallback. Restrict unknown devices through your firewall and separate guest/IoT networks.','profiles-description'));
     const existingList=this.el('div',undefined,'upnp-permissions');
@@ -129,7 +139,7 @@ export default class UpnpModule {
       const [ruleId,rule]=allowRules[0];
       const externalRange=String(rule.ext_ports||'1024-65535').split('-').map(Number);
       const internalRange=String(rule.int_ports||'1024-65535').split('-').map(Number);
-      const policy=this.el('div',undefined,'upnp-range-editor');
+      const policy=this.el('section',undefined,'upnp-range-editor');
       const heading=this.el('h4','Approved automatic port ranges');
       const input=(title,value)=>{
         const wrap=this.el('label',title,'advanced-field');
@@ -149,10 +159,11 @@ export default class UpnpModule {
       form.append(this.el('p','This router has multiple custom permission rules or no allow rule. MoCI will preserve them. Review their order using OpenWrt Tools > UPnP Configuration before enabling automatic mappings.','upnp-warning'));
     }
 
-    const save=this.el('button','SAVE & APPLY UPnP SETTINGS','action-btn');
-    save.type='submit';form.append(save);
-    const details=this.el('p','UPnP maps external WAN ports. Docker App Store LAN access is separate and never enables UPnP. Automatic mappings are disabled until you enable this service.','profiles-description');
-    form.append(details);
+    const actions=this.el('div',undefined,'upnp-actions');
+    const save=this.el('button','SAVE & APPLY UPnP SETTINGS','action-btn upnp-save-btn');
+    save.type='submit';actions.append(save);
+    const details=this.el('p','UPnP exposes requested WAN ports. Docker App Store LAN access is separate and never enables UPnP.','upnp-action-note');
+    actions.append(details);form.append(actions);
     form.addEventListener('submit',async e=>{
       e.preventDefault();
       if(this.busy)return;
@@ -178,11 +189,14 @@ export default class UpnpModule {
           log_output:'1'}});
         if(range)await this.rpc('uci','set',{config:'upnpd',section:this.allowRuleSection,values:range});
         await this.rpc('uci','commit',{config:'upnpd'});
-        const result=await this.optional('file','exec',{command:'/etc/init.d/miniupnpd',params:['restart']});
-        if(!result||result.code!==0){
-          this.core.showToast('UPnP settings saved. Restart miniupnpd to apply the changes.','info');
+        const result=await this.rpc('file','exec',{command:'/etc/init.d/miniupnpd',params:['restart']});
+        if(result.code!==0)throw new Error('miniupnpd restart failed: '+String(result.stderr||result.stdout||'exit '+result.code).slice(0,200));
+        const actual=await this.optional('service','list',{name:'miniupnpd',verbose:true});
+        const live=Object.values(actual?.miniupnpd?.instances||{}).some(v=>v?.running===true);
+        if(enabled.checked && !live){
+          this.core.showToast('Settings saved, but miniupnpd is not running. Open System > Startup > Details.','error');
         }else{
-          this.core.showToast('UPnP settings applied','success');
+          this.core.showToast(enabled.checked?'UPnP settings saved. Verify a test port mapping.':'Automatic port mapping disabled','success');
         }
         await this.load(root.parentElement);
       }catch(error){this.core.showToast('UPnP save failed: '+error.message,'error');}
