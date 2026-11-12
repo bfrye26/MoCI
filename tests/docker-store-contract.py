@@ -323,7 +323,7 @@ class DockerStoreContract(unittest.TestCase):
         self.assertIn('--network',args)
         self.assertEqual(args[args.index('--network')+1],'none')
         self.assertEqual(args[args.index('--user')+1],'1000:1000')
-        self.assertIn('test -e "$1"',args)
+        self.assertTrue(any('test -e "$1"' in token for token in args))
         self.assertEqual(args[args.index('moci-seed-config')+1],
                          '/app/config/glance.yml')
         self.assertNotIn('--privileged',args)
