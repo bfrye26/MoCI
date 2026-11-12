@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=moci
 PKG_VERSION:=0.11.0
-PKG_RELEASE:=4
+PKG_RELEASE:=5
 
 PKG_MAINTAINER:=HudsonGraeme
 PKG_LICENSE:=MIT
