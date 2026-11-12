@@ -50,6 +50,32 @@ No live files or firewall rules were modified by this change.
   first login, networking, LuCI fallback, upgrade and recovery on a disposable
   VM disk. Do not publish a production release until these gates pass.
 
+## Build on the existing Windows PC
+
+From Windows PowerShell, with this source snapshot at C:\moci-build\MoCI:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\moci-build\MoCI\scripts\Start-MoCI-Ship-Build.ps1 -Mode Firmware -Jobs 20
+```
+
+Use `-Mode Check` for prerequisites only, or `-Mode All` for firmware plus
+installer ISO. The ISO stage prompts for the existing Ubuntu sudo password.
+Both companion scripts must remain in the same directory. The launcher uses
+Ubuntu-24.04 by default and accepts `-Distro` for an existing alternate name.
+
+It pins firmware source to the CI-tested commit
+`45f23be12abec6dfbd16bc71e739c4203ad375b8`, creates a separate worktree under
+~/Projects, and reuses ~/Projects/openwrt compilation outputs. It requires
+the existing OpenWrt checkout to be v25.12.6 with no tracked source edits.
+The original MoCI checkout is preserved. Each run saves its build log, prior
+and used OpenWrt configs, source versions and image checksums under a unique
+~/Projects/MoCI-output/ship-* directory. It does not flash the VM or any disk.
+
+The Windows launcher passed PowerShell parsing. Full local execution remains
+unverified because WSL access is blocked in the agent session. Linux CI also
+checks the companion Bash script's syntax; a successful syntax check is not
+proof that the firmware or ISO builds successfully on the PC.
+
 The source directory was reconstructed from GitHub through the connected API
 because direct Git networking was unavailable. Its local initial commit is a
 snapshot, not an ancestor of the upstream Git history. Apply this change via

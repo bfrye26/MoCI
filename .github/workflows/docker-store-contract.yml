@@ -8,6 +8,8 @@ on:
       - 'tests/docker-store-contract.py'
       - 'tests/docker-firewall-reconcile.py'
       - 'tests/release-interface-contract.mjs'
+      - 'scripts/build-ship-local.sh'
+      - 'scripts/Start-MoCI-Ship-Build.ps1'
       - '.github/workflows/docker-store-contract.yml'
   workflow_dispatch:
 jobs:
@@ -60,4 +62,6 @@ jobs:
           test -s dist/moci/js/modules/upnp.js
       - name: Validate read-only Docker LAN diagnostics
         run: sh -n scripts/diagnose-docker-lan.sh
+      - name: Validate local build launcher shell syntax
+        run: bash -n scripts/build-ship-local.sh
 
