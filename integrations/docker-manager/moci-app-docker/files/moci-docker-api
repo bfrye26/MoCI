@@ -26,7 +26,7 @@ NAME=re.compile(r'^[a-z][a-z0-9-]{0,39}$')
 IMAGE=re.compile(r'^[A-Za-z0-9][A-Za-z0-9._/-]*@sha256:[0-9a-f]{64}$')
 CUSTOM_TAG=re.compile(r'^(?:(?:docker\.io|ghcr\.io|lscr\.io|quay\.io|registry\.gitlab\.com)/)?[a-z0-9][a-z0-9._/-]{2,95}:[A-Za-z0-9][A-Za-z0-9._-]{0,79}$')
 IDENT=re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$|^[a-f0-9]{12,64}$')
-READ_METHODS=['status','containers','stacks','images','volumes','networks','storage','logs','catalog','managed_stacks','diagnostics']
+READ_METHODS=['status','containers','stacks','images','volumes','networks','storage','logs','container_stats','catalog','managed_stacks','diagnostics']
 WRITE_METHODS=['deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action','set_deployments']
 # Deployments are opt-in: secure default for a router control plane.
 # The root administrator must explicitly create this local-only enable file.
@@ -464,6 +464,32 @@ def decode_docker_logs(raw):
         offset+=8+length
     return ''.join(output)
 
+def summarize_container_stats(data):
+    if not isinstance(data,dict):
+        raise ValueError('Docker statistics unavailable')
+    cpu=data.get('cpu_stats') or {}
+    prev=data.get('precpu_stats') or {}
+    present=(cpu.get('cpu_usage') or {}).get('total_usage',0)
+    previous=(prev.get('cpu_usage') or {}).get('total_usage',0)
+    total=cpu.get('system_cpu_usage',0)
+    baseline=prev.get('system_cpu_usage',0)
+    cpus=cpu.get('online_cpus') or len((cpu.get('cpu_usage') or {}).get('percpu_usage') or []) or 1
+    cpu_delta=max(0,int(present)-int(previous))
+    sys_delta=max(0,int(total)-int(baseline))
+    usage=min(100*int(cpus),100.0*cpu_delta/sys_delta*cpus) if sys_delta else 0.0
+    memory=data.get('memory_stats') or {}
+    memory_total=max(0,int(memory.get('usage') or 0))
+    stats=memory.get('stats') or {}
+    cached=max(0,int(stats.get('inactive_file',stats.get('cache',0)) or 0))
+    used=max(0,memory_total-cached)
+    limit=max(0,int(memory.get('limit') or 0))
+    networks=data.get('networks') or {}
+    rx=sum(max(0,int(n.get('rx_bytes') or 0)) for n in networks.values() if isinstance(n,dict))
+    tx=sum(max(0,int(n.get('tx_bytes') or 0)) for n in networks.values() if isinstance(n,dict))
+    return {'cpu_percent':round(usage,2),'memory_used':used,'memory_limit':limit,
+            'memory_percent':round(100.0*used/limit,1) if limit else 0.0,
+            'network_rx':rx,'network_tx':tx}
+
 def run(method,args):
     if method=='set_deployments':
         # Authenticated deployer-role RPC. Never an arbitrary command runner.
@@ -549,6 +575,9 @@ def run(method,args):
         return {'volumes':[{'Name':x.get('Name',''),'Driver':x.get('Driver','')} for x in (docker('GET','/volumes').get('Volumes') or [])[:500]]}
     if method=='networks':
         return {'networks':[{'Name':x.get('Name',''),'Driver':x.get('Driver','')} for x in docker('GET','/networks')[:500]]}
+    if method=='container_stats':
+        cid=ident(args.get('id'))
+        return {'stats':summarize_container_stats(docker('GET','/containers/'+cid+'/stats?stream=false&one-shot=true'))}
     if method=='logs':
         # No log access via arbitrary shell; use bounded Docker logs endpoint.
         x=ident(args.get('id'))
@@ -635,7 +664,7 @@ def run(method,args):
     raise ValueError('Unknown method')
 
 METHODS={'set_deployments':{'enabled':'bool','confirmation':'str'}}
-METHODS.update({k:({} if k not in ('logs','deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action') else {'logs':{'id':'str'},'deploy':{'name':'str','spec':'str','confirmation':'str'},'prepare_app':{'id':'str'},'prepare_custom':{'image':'str'},'install_catalog':{'id':'str'},'stack_action':{'name':'str','action':'str'},'container_action':{'id':'str','action':'str'},'volume_action':{'name':'str','action':'str'},'network_action':{'name':'str','action':'str'},'image_action':{'id':'str','action':'str'}}[k]) for k in READ_METHODS+WRITE_METHODS if k!='set_deployments'})
+METHODS.update({k:({} if k not in ('logs','container_stats','deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action') else {'logs':{'id':'str'},'container_stats':{'id':'str'},'deploy':{'name':'str','spec':'str','confirmation':'str'},'prepare_app':{'id':'str'},'prepare_custom':{'image':'str'},'install_catalog':{'id':'str'},'stack_action':{'name':'str','action':'str'},'container_action':{'id':'str','action':'str'},'volume_action':{'name':'str','action':'str'},'network_action':{'name':'str','action':'str'},'image_action':{'id':'str','action':'str'}}[k]) for k in READ_METHODS+WRITE_METHODS if k!='set_deployments'})
 if __name__=='__main__':
     if len(sys.argv)==2 and sys.argv[1]=='list':
         print(json.dumps(METHODS))
