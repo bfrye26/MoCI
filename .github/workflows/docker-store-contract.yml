@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'integrations/docker-manager/moci-app-docker/**'
+      - 'moci/**'
       - 'tests/docker-store-contract.py'
       - '.github/workflows/docker-store-contract.yml'
   workflow_dispatch:
@@ -28,6 +29,9 @@ jobs:
       - name: Check MoCI frontend and Docker add-on JavaScript
         run: |
           node --check moci/js/core.js
+          node --check moci/js/modules/network.js
+          node --check moci/js/modules/advanced.js
+          node --check moci/js/modules/dashboard.js
           node --check integrations/docker-manager/moci-app-docker/files/addon.js
       - name: Build frontend package
         run: |
