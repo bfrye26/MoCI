@@ -27,9 +27,14 @@
         "8081:80"
       ],
       "volumes": [],
-      "description": "Self-hosted tools served on LAN TCP port 8081.",
+      "description": "IT Tools over LAN TCP 8081. Nginx runs without host privileges and uses tightly scoped in-memory writable directories; the container root filesystem remains read-only.",
       "path": "http://ROUTER_IP:8081/",
-      "needs_write_access": false
+      "needs_write_access": false,
+      "tmpfs": [
+        "/var/cache/nginx:uid=65534,gid=65534,mode=1777,size=16m",
+        "/var/run:uid=65534,gid=65534,mode=1777,size=4m",
+        "/tmp:uid=65534,gid=65534,mode=1777,size=16m"
+      ]
     },
     "openspeedtest": {
       "image": "openspeedtest/latest:latest",
