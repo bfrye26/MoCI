@@ -443,6 +443,10 @@ export default class SystemModule {
 		}
 	}
 
+	serviceIsOneShot(name) {
+		return new Set(['acme','firewall']).has(name);
+	}
+
 	serviceIsRunning(info) {
 		// An instance being present means it is registered with procd, not
 		// necessarily that its process is running. Use the verbose status.
@@ -475,13 +479,15 @@ export default class SystemModule {
 			this.core.renderTable('#services-table',services,4,'No procd services found',service=>{
 				const {name,running,pending,feedback}=service;
 				let badge=running?this.core.renderBadge('success','RUNNING'):
+					this.serviceIsOneShot(name)?this.core.renderBadge('info','IDLE'):
 					this.core.renderBadge('error','STOPPED');
 				if(pending)badge=this.core.renderBadge('info',pending.action==='start'?'STARTING…':'STOPPING…');
+				else if(feedback?.kind==='completed')badge=this.core.renderBadge('success','COMPLETED');
 				else if(feedback && feedback.expected!==running)badge=this.core.renderBadge(feedback.kind==='failed'?'error':'info',feedback.kind==='failed'?'FAILED':'UNCONFIRMED');
 				else if(feedback && feedback.expected===running)this.serviceFeedback.delete(name);
-				const note=feedback && !pending && feedback.expected!==running?
+				const note=feedback && !pending && (feedback.kind==='completed'||feedback.expected!==running)?
 					`<small class="service-status-note">${this.core.escapeHtml(feedback.message)}</small>`:'';
-				const operation=pending?(pending.action==='start'?'STARTING…':'STOPPING…'):(running?'STOP':'START');
+				const operation=pending?(pending.action==='start'?'STARTING…':'STOPPING…'):(running?'STOP':this.serviceIsOneShot(name)?'RUN':'START');
 				return `<tr>
 					<td>${this.core.escapeHtml(name)}</td>
 					<td>${badge}${note}</td>
@@ -536,6 +542,11 @@ export default class SystemModule {
 			if(!result || result.code!==0){
 				const reason=String(result?.stderr||result?.stdout||'').trim().slice(0,240);
 				throw new Error(reason||'Init script returned '+String(result?.code??'no exit code'));
+			}
+			if(action==='start' && this.serviceIsOneShot(name)){
+				this.serviceFeedback.set(name,{expected:true,kind:'completed',message:'Init command completed. This job has no persistent procd process.'});
+				this.core.showToast(name+': init command completed (no daemon expected)','success');
+				return;
 			}
 			const verified=await this.waitForServiceState(name,action==='start');
 			if(verified){
