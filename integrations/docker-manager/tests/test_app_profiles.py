@@ -20,7 +20,7 @@ class ReviewedAppProfileTests(unittest.TestCase):
             'uptime-kuma':{'repository':'louislam/uptime-kuma',
                            'ports':['3001:3001'],
                            'volumes':['uptime-kuma-data:/app/data'],
-                           'needs_write_access':True,'volume_initializer':{'uid':1000,'gid':1000,'path':'/app/data'}},
+                           'needs_write_access':True,'run_as_user':'1000:1000','volume_initializer':{'uid':1000,'gid':1000,'path':'/app/data'}},
         }}
         app={'services':{'app':{'image':image,'ports':['192.168.50.1:3001:3001'],
                                 'volumes':['uptime-kuma-data:/app/data']}}}
@@ -30,7 +30,7 @@ class ReviewedAppProfileTests(unittest.TestCase):
             with patch.object(api,'ROOT',root), patch.object(api,'policy',return_value={image}), patch.object(api,'lan_ip',return_value='192.168.50.1'):
                 spec=api.spec_validate(app,app_id='uptime-kuma')
                 self.assertFalse(spec['services']['app']['read_only'])
-                self.assertNotIn('user',spec['services']['app'])
+                self.assertEqual(spec['services']['app']['user'],'1000:1000')
                 self.assertEqual(spec['services']['app']['cap_drop'],['ALL'])
                 self.assertEqual(spec['services']['app']['security_opt'],['no-new-privileges:true'])
                 self.assertEqual(spec['volumes'],{'uptime-kuma-data':{}})
