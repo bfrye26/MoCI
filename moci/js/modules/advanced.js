@@ -14,6 +14,13 @@ const SERVICES = [
   ['lldpd','LLDP Discovery','Network','lldpd'],
   ['sqm','Smart Queue Management','Network','sqm'],
   ['ddns','Dynamic DNS','Network','ddns'],
+  ['smartdns','SmartDNS Resolver','Network','smartdns'],
+  ['watchcat','Network Watchdog','Monitoring','watchcat'],
+  ['vnstat','Long-Term Traffic History','Monitoring','vnstat'],
+  ['irqbalance','CPU IRQ Balancing','System','irqbalance'],
+  ['openvpn','OpenVPN Tunnels','Security','openvpn'],
+  ['unbound','Unbound Recursive DNS','Network','unbound'],
+  ['https-dns-proxy','Encrypted DNS Proxy','Network','https-dns-proxy'],
   ['nlbwmon','Bandwidth Accounting','Monitoring','nlbwmon'],
   ['luci_statistics','System Statistics','Monitoring','luci_statistics'],
   ['collectd','Collectd Monitoring','Monitoring','collectd'],
@@ -28,7 +35,7 @@ const CURATED_CONFIGS=new Set(SERVICES.map(item=>item.config));
 const SERVICE_RELOAD=Object.freeze({
   banip:'banip',acme:'acme',lldpd:'lldpd',sqm:'sqm',ddns:'ddns',
   nlbwmon:'nlbwmon',luci_statistics:'luci_statistics',collectd:'collectd',
-  snmpd:'snmpd',nut:'nut',samba4:'samba4'
+  snmpd:'snmpd',nut:'nut',samba4:'samba4',smartdns:'smartdns',watchcat:'watchcat',vnstat:'vnstat',openvpn:'openvpn',unbound:'unbound','https-dns-proxy':'https-dns-proxy'
 });
 const SECRET = /password|passphrase|secret|token|private|key|credential|auth|community|cert|pem|salt|hash|cookie|psk/i;
 const NETWORK_CRITICAL = new Set(['mwan3','pbr','network','firewall','wireless','dhcp','dropbear','uhttpd','rpcd']);
