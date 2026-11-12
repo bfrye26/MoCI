@@ -32,6 +32,7 @@ export default class AdvancedModule {
     this.core=core;
     this.active=null;
     this.routeReady=false;
+    this.discovered=false;
     this.busy=false;
     this.core.registerRoute('/advanced',(_path,parts)=>this.show(parts[0]||'overview'));
   }
@@ -41,10 +42,30 @@ export default class AdvancedModule {
     if(text!==undefined)el.textContent=text;
     return el;
   }
+  async discoverConfigs() {
+    if(this.discovered)return;
+    this.discovered=true;
+    try{
+      const {configs=[]}=await this.rpc('uci','configs',{});
+      if(!Array.isArray(configs))return;
+      const known=new Set(SERVICES.map(s=>s.config));
+      for(const name of configs){
+        if(typeof name!=='string'||!/^[a-z][a-z0-9_-]{0,47}$/.test(name)||known.has(name))continue;
+        known.add(name);
+        SERVICES.push({id:name,title:name.replace(/[-_]/g,' ').replace(/\b\w/g,c=>c.toUpperCase()),
+                       group:'Additional',config:name});
+      }
+      SERVICES.sort((a,b)=>a.group.localeCompare(b.group)||a.title.localeCompare(b.title));
+    }catch(error){
+      // The fixed curated service list remains usable if this account cannot enumerate UCI configs.
+      console.warn('UCI discovery unavailable:',error.message);
+    }
+  }
   async show(id) {
     this.page=document.getElementById('advanced-page');
     if(!this.page)return;
     this.page.classList.remove('hidden');
+    await this.discoverConfigs();
     if(!this.routeReady) {this.routeReady=true;this.renderLinks();}
     const item=SERVICES.find(s=>s.id===id);
     if(!item) {this.active=null;this.overview();return;}
