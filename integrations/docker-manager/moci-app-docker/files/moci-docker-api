@@ -383,9 +383,23 @@ def spec_validate(spec, app_id=None, advanced=False):
                 managed.pop('user')
                 profile_user=approved_template.get('run_as_user')
                 if profile_user is not None:
-                    if not isinstance(profile_user,str) or not re.fullmatch(r'[1-9][0-9]{0,4}:[1-9][0-9]{0,4}',profile_user):
+                    # The OpenSpeedTest upstream image edits root-owned /etc/nginx
+                    # config on start, and crond needs a fixed capability set.
+                    # Root UID is allowed for THIS reviewed app only.
+                    if app_id=='openspeedtest' and profile_user=='0:0':
+                        managed['user']='0:0'
+                    elif isinstance(profile_user,str) and re.fullmatch(r'[1-9][0-9]{0,4}:[1-9][0-9]{0,4}',profile_user):
+                        managed['user']=profile_user
+                    else:
                         raise ValueError('Invalid approved app user')
-                    managed['user']=profile_user
+            profile_caps=approved_template.get('cap_add',[])
+            if profile_caps:
+                # No arbitrary capability additions for custom Compose;
+                # immutable image digest and exact approved app template required.
+                limited=['CHOWN','DAC_OVERRIDE','FOWNER','SETGID','SETUID']
+                if app_id!='openspeedtest' or profile_caps!=limited or managed.get('user')!='0:0' or managed.get('read_only') is not False:
+                    raise ValueError('Unapproved application capabilities')
+                managed['cap_add']=profile_caps
         safe[name]=managed
     return {'services':safe,'volumes':{key:{} for key in sorted(named_volumes)}}
 
