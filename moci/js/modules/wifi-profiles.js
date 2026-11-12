@@ -27,12 +27,21 @@ export default class WifiProfilesModule{
     if(!this.root)return;
     this.root.replaceChildren(this.elem('p','Loading wireless interfaces and security profiles…'));
     try{
+      // A valid Ethernet-only x86 router may not have /etc/config/wireless.
+      // Treat only UCI "not found" as absence, not general RPC failures.
+      const wirelessCall=this.uci('get',{config:'wireless'})
+        .then(data=>({data,missing:false}))
+        .catch(error=>{
+          if(/\bfailed \(4\)/.test(error.message))return {data:{values:{}},missing:true};
+          throw error;
+        });
       const [wireless,network,firewall]=await Promise.all([
-        this.uci('get',{config:'wireless'}),
+        wirelessCall,
         this.uci('get',{config:'network'}),
         this.uci('get',{config:'firewall'})
       ]);
-      this.wifi=wireless.values||{};
+      this.wifi=wireless.data.values||{};
+      this.wifiAvailable=!wireless.missing;
       this.network=network.values||{};
       this.fw=firewall.values||{};
       this.render();
@@ -50,6 +59,9 @@ export default class WifiProfilesModule{
   render(){
     const root=this.root;root.replaceChildren();
     root.append(this.elem('p','Assign different passwords on the same SSID to different isolated security profiles. Each password maps to an existing logical network and VLAN. Your wireless chipset and hostapd package must support dynamic VLANs.','profiles-description'));
+    if(!this.wifiAvailable){
+      root.append(this.elem('p','No wireless configuration is available. This is expected in VirtualBox and other Ethernet-only x86 installations. This feature requires a compatible Wi-Fi radio, an existing access point and full wpad/hostapd with dynamic VLAN support.','profiles-description'));
+    }
     if(window.location.protocol!=='https:'){
       root.append(this.elem('p','For credential safety, password changes require HTTPS. Configure a trusted TLS certificate before creating or removing Wi-Fi passwords.','wifi-security-warning'));
     }
