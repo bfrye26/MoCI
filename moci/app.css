@@ -2124,3 +2124,11 @@ body {
 .upnp-range-editor h4{grid-column:1/-1;margin:0 0 2px}
 .upnp-range-editor input{max-width:100%;padding:9px 10px;background:var(--theme-input);border:1px solid var(--glass-border);border-radius:6px;color:var(--starship-steel)}
 @media(max-width:560px){.upnp-range-editor{grid-template-columns:1fr}}
+
+/* System Startup: bounded procd status verification and manual refresh. */
+.system-services-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.system-services-heading .section-title{margin:0}
+.service-help{color:var(--steel-muted);font-size:12px;line-height:1.55;margin:0 0 15px}
+.service-status-note{display:block;max-width:380px;font-size:11px;line-height:1.35;margin-top:5px;color:var(--warning-amber);overflow-wrap:anywhere}
+:root[data-theme="cloud"] .service-help{color:#526780}
+:root[data-theme="cloud"] .service-status-note{color:#975b19}
