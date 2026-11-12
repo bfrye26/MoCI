@@ -50,11 +50,13 @@ class DockerStoreContract(unittest.TestCase):
 
     def test_reviewed_templates_match_listings_and_repositories(self):
         catalog_by_id={a['id']:a for a in CATALOG}
-        self.assertEqual(len(TEMPLATES),16)
+        self.assertEqual(len(TEMPLATES),20)
         for name,template in TEMPLATES.items():
             self.assertIn(name,catalog_by_id)
             self.assertTrue(catalog_by_id[name]['template_available'])
-            self.assertEqual(catalog_by_id[name]['risk'],'review')
+            self.assertTrue(catalog_by_id[name]['risk']=='review' or (
+                catalog_by_id[name]['risk']=='sensitive-data' and
+                template.get('reviewed_risk')=='sensitive-data'))
             self.assertEqual(template['repository'],catalog_by_id[name]['repository'])
             self.assertTrue(template['image'].startswith(template['repository']+':'))
             self.assertLessEqual(len(template.get('ports',[])),8)
@@ -76,8 +78,8 @@ class DockerStoreContract(unittest.TestCase):
         with patch.dict(API['catalog'].__globals__,{'writes_enabled':lambda:True}):
             apps=API['catalog']()['catalog']
         reviewed=[a for a in apps if a['can_prepare']]
-        self.assertEqual(len(reviewed),16)
-        self.assertEqual(len([a for a in apps if a['setup_state']=='manual']),57)
+        self.assertEqual(len(reviewed),20)
+        self.assertEqual(len([a for a in apps if a['setup_state']=='manual']),53)
         self.assertTrue(all(a['reviewed_template'] for a in reviewed))
         self.assertTrue(all(not a['ready'] for a in apps))
 
@@ -196,7 +198,7 @@ class DockerStoreContract(unittest.TestCase):
         self.assertEqual(TEMPLATES['memos']['run_as_user'],'10001:10001')
         self.assertEqual(TEMPLATES['grafana']['run_as_user'],'472:472')
 
-    def test_sixteen_candidate_templates_have_unique_host_ports_and_volume_owners(self):
+    def test_twenty_candidate_templates_have_unique_host_ports_and_volume_owners(self):
         host_ports=set()
         catalog={app['id']:app for app in CATALOG}
         self.assertEqual(len(TEMPLATES),16)
@@ -252,6 +254,35 @@ class DockerStoreContract(unittest.TestCase):
             base['environment']={'SECRET_ENCRYPTION_KEY':'f'*64}
             approved=API['spec_validate']({'services':{'app':base}},app_id='homarr')
             self.assertEqual(approved['services']['app']['environment']['SECRET_ENCRYPTION_KEY'],'f'*64)
+
+    def test_sensitive_templates_require_audited_risk_flag(self):
+        approved={a['id'] for a in CATALOG if a.get('template_available')}
+        for app in CATALOG:
+            if app['risk']=='sensitive-data' and app['id'] in approved:
+                self.assertEqual(TEMPLATES[app['id']].get('reviewed_risk'),'sensitive-data')
+        for key in ['filebrowser','sftpgo','n8n']:
+            self.assertIn(key,TEMPLATES)
+            self.assertEqual(TEMPLATES[key]['reviewed_risk'],'sensitive-data')
+        self.assertEqual(TEMPLATES['n8n']['generated_secret_env'],'N8N_ENCRYPTION_KEY')
+
+    def test_sensitive_app_requires_explicit_confirmation_before_backend_install(self):
+        # Reject before digest or Docker setup so the gateway cannot bypass it.
+        methods=API['run'].__globals__
+        name='n8n'
+        digest='docker.n8n.io/n8nio/n8n@sha256:'+('e'*64)
+        app={'id':name,'ready':True,'risk':'sensitive-data'}
+        with patch.dict(methods,{'catalog':lambda:{'catalog':[app]},
+                                 'writes_enabled':lambda:True,
+                                 'pins':lambda:{name:digest},
+                                 'policy':lambda:{digest}}):
+            with self.assertRaisesRegex(ValueError,'explicit administrator acknowledgement'):
+                API['run']('install_catalog',{'id':name})
+
+    def test_sensitive_app_does_not_need_an_admin_warning_for_review_class(self):
+        self.assertEqual(TEMPLATES['ntfy']['ports'],['8093:80'])
+        self.assertEqual(TEMPLATES['ntfy']['command'],['serve'])
+        self.assertEqual(TEMPLATES['ntfy']['environment']['NTFY_AUTH_DEFAULT_ACCESS'],
+                         'read-write')
 
     def test_docker_firewall_only_publishes_managed_running_lan_tcp_ports(self):
         fw=runpy.run_path(str(BASE/'moci-docker-firewall'))
