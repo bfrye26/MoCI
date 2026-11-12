@@ -194,6 +194,30 @@ def catalog():
         apps.append(summary)
     return {'catalog':apps,'total':len(apps),'read_only':not deploy_enabled}
 
+def docker_lan_firewall_status():
+    """Read-only visibility into LAN forwarding automation.
+
+    A published Docker port is not evidence that an external LAN client
+    can reach it. Never claim a successful browser connectivity check here.
+    """
+    helper='/usr/sbin/moci-docker-firewall'
+    if not os.path.isfile(helper):
+        return {'state':'missing',
+                'detail':'Docker LAN firewall automation is not installed. New Compose apps may be unreachable from LAN clients.'}
+    try:
+        zone=subprocess.run(['/sbin/uci','-q','get','firewall.moci_docker_zone.name'],
+                            capture_output=True,text=True,timeout=4,check=False)
+        if zone.returncode!=0 or zone.stdout.strip()!='moci_docker':
+            legacy=subprocess.run(['/sbin/uci','-q','get','firewall.moci_docker_web_test'],
+                                  capture_output=True,text=True,timeout=4,check=False)
+            return {'state':'manual' if legacy.returncode==0 else 'not_applied',
+                    'detail':'The firewall reconciler has no active MoCI Docker zone. Existing manual test rules do not automatically cover new apps.'}
+        return {'state':'configured',
+                'detail':'MoCI Docker firewall zone is configured. Verify individual port rules and LAN reachability before relying on Open App.'}
+    except (OSError,subprocess.TimeoutExpired):
+        return {'state':'unknown',
+                'detail':'Could not inspect the Docker LAN firewall. Use Docker Diagnostics or the router console.'}
+
 def managed_stacks():
     """Return live Docker state for stacks created by MoCI.
 
@@ -280,7 +304,7 @@ def managed_stacks():
                        'running_containers':running,'total_containers':total,
                        'url':url,'url_kind':url_kind,
                        'published_ports':sorted(ports)})
-    return {'managed_stacks':result}
+    return {'managed_stacks':result,'lan_firewall':docker_lan_firewall_status()}
 
 
 def spec_validate(spec, app_id=None, advanced=False):
