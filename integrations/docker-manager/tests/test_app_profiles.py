@@ -31,6 +31,7 @@ class ReviewedAppProfileTests(unittest.TestCase):
                 spec=api.spec_validate(app,app_id='uptime-kuma')
                 self.assertFalse(spec['services']['app']['read_only'])
                 self.assertNotIn('user',spec['services']['app'])
+                self.assertEqual(spec['volumes'],{'uptime-kuma-data':{}})
                 locked=api.spec_validate(app)
                 self.assertTrue(locked['services']['app']['read_only'])
                 self.assertEqual(locked['services']['app']['user'],'65534:65534')
