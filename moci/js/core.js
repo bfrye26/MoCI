@@ -86,6 +86,11 @@ export class OpenWrtCore {
 			document.querySelector(`.nav a[href="#/${basePath}"]`) ||
 			document.querySelector(`.nav a[data-addon][href^="#/${basePath}"]`);
 		if (activeLink) activeLink.classList.add('active');
+		const moreMenu=document.querySelector('.nav-more');
+		if(moreMenu){
+			moreMenu.classList.toggle('active',!!activeLink&&moreMenu.contains(activeLink));
+			moreMenu.open=false;
+		}
 
 		if (basePath === 'dashboard') {
 			this.startPolling();
@@ -326,6 +331,10 @@ export class OpenWrtCore {
 		document.getElementById('logout-btn')?.addEventListener('click', () => this.logout());
 		document.getElementById('moci-help-toggle')?.addEventListener('click', () => this.setHelpOpen(!this.helpOpen));
 		document.getElementById('moci-help-close')?.addEventListener('click', () => this.setHelpOpen(false));
+		document.addEventListener('click', event=>{
+			const menu=document.querySelector('.nav-more');
+			if(menu?.open&&!menu.contains(event.target))menu.open=false;
+		});
 		this.applyTheme(this.getSavedTheme());
 		document.getElementById('moci-theme-select')?.addEventListener('change', event => {
 			this.setTheme(event.target.value);
