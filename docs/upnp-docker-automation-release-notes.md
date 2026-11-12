@@ -17,7 +17,7 @@ Status: **draft development release, not production validated**. Branch:
    The dedicated firewall4 zone permits **LAN to published TCP ports** and
    **managed Docker to WAN egress**, not inbound WAN and not Docker to LAN.
    No global forwarding, privileged Docker socket mounts or host networking.
-3. **App Store expansion**: 22 of the 73 catalogue entries now have
+3. **App Store expansion**: 24 of the 73 catalogue entries now have
    server-reviewed, LAN-bound installation candidates (up from five).
    Additions include Memos, Beszel Hub, Grafana, Audiobookshelf, Changedetection,
    Gitea, Homarr, Homepage, Jellyfin, Prometheus, Tautulli, File Browser,
@@ -43,7 +43,7 @@ Status: **draft development release, not production validated**. Branch:
 - Existing custom UPnP permission configurations remain intact unless explicitly
   modified. A fully dynamic per-client UPnP rule editor is **not yet implemented**.
 - Immutable image approval and administrator confirmation are still required for
-  every Docker template. The other 51 catalogue listings remain manual or require multi-service, special-network, storage, or explicit privilege workflows.
+  every Docker template. The other 49 catalogue listings remain manual or require multi-service, special-network, storage, or explicit privilege workflows.
 
 ## Before enabling firewall automation on the old VirtualBox test VM
 
@@ -196,3 +196,60 @@ Actual device-level validation is pending. A UPS passthrough or a configured
 NUT server is required to fully exercise NUT's driver path. The BanIP status
 parser matches the documented `status : active` output from OpenWrt's banIP
 and must still be verified against the version installed in the VM.
+
+## App Store UX, 24 candidates and Uptime Kuma / Gotify reachability
+
+The November 12 VM testing showed that a successfully created Compose stack
+can still be unreachable from Windows. IT Tools (LAN :8081) and OpenSpeedTest
+(LAN :3000) were fixed by a **temporary manual firewall4 test** that assigned
+their specific `br-*` networks to the legacy `docker` zone. Installing
+Uptime Kuma (LAN :3001) or Gotify (LAN :8084) creates a **new Compose bridge**
+that this manual test does not cover. This is a **strong candidate explanation**
+for the observed browser timeouts, but must be distinguished from application
+startup failure using both router-local and Windows TCP tests.
+
+New code:
+- App Store cards have compact filters, collapsible categories, an explicit
+  recipe-vs-manual state, and a consistent card footer.
+- Filestash and Backrest are two more **sensitive-data** installation
+  candidates, bringing the catalogue to **24 of 73** reviewed recipes.
+  The recipes are code-reviewed; neither has a verified live startup.
+- `moci-docker-api` now exposes `lan_firewall` in `managed_stacks`,
+  explaining whether the automatic firewall helper is absent, unapplied,
+  or has an owned firewall4 zone.
+- The add-on warns when LAN automation is missing or returns an error
+  during install. It does **not** claim that a published port proves LAN
+  reachability.
+- The App Store's Open link is now gated on Docker's running managed-stack
+  state, not simply the presence of a Compose JSON file.
+- `scripts/diagnose-docker-lan.sh` is a **read-only**, bounded diagnosis
+  script. It does not print Compose environment secrets or alter UCI.
+
+**Important:** the automatic reconciler is already in this branch, but it is
+not enabled on the user's existing VirtualBox VM by the previous live ZIPs.
+It intentionally refuses to run while the previous temporary test has
+claimed a Docker bridge in `firewall.docker.device`. To activate it, first
+safely migrate those two legacy device entries, verifying browser/SSH
+recovery through the VirtualBox console and preserving a backup. Never delete
+arbitrary firewall rules or disable global firewall4 protection.
+
+Specific app checks:
+- Uptime Kuma: `192.168.50.1:3001 -> container:3001`, persistent local
+  SQLite volume `/app/data`, non-root reviewed UID 1000. Check startup
+  logs and whether the pinned `louislam/uptime-kuma:2` image supports this
+  UID; official rootless variants have distinct tags.
+- Gotify: `192.168.50.1:8084 -> container:8080`; reviewed
+  `GOTIFY_SERVER_PORT=8080`, SQLite volume `/app/data`. Gotify's default
+  image listens on port 80 but its internal listener is configurable; verify
+  that the approved Compose environment took effect. Do not print/log the
+  generated initial admin password.
+- On the router, test both local HTTP ports with `wget -S -T 5 -O /dev/null`.
+  On Windows, use `Test-NetConnection` and `curl.exe --connect-timeout 5`.
+  A router-local HTTP success with Windows timeout indicates LAN forwarding;
+  local connection refusal indicates an app listener/container issue.
+- Installed and Running in MoCI is **not** a complete readiness check.
+  Health checks and periodic client-reachability validation remain future work.
+
+The new code passed the offline `docker-store-contract.yml` contract,
+syntax and frontend build checks. **VM runtime installation of this branch,
+automatic firewall migration, and 22 newly added templates is pending.**
