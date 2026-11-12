@@ -73,7 +73,7 @@
       "category": "Monitoring",
       "repository": "henrygd/beszel",
       "description": "Server monitoring",
-      "template_available": false,
+      "template_available": true,
       "profile": "both",
       "complexity": "medium",
       "risk": "review"
@@ -271,7 +271,7 @@
       "category": "Monitoring",
       "repository": "grafana/grafana",
       "description": "Dashboards",
-      "template_available": false,
+      "template_available": true,
       "profile": "both",
       "complexity": "medium",
       "risk": "review"
@@ -450,7 +450,7 @@
       "profile": "both",
       "complexity": "easy",
       "risk": "review",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "meshcentral",
