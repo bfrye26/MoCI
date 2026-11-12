@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "templates": {
+    "uptime-kuma": {
+      "image": "louislam/uptime-kuma:1",
+      "repository": "louislam/uptime-kuma",
+      "ports": [
+        "3001:3001"
+      ],
+      "volumes": [
+        "uptime-kuma-data:/app/data"
+      ],
+      "description": "Persistent uptime monitoring; finish administrator setup on first visit.",
+      "path": "http://ROUTER_IP:3001/"
+    },
+    "it-tools": {
+      "image": "corentinth/it-tools:latest",
+      "repository": "corentinth/it-tools",
+      "ports": [
+        "8081:80"
+      ],
+      "volumes": [],
+      "description": "Self-hosted tools served on LAN TCP port 8081.",
+      "path": "http://ROUTER_IP:8081/"
+    },
+    "openspeedtest": {
+      "image": "openspeedtest/latest:latest",
+      "repository": "openspeedtest/latest",
+      "ports": [
+        "3000:3000",
+        "3001:3001"
+      ],
+      "volumes": [],
+      "description": "LAN speed test on TCP 3000 and HTTPS on 3001.",
+      "path": "http://ROUTER_IP:3000/"
+    }
+  }
+}
