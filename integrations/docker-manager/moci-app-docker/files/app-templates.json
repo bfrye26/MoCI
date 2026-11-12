@@ -488,6 +488,61 @@
         "NTFY_CACHE_FILE": "/var/lib/ntfy/cache.db",
         "NTFY_AUTH_DEFAULT_ACCESS": "read-write"
       }
+    },
+    "glance": {
+      "repository": "glanceapp/glance",
+      "image": "glanceapp/glance:latest",
+      "ports": [
+        "8088:8080"
+      ],
+      "volumes": [
+        "glance-config:/app/config"
+      ],
+      "description": "Glance dashboard with automatically seeded minimal YAML configuration and no Docker socket, host networking or privileged access. Edit glance.yml later to add widgets.",
+      "path": "http://ROUTER_IP:8088/",
+      "needs_write_access": true,
+      "run_as_user": "1000:1000",
+      "mem_limit": "256m",
+      "volume_initializer": {
+        "path": "/app/config",
+        "uid": 1000,
+        "gid": 1000
+      },
+      "seed_files": [
+        {
+          "path": "/app/config/glance.yml",
+          "content": "pages:\n  - name: Home\n    columns:\n      - size: full\n        widgets:\n          - type: search\n"
+        }
+      ]
+    },
+    "dashy": {
+      "repository": "lissy93/dashy",
+      "image": "lissy93/dashy:latest",
+      "ports": [
+        "4000:8080"
+      ],
+      "volumes": [
+        "dashy-data:/app/user-data"
+      ],
+      "description": "Dashy start-page editor with automatically seeded conf.yml and persistent settings. It starts with a sample documentation link and no Docker socket access.",
+      "path": "http://ROUTER_IP:4000/",
+      "needs_write_access": true,
+      "run_as_user": "1000:1000",
+      "mem_limit": "768m",
+      "volume_initializer": {
+        "path": "/app/user-data",
+        "uid": 1000,
+        "gid": 1000
+      },
+      "seed_files": [
+        {
+          "path": "/app/user-data/conf.yml",
+          "content": "pageInfo:\n  title: MoCI Dashy\n  description: Router application dashboard\nappConfig:\n  theme: colorful\nsections:\n  - name: Getting Started\n    items:\n      - title: Dashy Documentation\n        url: https://dashy.to/docs/\n"
+        }
+      ],
+      "environment": {
+        "NODE_ENV": "production"
+      }
     }
   }
 }
