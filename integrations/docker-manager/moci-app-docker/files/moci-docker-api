@@ -90,7 +90,7 @@ def lan_ip():
     # flags happen to be available in the selected OpenWrt image.
     sock=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
     try:
-        raw=fcntl.ioctl(sock.fileno(),0x8915,b'br-lan'+b'\\0'*250)
+        raw=fcntl.ioctl(sock.fileno(),0x8915,b'br-lan'+bytes(250))
         ip=socket.inet_ntoa(raw[20:24])
     except OSError as exc:
         raise ValueError('LAN IPv4 address unavailable') from exc
