@@ -57,7 +57,7 @@ class ReviewedAppProfileTests(unittest.TestCase):
                     self.assertIn('ALL',one_shot)
                     self.assertIn('--cap-add',one_shot)
                     self.assertIn('CHOWN',one_shot)
-                    self.assertIn('moci-uptime-kuma_uptime-kuma-data',one_shot)
+                    self.assertTrue(any('source=moci-uptime-kuma_uptime-kuma-data' in arg for arg in one_shot))
 
     def test_cannot_steal_writable_profile(self):
         image='example/safe@sha256:'+'a'*64
