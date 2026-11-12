@@ -10,9 +10,10 @@
       "volumes": [
         "uptime-kuma-data:/app/data"
       ],
-      "description": "Uptime Kuma v2: local persistent SQLite volume and first-run setup at TCP 3001.",
+      "description": "Uptime Kuma v2, persistent SQLite data; initial named-volume permissions require container root with all capabilities dropped.",
       "path": "http://ROUTER_IP:3001/",
-      "needs_write_access": true
+      "needs_write_access": true,
+      "needs_root_for_volume_init": true
     },
     "it-tools": {
       "image": "corentinth/it-tools:latest",
