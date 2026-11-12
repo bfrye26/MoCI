@@ -1960,3 +1960,26 @@ body {
 #vpn-policies-content .profiles-create select{width:100%;min-width:0;background:var(--theme-input);border:1px solid var(--glass-border);border-radius:6px;color:var(--starship-steel);padding:9px}
 :root[data-theme="cloud"] #vpn-policies-content .profiles-create input,
 :root[data-theme="cloud"] #vpn-policies-content .profiles-create select{background:#fff;color:#1e2d43;border-color:#bfcfe0}
+
+/* Compact navigation for business management and StartWRT workspaces. */
+.nav{gap:22px;margin-left:30px;align-items:center}
+.nav-more{position:relative;color:var(--steel-muted);font:600 11px var(--font-mono);letter-spacing:.08em}
+.nav-more summary{list-style:none;cursor:pointer;padding:9px 0;border-bottom:2px solid transparent}
+.nav-more summary::-webkit-details-marker{display:none}
+.nav-more summary::after{content:'⌄';display:inline-block;margin-left:7px;color:var(--steel-muted)}
+.nav-more[open] summary,.nav-more.active summary{color:var(--primary-accent);border-bottom-color:var(--primary-accent)}
+.nav-more-menu{position:absolute;top:calc(100% + 12px);left:-15px;min-width:208px;z-index:210;
+  background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:10px;padding:7px;
+  box-shadow:0 16px 38px rgba(0,0,0,.22);display:flex;flex-direction:column;gap:2px}
+.nav-more-menu a{padding:11px 12px;border-radius:6px;border:0!important;white-space:nowrap;font-size:11px;color:var(--starship-steel)}
+.nav-more-menu a:hover,.nav-more-menu a.active{background:var(--theme-hover);color:var(--primary-accent)}
+:root[data-theme="cloud"] .nav-more-menu{background:#fff;box-shadow:0 12px 25px rgba(37,65,104,.14);border-color:#dce5f0}
+:root[data-theme="cloud"] .nav-more-menu a{color:#36506c}
+@media(max-width:1100px){.nav{gap:14px;margin-left:20px}.theme-picker{margin-right:6px}.theme-picker span{display:none}}
+@media(max-width:768px){
+  .nav{gap:0;align-items:stretch;margin-left:0}
+  .nav-more{position:static}
+  .nav-more summary{padding:16px 32px}
+  .nav-more-menu{position:static;box-shadow:none;border:0;padding:3px 0 8px 24px;min-width:0;border-radius:0;background:var(--glass-bg)}
+  .nav-more-menu a{padding:12px 24px}
+}
