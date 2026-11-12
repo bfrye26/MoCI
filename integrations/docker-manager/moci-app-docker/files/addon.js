@@ -21,7 +21,7 @@ export default class ApplicationsAddon {
       const status = await this.rpc('status');
       this.readOnly = status.read_only !== false;
       this.page.innerHTML = `<div class="page-header"><h1>Applications</h1></div>
-        <div class="docker-hero"><div><strong>Docker Engine</strong><p>${this.esc(status.available ? 'Version ' + status.version : 'Not running')}</p></div><span>${this.readOnly?'Monitoring only':'Managed deployments enabled'}</span></div>
+        <div class="docker-hero"><div><strong>Docker Engine</strong><p>${this.esc(status.available ? 'Version ' + status.version : 'Not running')}</p></div><span>${this.readOnly?'Monitoring only. Administrator approval required.':'Approved managed operations enabled'}</span></div>
         <nav class="docker-nav" aria-label="Application tools">
         ${[['catalog','App Store'],['containers','Containers'],['stacks','Compose Projects'],['managed_stacks','Managed Stacks'],['images','Images'],['volumes','Volumes'],['networks','Networks'],['storage','Storage']].map(([id,name])=>`<button type="button" class="action-btn" data-view="${id}">${name}</button>`).join('')}
         </nav><section id="docker-content" aria-live="polite"></section>`;
@@ -43,8 +43,15 @@ export default class ApplicationsAddon {
       if(!data.length){root.innerHTML='<p class="docker-empty">Nothing to display yet.</p>';return;}
       const keys=view==='containers'?['Names','Image','State','Status']:view==='stacks'?['Name','Containers']:view==='images'?['Tags','Size']:view==='volumes'?['Name','Driver']:view==='networks'?['Name','Driver']:['Mount','Total','Used','Free'];
       root.innerHTML=`<div class="docker-scroll"><table class="data-table"><thead><tr>${keys.map(k=>`<th>${k}</th>`).join('')}${view==='containers'?'<th>Actions</th>':''}</tr></thead><tbody>
-        ${data.map(item=>`<tr>${keys.map(k=>`<td>${this.esc(Array.isArray(item[k])?item[k].join(', '):item[k])}</td>`).join('')}${view==='containers'?`<td><button class="action-btn" data-log="${this.esc(item.Id)}">Logs</button></td>`:''}</tr>`).join('')}
+        ${data.map(item=>`<tr>${keys.map(k=>`<td>${this.esc(Array.isArray(item[k])?item[k].join(', '):item[k])}</td>`).join('')}${view==='containers'?`<td><button class="action-btn" data-log="${this.esc(item.Id)}">Logs</button>${!this.readOnly&&item.Managed?['start','stop','restart'].map(action=>`<button class="action-btn" data-container-action="${action}" data-id="${this.esc(item.Id)}">${action}</button>`).join(''):''} </td>`:''}</tr>`).join('')}
         </tbody></table></div><pre class="docker-log" hidden></pre>`;
+      root.querySelectorAll('[data-container-action]').forEach(b=>b.addEventListener('click',async()=>{
+        const id=b.dataset.id,action=b.dataset.containerAction;
+        if(!window.confirm(action+' this MoCI-managed container?'))return;
+        b.disabled=true;
+        try {await this.rpc('container_action',{id,action});this.core.showToast('Container '+action+' requested','success');await this.renderView('containers');}
+        catch(e){this.core.showToast(e.message,'error');b.disabled=false;}
+      }));
       root.querySelectorAll('[data-log]').forEach(b=>b.addEventListener('click',async()=>{
         const log=root.querySelector('.docker-log');log.hidden=false;log.textContent='Loading logs…';
         try{log.textContent=(await this.rpc('logs',{id:b.dataset.log})).logs||'No logs';}
