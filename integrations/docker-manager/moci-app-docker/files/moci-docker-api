@@ -550,7 +550,11 @@ def run(method,args):
                 raise ValueError('Invalid reviewed LAN port')
             ports.append(ip+':'+value)
         volumes=template.get('volumes',[])
-        return deploy(app_id,json.dumps({'services':{'app':{'image':image,'ports':ports,'volumes':volumes}}}),app_id=app_id)
+        service={'image':image,'ports':ports,'volumes':volumes}
+        for key in ('environment','command','mem_limit'):
+            if key in template:
+                service[key]=template[key]
+        return deploy(app_id,json.dumps({'services':{'app':service}}),app_id=app_id)
 
     if method=='stack_action':
         name=args.get('name');action=args.get('action')
