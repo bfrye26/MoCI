@@ -1755,9 +1755,15 @@ body {
 :root[data-theme] textarea {
   background-color:var(--theme-input);color:var(--starship-steel);border-color:var(--glass-border)
 }
-:root[data-theme] button:not(.menu-toggle):not(.modal-close),
-:root[data-theme] .nav a {color:var(--starship-steel)}
-:root[data-theme] button:not(.menu-toggle):not(.modal-close):hover {background-color:var(--theme-hover)}
+:root[data-theme] .nav a {color:var(--steel-muted)}
+:root[data-theme] .nav a:hover,:root[data-theme] .nav a.active {color:var(--primary-accent)}
+:root[data-theme] .action-btn,:root[data-theme] .action-btn-sm,
+:root[data-theme] .tab-btn,:root[data-theme] .logout-btn {
+  color:var(--starship-steel);background:var(--theme-input);border-color:var(--glass-border)
+}
+:root[data-theme] .action-btn:hover,:root[data-theme] .action-btn-sm:hover,
+:root[data-theme] .logout-btn:hover {background:var(--theme-hover);border-color:var(--primary-accent)}
+:root[data-theme] .tab-btn.active {color:var(--primary-accent);background:transparent;border-bottom-color:var(--primary-accent)}
 :root[data-theme] a {accent-color:var(--primary-accent)}
 :root[data-theme] :focus-visible {outline-color:var(--theme-outline)}
 :root[data-theme="cloud"] .nav a.active,
@@ -1807,3 +1813,114 @@ body {
 .moci-help-panel #moci-help-close{border:1px solid var(--glass-border);background:var(--theme-input);color:var(--starship-steel);padding:7px 12px;border-radius:5px;cursor:pointer}
 .moci-help-panel a{display:inline-block;margin-top:8px;color:var(--theme-link);font-size:12px}
 @media(max-width:800px){.moci-help-button{padding:7px 9px}.moci-help-panel{padding:15px}}
+
+/* Cloud Light correction: build the entire UI from light semantic surfaces.
+   Dark-only semi-transparent white components caused grey haze and unreadable content. */
+:root[data-theme="cloud"] {
+  --theme-panel-alt:#f1f5fb;
+  --theme-row-hover:#edf4ff;
+  --theme-divider:#dce5f0;
+  --theme-soft-blue:#e7f0ff;
+  --theme-on-blue:#174b9b;
+  --theme-shadow:0 4px 16px rgba(37,65,104,.075);
+}
+:root[data-theme="cloud"] body{
+  background:linear-gradient(150deg,#f7f9fd 0%,#eff4fa 100%);
+  color:#1c2b40;
+}
+:root[data-theme="cloud"] .header{
+  background:rgba(255,255,255,.98);
+  box-shadow:0 1px 0 rgba(47,74,109,.12),0 3px 12px rgba(41,64,96,.035);
+}
+:root[data-theme="cloud"] .nav a{color:#53677f}
+:root[data-theme="cloud"] .nav a.active,
+:root[data-theme="cloud"] .nav a:hover{
+  color:#1659b2;border-bottom-color:#2463c5;
+}
+:root[data-theme="cloud"] .logo{color:#1b365e}
+:root[data-theme="cloud"] .logo-icon{color:#2463c5}
+:root[data-theme="cloud"] .page h2,
+:root[data-theme="cloud"] .page h3,
+:root[data-theme="cloud"] .page h4,
+:root[data-theme="cloud"] .section-title,
+:root[data-theme="cloud"] .stat-value,
+:root[data-theme="cloud"] .metric-value{color:#1e2d43}
+:root[data-theme="cloud"] .stat-card,
+:root[data-theme="cloud"] .hero-card,
+:root[data-theme="cloud"] .login-card,
+:root[data-theme="cloud"] .modal-content,
+:root[data-theme="cloud"] .addon-card,
+:root[data-theme="cloud"] .advanced-card,
+:root[data-theme="cloud"] .moci-help-panel {
+  background:#fff;border:1px solid #dce5f0;
+  box-shadow:var(--theme-shadow);color:#1e2d43;
+  backdrop-filter:none;
+}
+:root[data-theme="cloud"] .stat-label,
+:root[data-theme="cloud"] .metric-label,
+:root[data-theme="cloud"] .hero-label,
+:root[data-theme="cloud"] .hero-detail-label,
+:root[data-theme="cloud"] .section-title,
+:root[data-theme="cloud"] .data-table th,
+:root[data-theme="cloud"] .form-label,
+:root[data-theme="cloud"] .advanced-note,
+:root[data-theme="cloud"] .advanced-intro{color:#5d718a}
+:root[data-theme="cloud"] .data-table th{
+  background:#f1f5fb;border-bottom:1px solid #dce5f0;
+}
+:root[data-theme="cloud"] .data-table td{
+  border-bottom:1px solid #e4ebf3;color:#25354d;
+}
+:root[data-theme="cloud"] .data-table tbody tr:hover{background:#edf4ff}
+:root[data-theme="cloud"] .tabs{border-bottom-color:#dce5f0}
+:root[data-theme="cloud"] .tab-btn{
+  background:transparent;color:#5c7088;border-color:transparent;
+}
+:root[data-theme="cloud"] .tab-btn:hover{color:#235eaa;background:#edf4ff}
+:root[data-theme="cloud"] .tab-btn.active{
+  color:#1759b4;background:#eaf2ff;border-bottom-color:#2463c5;
+}
+:root[data-theme="cloud"] .action-btn,
+:root[data-theme="cloud"] .action-btn-sm,
+:root[data-theme="cloud"] .logout-btn,
+:root[data-theme="cloud"] .moci-help-button {
+  color:#25405e;background:#f5f8fd;
+  border:1px solid #cddbeb;box-shadow:none;
+}
+:root[data-theme="cloud"] .action-btn:hover,
+:root[data-theme="cloud"] .action-btn-sm:hover,
+:root[data-theme="cloud"] .moci-help-button:hover {
+  background:#e7f0ff;border-color:#2463c5;color:#1759b4;
+}
+:root[data-theme="cloud"] .action-btn.danger,
+:root[data-theme="cloud"] .action-btn-sm.danger{color:#a92836}
+:root[data-theme="cloud"] .badge-success{color:#126b42;background:#e4f6eb;border-color:#b8e4ca}
+:root[data-theme="cloud"] .badge-warning{color:#865100;background:#fff4d8;border-color:#f2d99b}
+:root[data-theme="cloud"] .badge-info{color:#2157a1;background:#eaf2ff;border-color:#bfd8ff}
+:root[data-theme="cloud"] .badge-error{color:#a52637;background:#fff0f1;border-color:#f1c4c9}
+:root[data-theme="cloud"] .log-viewer,
+:root[data-theme="cloud"] .docker-log {
+  background:#f1f5fb!important;color:#283a54!important;border-color:#dce5f0;
+}
+:root[data-theme="cloud"] input:not([type="checkbox"]):not([type="radio"]),
+:root[data-theme="cloud"] select,
+:root[data-theme="cloud"] textarea,
+:root[data-theme="cloud"] .combobox-control{
+  background:#fff;color:#1e2d43;border:1px solid #bfcfe0;
+}
+:root[data-theme="cloud"] input::placeholder,
+:root[data-theme="cloud"] textarea::placeholder{color:#6c819c;opacity:1}
+:root[data-theme="cloud"] input:focus-visible,
+:root[data-theme="cloud"] select:focus-visible,
+:root[data-theme="cloud"] textarea:focus-visible{outline:2px solid #2463c5;outline-offset:1px}
+:root[data-theme="cloud"] .advanced-card:hover{background:#f2f7ff;border-color:#84addf}
+:root[data-theme="cloud"] .advanced-card small{color:#1759b4}
+:root[data-theme="cloud"] .advanced-card p{color:#5d718a}
+:root[data-theme="cloud"] .addon-section-details{background:#f4f7fc;border-color:#dce5f0}
+:root[data-theme="cloud"] .addon-permission-scope{color:#294569;background:#e8eff9}
+:root[data-theme="cloud"] .addon-install-section{color:#1e2d43}
+:root[data-theme="cloud"] .progress-bar{background:#e3eaf3}
+:root[data-theme="cloud"] .combobox-chip{background:#e7f0ff;color:#2157a1}
+:root[data-theme="cloud"] .combobox-option:hover{background:#edf4ff}
+:root[data-theme="cloud"] .moci-help-panel li{color:#526780}
+:root[data-theme="cloud"] .toast{background:#fff;color:#243951;border-color:#dce5f0}
