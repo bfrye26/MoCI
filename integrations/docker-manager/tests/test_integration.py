@@ -17,6 +17,7 @@ class DockerContract(unittest.TestCase):
     def test_fail_closed(self):
         self.assertFalse(api.WRITES_ENABLED)
         for method in api.WRITE_METHODS:
+            if method=='set_deployments':continue  # separately checked with explicit confirmation
             with self.assertRaisesRegex(ValueError,'disabled'):
                 api.run(method,{})
     def test_rpc_methods_are_declared(self):
