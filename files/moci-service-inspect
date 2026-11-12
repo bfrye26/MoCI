@@ -1,6 +1,6 @@
 #!/bin/sh
-# Read-only helper for MoCI System > Startup. Never starts or stops a service.
-# Run through an explicitly scoped rpcd file.exec rule.
+# Read-only service helper: no starts, stops, or UCI writes.
+# Summary values are enums. No passwords or private UCI values are returned.
 set -u
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
@@ -11,7 +11,10 @@ valid_service() {
         *) return 0 ;;
     esac
 }
-
+ups_has_driver() {
+    [ -f /etc/config/nut_server ] || return 2
+    uci -q show nut_server 2>/dev/null | grep -Eq '=driver$'
+}
 case "${1-}" in
     list)
         [ "$#" -eq 1 ] || exit 2
@@ -25,19 +28,17 @@ case "${1-}" in
         ;;
     summary)
         [ "$#" -eq 1 ] || exit 2
-        # Report safe capability flags only: never print UCI values such as
-        # configured UPS passwords or third-party credentials.
-        ban_enabled="$(uci -q get banip.global.ban_enabled 2>/dev/null || :)"
-        case "$ban_enabled" in
+        enabled="$(uci -q get banip.global.ban_enabled 2>/dev/null || :)"
+        case "$enabled" in
             1) printf 'BANIP_ENABLED=yes\n' ;;
             0) printf 'BANIP_ENABLED=no\n' ;;
             *) printf 'BANIP_ENABLED=unknown\n' ;;
         esac
         if [ -x /etc/init.d/banip ]; then
-            ban_status="$(/etc/init.d/banip status 2>/dev/null | head -n 35)" || ban_status=""
-            if printf '%s\n' "$ban_status" | grep -Eqi 'status[[:space:]]*:[[:space:]]*active([[:space:]]|\(|$)'; then
+            output="$(/etc/init.d/banip status 2>/dev/null | head -n 35)" || output=""
+            if printf '%s\n' "$output" | grep -Eqi 'status[[:space:]]*:[[:space:]]*active([[:space:]]|\(|$)'; then
                 printf 'BANIP_STATE=active\n'
-            elif [ "$ban_enabled" = 0 ]; then
+            elif [ "$enabled" = 0 ]; then
                 printf 'BANIP_STATE=disabled\n'
             else
                 printf 'BANIP_STATE=inactive\n'
@@ -45,8 +46,16 @@ case "${1-}" in
         else
             printf 'BANIP_STATE=unavailable\n'
         fi
-        if [ -f /etc/config/nut_server ]; then
-            if uci -q show nut_server 2>/dev/null | grep -Eq '=driver        [ "$#" -eq 2 ] && valid_service "$2" || exit 2
+        if ups_has_driver; then
+            printf 'NUT_DRIVER_CONFIGURED=yes\n'
+        elif [ -f /etc/config/nut_server ]; then
+            printf 'NUT_DRIVER_CONFIGURED=no\n'
+        else
+            printf 'NUT_DRIVER_CONFIGURED=unknown\n'
+        fi
+        ;;
+    inspect)
+        [ "$#" -eq 2 ] && valid_service "$2" || exit 2
         name="$2"
         path="/etc/init.d/$name"
         [ -f "$path" ] && [ -x "$path" ] || exit 3
@@ -61,111 +70,28 @@ case "${1-}" in
         case "$name" in
             urandom_seed)
                 printf 'SERVICE_TYPE=boot-task\n'
-                printf 'HINT=Random-seed initialization is a short-lived task and is not a daemon.\n'
+                printf 'HINT=Random seeding is a short-lived boot task, not a daemon.\n'
                 ;;
             banip)
                 printf 'SERVICE_TYPE=firewall-manager\n'
                 enabled="$(uci -q get banip.global.ban_enabled 2>/dev/null || :)"
                 printf 'BANIP_ENABLED=%s\n' "${enabled:-unknown}"
-                # Status returns a bounded synopsis, not the full report.
                 /etc/init.d/banip status 2>/dev/null | head -n 15 | cut -c1-200 || :
                 ;;
             nut-server)
                 printf 'SERVICE_TYPE=ups-daemon\n'
-                if [ -f /etc/config/nut_server ] && ! uci -q show nut_server 2>/dev/null | grep -Eq '=driver        printf 'RECENT_LOGS:\n'
-        if command -v logread >/dev/null 2>&1; then
-            # No dynamic shell evaluation. Display no more than 12 lines,
-            # each truncated to 200 bytes. The UI renders textContent.
-            logread 2>/dev/null | grep -i -F -- "$name" | tail -n 12 | cut -c1-200 || :
-        fi
-        ;;
-    *)
-        echo 'usage: moci-service-inspect list | summary | inspect <service>' >&2
-        exit 2
-        ;;
-esac
-; then
-                printf 'NUT_DRIVER_CONFIGURED=yes\n'
-            else
-                printf 'NUT_DRIVER_CONFIGURED=no\n'
-            fi
-        else
-            printf 'NUT_DRIVER_CONFIGURED=unknown\n'
-        fi
-        ;;
-    inspect)
-        [ "$#" -eq 2 ] && valid_service "$2" || exit 2
-        name="$2"
-        path="/etc/init.d/$name"
-        [ -f "$path" ] && [ -x "$path" ] || exit 3
-        if "$path" enabled >/dev/null 2>&1; then
-            printf 'BOOT_ENABLED=yes\n'
-        else
-            printf 'BOOT_ENABLED=no\n'
-        fi
-        status=0
-        "$path" status >/dev/null 2>&1 || status=$?
-        printf 'INIT_STATUS_EXIT=%s\n' "$status"
-        printf 'RECENT_LOGS:\n'
-        if command -v logread >/dev/null 2>&1; then
-            # No dynamic shell evaluation. Display no more than 12 lines,
-            # each truncated to 200 bytes. The UI renders textContent.
-            logread 2>/dev/null | grep -i -F -- "$name" | tail -n 12 | cut -c1-200 || :
-        fi
-        ;;
-    *)
-        echo 'usage: moci-service-inspect list | inspect <service>' >&2
-        exit 2
-        ;;
-esac
-; then
+                if [ -f /etc/config/nut_server ] && ! ups_has_driver; then
                     printf 'UPS_DRIVER=not-configured\n'
                 fi
                 ;;
         esac
         printf 'RECENT_LOGS:\n'
         if command -v logread >/dev/null 2>&1; then
-            # No dynamic shell evaluation. Display no more than 12 lines,
-            # each truncated to 200 bytes. The UI renders textContent.
             logread 2>/dev/null | grep -i -F -- "$name" | tail -n 12 | cut -c1-200 || :
         fi
         ;;
     *)
-        echo 'usage: moci-service-inspect list | inspect <service>' >&2
-        exit 2
-        ;;
-esac
-; then
-                printf 'NUT_DRIVER_CONFIGURED=yes\n'
-            else
-                printf 'NUT_DRIVER_CONFIGURED=no\n'
-            fi
-        else
-            printf 'NUT_DRIVER_CONFIGURED=unknown\n'
-        fi
-        ;;
-    inspect)
-        [ "$#" -eq 2 ] && valid_service "$2" || exit 2
-        name="$2"
-        path="/etc/init.d/$name"
-        [ -f "$path" ] && [ -x "$path" ] || exit 3
-        if "$path" enabled >/dev/null 2>&1; then
-            printf 'BOOT_ENABLED=yes\n'
-        else
-            printf 'BOOT_ENABLED=no\n'
-        fi
-        status=0
-        "$path" status >/dev/null 2>&1 || status=$?
-        printf 'INIT_STATUS_EXIT=%s\n' "$status"
-        printf 'RECENT_LOGS:\n'
-        if command -v logread >/dev/null 2>&1; then
-            # No dynamic shell evaluation. Display no more than 12 lines,
-            # each truncated to 200 bytes. The UI renders textContent.
-            logread 2>/dev/null | grep -i -F -- "$name" | tail -n 12 | cut -c1-200 || :
-        fi
-        ;;
-    *)
-        echo 'usage: moci-service-inspect list | inspect <service>' >&2
+        echo 'usage: moci-service-inspect list | summary | inspect <service>' >&2
         exit 2
         ;;
 esac
