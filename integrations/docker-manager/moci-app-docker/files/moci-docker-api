@@ -208,6 +208,11 @@ def spec_validate(spec, app_id=None):
                 # never allow this through arbitrary custom Compose.
                 managed['read_only']=False
                 managed.pop('user')
+                profile_user=approved_template.get('run_as_user')
+                if profile_user is not None:
+                    if not isinstance(profile_user,str) or not re.fullmatch(r'[1-9][0-9]{0,4}:[1-9][0-9]{0,4}',profile_user):
+                        raise ValueError('Invalid approved app user')
+                    managed['user']=profile_user
         safe[name]=managed
     return {'services':safe,'volumes':{key:{} for key in sorted(named_volumes)}}
 
