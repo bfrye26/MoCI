@@ -158,3 +158,41 @@ read-only service helper and the exact reason miniupnpd is not starting on
 the user's upstream-NAT VirtualBox WAN. ACME/firewall remain on-demand tasks;
 other examples such as GPIO switches or DDNS can legitimately be inactive on
 an Ethernet-only, unconfigured VM.
+
+## VirtualBox service lifecycle follow-up (boot tasks, NUT, BanIP)
+
+The router UI showed a recurring pattern where `urandom_seed`, `nut-server`
+and `banip` stopped immediately or never presented a running procd daemon.
+These are not the same failure mode:
+
+- `urandom_seed` is a **short-lived initialization task**, not an always-on
+  daemon. Its normal idle state is `BOOT TASK`; after a successful manual
+  invocation the UI may temporarily display `COMPLETED`.
+- BanIP reports actual firewall/blocklist state through
+  `/etc/init.d/banip status`. The UI distinguishes `APP DISABLED`, `ACTIVE`
+  and `INACTIVE`, regardless of whether a persistent process appears in
+  procd. Explicitly disabled BanIP cannot be started from the service list;
+  users must configure/enable feeds first.
+- `nut-server` requires at least one configured UPS driver, generally in
+  the UCI `nut_server` configuration. Without one, Startup displays
+  `SETUP NEEDED` and skips the pointless start attempt. The helper does
+  not read or return NUT authentication passwords.
+- Other known on-demand/oneshot services, such as `firewall`, `acme`,
+  `system`, `packet_steering`, and `ucitrack`, are not treated as failing
+  daemons simply because they have no running procd instance.
+- The `Starts at boot` column describes a boot symlink, not proof that a
+  feature is enabled in its own UCI or that a daemon is currently running.
+- Generic start/stop commands still inspect the init exit status and confirm
+  persistent processes before claiming success; unconfirmed results can be
+  investigated through `Details`.
+
+For the existing VirtualBox VM, this is a **source/UI/diagnostic-helper-only**
+update. A scoped preview ZIP can update `moci/js/modules/system.js`,
+`moci/index.html`, and `files/moci-service-inspect`, adding only the helper's
+`summary` RPC execution grant. It does **not** start or stop services,
+modify the BanIP or NUT config, alter UPnP enablement, or change Docker/firewall.
+
+Actual device-level validation is pending. A UPS passthrough or a configured
+NUT server is required to fully exercise NUT's driver path. The BanIP status
+parser matches the documented `status : active` output from OpenWrt's banIP
+and must still be verified against the version installed in the VM.
