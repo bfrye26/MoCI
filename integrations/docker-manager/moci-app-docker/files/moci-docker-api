@@ -140,9 +140,12 @@ def catalog():
         if not isinstance(appid,str) or not NAME.fullmatch(appid): continue
         image=pinned.get(appid)
         template=templates.get(appid)
+        trusted_risk=(app.get('risk') in ('review',None) or
+                      (app.get('risk')=='sensitive-data' and
+                       isinstance(template,dict) and
+                       template.get('reviewed_risk')=='sensitive-data'))
         reviewed=(isinstance(template,dict) and app.get('template_available') is True
-                  and app.get('risk') in ('review',None)
-                  and template.get('repository')==app.get('repository')
+                  and trusted_risk and template.get('repository')==app.get('repository')
                   and isinstance(template.get('image'),str))
         approved_image=bool(reviewed and image and image in approved
                             and image.split('@',1)[0]==app.get('repository'))
@@ -373,7 +376,8 @@ def spec_validate(spec, app_id=None, advanced=False):
             expected_secrets={
                 'gotify':'GOTIFY_DEFAULTUSER_PASS',
                 'grafana':'GF_SECURITY_ADMIN_PASSWORD',
-                'homarr':'SECRET_ENCRYPTION_KEY'
+                'homarr':'SECRET_ENCRYPTION_KEY',
+                'n8n':'N8N_ENCRYPTION_KEY'
             }
             secret_env=approved_template.get('initial_password_env',
                         approved_template.get('generated_secret_env'))
@@ -865,6 +869,8 @@ def run(method,args):
         selected=next((a for a in listing if a['id']==app_id),None)
         if not selected or not selected['ready']:
             raise ValueError('Application requires approval before installation')
+        if selected['risk']=='sensitive-data' and args.get('confirmation')!='INSTALL SENSITIVE APP':
+            raise ValueError('Sensitive application deployment requires explicit administrator acknowledgement')
         image=pins()[app_id]
         template=template_specs().get(app_id)
         if not isinstance(template,dict) or template.get('repository')!=image.split('@',1)[0]:
@@ -891,7 +897,8 @@ def run(method,args):
         if secret_env is not None:
             audited={'gotify':'GOTIFY_DEFAULTUSER_PASS',
                      'grafana':'GF_SECURITY_ADMIN_PASSWORD',
-                     'homarr':'SECRET_ENCRYPTION_KEY'}
+                     'homarr':'SECRET_ENCRYPTION_KEY',
+                     'n8n':'N8N_ENCRYPTION_KEY'}
             if audited.get(app_id)!=secret_env:
                 raise ValueError('Unapproved generated application secret')
             previous=STACKS+'/'+app_id+'/compose.json'
