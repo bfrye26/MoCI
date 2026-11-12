@@ -145,3 +145,52 @@ jobs:
                   try:api.compose('uptime-kuma',['down','--volumes','--remove-orphans'])
                   except Exception as error:print('Cleanup warning:',error)
           PY
+
+      - name: Install Gotify with generated initial credentials and verify LAN health
+        run: |
+          docker pull gotify/server:2
+          python3 - <<'PY'
+          import importlib.machinery,importlib.util,json,subprocess,tempfile,time,urllib.request
+          from pathlib import Path
+          source='integrations/docker-manager/moci-app-docker/files/moci-docker-api'
+          loader=importlib.machinery.SourceFileLoader('moci_gotify_smoke',source)
+          spec=importlib.util.spec_from_loader(loader.name,loader)
+          api=importlib.util.module_from_spec(spec);loader.exec_module(api)
+          digests=json.loads(subprocess.check_output(['/usr/bin/docker','image','inspect',
+                        '--format','{{json .RepoDigests}}','gotify/server:2'],text=True))
+          matches=[x for x in digests if x.startswith('gotify/server@sha256:')]
+          assert matches,'Gotify image did not return a verified registry digest'
+          digest=matches[0]
+          with tempfile.TemporaryDirectory() as temp:
+              base=Path(temp);policy=base/'policy';policy.mkdir()
+              stacks=base/'stacks';stacks.mkdir()
+              (policy/'allowed-images.json').write_text(json.dumps({'images':[digest]}))
+              (policy/'app-pins.json').write_text(json.dumps({'gotify':digest}))
+              for filename in ('app-catalog.json','app-templates.json'):
+                  (policy/filename).write_bytes(Path('integrations/docker-manager/moci-app-docker/files',filename).read_bytes())
+              api.ROOT=str(policy);api.STACKS=str(stacks)
+              api.lan_ip=lambda:'127.0.0.1'
+              api.writes_enabled=lambda:True
+              def health():
+                  for _ in range(30):
+                      try:
+                          with urllib.request.urlopen('http://127.0.0.1:8084/health',timeout=2) as response:
+                              if response.status==200:return True
+                      except Exception:pass
+                      time.sleep(1)
+                  return False
+              try:
+                  first=api.run('install_catalog',{'id':'gotify'})
+                  assert first['deployed'] and len(first['initial_credentials']['password'])>=32
+                  assert health(),'Gotify did not respond to its LAN-bound health endpoint'
+                  api.compose('gotify',['down'])
+                  api.compose('gotify',['up','-d','--wait'])
+                  assert health(),'Gotify did not survive Compose recreation'
+                  again=api.run('install_catalog',{'id':'gotify'})
+                  assert 'initial_credentials' not in again,'Reinstall replaced initial credentials'
+                  assert health()
+                  print('Gotify app installation and restart passed')
+              finally:
+                  try:api.compose('gotify',['down','--volumes','--remove-orphans'])
+                  except Exception as e:print('Gotify cleanup warning:',e)
+          PY
