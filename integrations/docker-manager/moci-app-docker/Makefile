@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 PKG_NAME:=moci-app-docker
 PKG_VERSION:=0.10.0
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=MoCI contributors
 include $(INCLUDE_DIR)/package.mk
@@ -27,6 +27,8 @@ define Package/moci-app-docker/install
 	$(INSTALL_BIN) ./files/rpcd-moci-docker $(1)/usr/libexec/rpcd/moci-docker
 	$(INSTALL_DIR) $(1)/usr/libexec
 	$(INSTALL_BIN) ./files/moci-docker-api $(1)/usr/libexec/moci-docker-api
+	$(INSTALL_DIR) $(1)/usr/sbin
+	$(INSTALL_BIN) ./files/moci-docker-policy $(1)/usr/sbin/moci-docker-policy
 	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
 	$(INSTALL_DATA) ./files/acl.json $(1)/usr/share/rpcd/acl.d/moci-app-docker.json
 	$(INSTALL_DIR) $(1)/etc/moci-docker
