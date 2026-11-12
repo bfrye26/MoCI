@@ -57,6 +57,7 @@ export class OpenWrtCore {
 			dashboard: 'dashboard',
 			network: 'network',
 			system: 'system',
+			advanced: 'advanced',
 			addons: 'addons'
 		};
 		if (routeModuleMap[basePath]) return routeModuleMap[basePath];
@@ -193,6 +194,7 @@ export class OpenWrtCore {
 			dashboard: './modules/dashboard.js',
 			network: './modules/network.js',
 			system: './modules/system.js',
+			advanced: './modules/advanced.js',
 			addons: './modules/addons.js'
 		};
 	}
@@ -231,6 +233,7 @@ export class OpenWrtCore {
 			dashboard: ['dashboard'],
 			network: ['network', 'wireless', 'firewall', 'dhcp', 'dns', 'diagnostics', 'wireguard', 'qos', 'ddns'],
 			system: ['system', 'backup', 'packages', 'services', 'ssh_keys', 'storage', 'leds', 'firmware'],
+			advanced: ['system'],
 			addons: ['addons']
 		};
 
