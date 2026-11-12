@@ -18,7 +18,8 @@ async function buildJS() {
 		'moci/js/modules/profiles.js',
 		'moci/js/modules/wifi-schedules.js',
 		'moci/js/modules/wifi-profiles.js',
-		'moci/js/modules/vpn-policies.js'
+		'moci/js/modules/vpn-policies.js',
+		'moci/js/modules/ethernet-profiles.js'
 	];
 
 	await mkdir(join(distDir, 'js/modules'), { recursive: true });
