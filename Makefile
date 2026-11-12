@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=moci
 PKG_VERSION:=0.11.0
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_MAINTAINER:=HudsonGraeme
 PKG_LICENSE:=MIT
@@ -43,6 +43,7 @@ define Package/moci/install
 	$(INSTALL_DIR) $(1)/www/moci/js/modules
 	$(INSTALL_DATA) ./dist/moci/js/modules/dashboard.js $(1)/www/moci/js/modules/
 	$(INSTALL_DATA) ./dist/moci/js/modules/network.js $(1)/www/moci/js/modules/
+	$(INSTALL_DATA) ./dist/moci/js/modules/upnp.js $(1)/www/moci/js/modules/
 	$(INSTALL_DATA) ./dist/moci/js/modules/system.js $(1)/www/moci/js/modules/
 	$(INSTALL_DATA) ./dist/moci/js/modules/addons.js $(1)/www/moci/js/modules/
 	$(INSTALL_DATA) ./dist/moci/js/modules/advanced.js $(1)/www/moci/js/modules/
