@@ -477,7 +477,7 @@ export default class SystemModule {
 				let badge=running?this.core.renderBadge('success','RUNNING'):
 					this.core.renderBadge('error','STOPPED');
 				if(pending)badge=this.core.renderBadge('info',pending.action==='start'?'STARTING…':'STOPPING…');
-				else if(feedback && feedback.expected!==running)badge=this.core.renderBadge('info','UNCONFIRMED');
+				else if(feedback && feedback.expected!==running)badge=this.core.renderBadge(feedback.kind==='failed'?'error':'info',feedback.kind==='failed'?'FAILED':'UNCONFIRMED');
 				else if(feedback && feedback.expected===running)this.serviceFeedback.delete(name);
 				const note=feedback && !pending && feedback.expected!==running?
 					`<small class="service-status-note">${this.core.escapeHtml(feedback.message)}</small>`:'';
@@ -502,6 +502,7 @@ export default class SystemModule {
 		for(let attempt=0;attempt<8;attempt++){
 			try {
 				const snapshot=await this.serviceSnapshot(name);
+				if(!expected && !snapshot[name])return true;
 				if(snapshot[name] && this.serviceIsRunning(snapshot[name])===expected)return true;
 			} catch(error) {
 				if(attempt===7)throw error;
@@ -546,7 +547,7 @@ export default class SystemModule {
 			}
 		}catch(error){
 			const message=String(error?.message||'Unknown service control error').slice(0,260);
-			if(action)this.serviceFeedback.set(name,{expected:action==='start',message});
+			if(action)this.serviceFeedback.set(name,{expected:action==='start',message,kind:'failed'});
 			this.core.showToast('Service '+name+': '+message,'error');
 		}finally{
 			this.servicePending.delete(name);
