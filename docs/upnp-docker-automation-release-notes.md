@@ -17,10 +17,16 @@ Status: **draft development release, not production validated**. Branch:
    The dedicated firewall4 zone permits **LAN to published TCP ports** and
    **managed Docker to WAN egress**, not inbound WAN and not Docker to LAN.
    No global forwarding, privileged Docker socket mounts or host networking.
-3. **Three new reviewed install templates**: Memos (single-container SQLite),
-   Beszel Hub (not the privileged agent) and Grafana (first-install password
-   generation), all with LAN-bound web ports and named storage. Total reviewed
-   template candidates: 8/73. **These new three have not passed runtime tests**.
+3. **App Store expansion**: 22 of the 73 catalogue entries now have
+   server-reviewed, LAN-bound installation candidates (up from five).
+   Additions include Memos, Beszel Hub, Grafana, Audiobookshelf, Changedetection,
+   Gitea, Homarr, Homepage, Jellyfin, Prometheus, Tautulli, File Browser,
+   SFTPGo, n8n, ntfy, Dashy and Glance. Profiles cover persistent named
+   volumes, UID/GID initialization, generated encryption/administrator secrets,
+   and safe first-install configuration seeding.
+   **Only IT Tools and OpenSpeedTest have been runtime tested on VirtualBox.**
+   A successful Python contract test is NOT verification that a pulled Docker
+   image boots, preserves data, or is operational.
 4. **Firmware** includes `miniupnpd-nftables`, but the UPnP daemon is
    configured disabled until opt-in. `luci-app-upnp` is deliberately not
    bundled while the stored-XSS advisory GHSA-8v49-6387-7f89 is unresolved;
@@ -37,7 +43,7 @@ Status: **draft development release, not production validated**. Branch:
 - Existing custom UPnP permission configurations remain intact unless explicitly
   modified. A fully dynamic per-client UPnP rule editor is **not yet implemented**.
 - Immutable image approval and administrator confirmation are still required for
-  every Docker template. The other 65 catalogue listings remain manual.
+  every Docker template. The other 51 catalogue listings remain manual or require multi-service, special-network, storage, or explicit privilege workflows.
 
 ## Before enabling firewall automation on the old VirtualBox test VM
 
