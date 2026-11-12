@@ -308,11 +308,32 @@ def deploy(name,raw,app_id=None,advanced=False):
                 if app_id:
                     initialize_approved_volume(app_id,validated)
                 compose(name,['up','-d','--wait','--remove-orphans'])
-            except Exception:
-                if before is None: os.unlink(path)
+            except Exception as failure:
+                # A failed `up` may leave newly created containers running.
+                # Roll back the on-disk spec AND reconcile the Docker project.
+                if before is None:
+                    try:
+                        compose(name,['down','--remove-orphans'])
+                    except Exception:
+                        pass  # Return original deployment error, preserve named volumes.
+                    if os.path.exists(path):
+                        os.unlink(path)
                 else:
-                    with open(path,'wb') as f:f.write(before)
-                raise
+                    oldfd,oldtmp=tempfile.mkstemp(dir=root,prefix='.rollback-')
+                    try:
+                        with os.fdopen(oldfd,'wb') as oldfile:
+                            os.fchmod(oldfile.fileno(),0o600)
+                            oldfile.write(before)
+                            oldfile.flush()
+                            os.fsync(oldfile.fileno())
+                        os.replace(oldtmp,path)
+                    finally:
+                        if os.path.exists(oldtmp):os.unlink(oldtmp)
+                    try:
+                        compose(name,['up','-d','--wait','--remove-orphans'])
+                    except Exception as rollback_error:
+                        raise ValueError('Deployment failed and previous application could not be restored; review Docker logs') from rollback_error
+                raise failure
         finally:
             if os.path.exists(tmp): os.unlink(tmp)
     return {'deployed':True,'name':name}
