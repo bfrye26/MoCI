@@ -430,6 +430,29 @@ def diagnostics():
     return {'diagnostics':checks,'ready':all(x['ok'] for x in checks
             if x['name'] not in ('Deployment approval','Stacks directory'))}
 
+def decode_docker_logs(raw):
+    """Decode Docker's 8-byte stdout/stderr framing into readable text.
+
+    Containers with a TTY return an unframed byte stream, which is preserved.
+    Truncated final frames are intentionally omitted.
+    """
+    if not isinstance(raw,bytes):
+        raise ValueError('Invalid Docker log response')
+    if len(raw)<8 or raw[0] not in (1,2) or raw[1:4]!=bytes(3):
+        return raw.decode('utf-8','replace')
+    offset=0
+    output=[]
+    while offset+8<=len(raw):
+        header=raw[offset:offset+8]
+        if header[0] not in (1,2) or header[1:4]!=bytes(3):
+            break
+        length=int.from_bytes(header[4:8],'big')
+        if length>65536 or offset+8+length>len(raw):
+            break
+        output.append(raw[offset+8:offset+8+length].decode('utf-8','replace'))
+        offset+=8+length
+    return ''.join(output)
+
 def run(method,args):
     if method=='set_deployments':
         # Authenticated deployer-role RPC. Never an arbitrary command runner.
@@ -524,7 +547,7 @@ def run(method,args):
             res=conn.getresponse()
             if res.status>=400: raise ValueError('Docker logs unavailable')
             raw=res.read(65537)[:65536]
-            return {'logs':raw.decode('utf-8','replace')}
+            return {'logs':decode_docker_logs(raw)}
         finally: conn.close()
     if method=='deploy':return deploy(args.get('name'),args.get('spec'))
     if method=='install_catalog':
