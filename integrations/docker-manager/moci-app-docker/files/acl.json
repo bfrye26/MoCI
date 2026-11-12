@@ -29,7 +29,10 @@
           "stack_action",
           "container_action",
           "prepare_app",
-          "prepare_custom"
+          "prepare_custom",
+          "volume_action",
+          "network_action",
+          "image_action"
         ]
       }
     }
