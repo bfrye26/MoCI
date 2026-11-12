@@ -73,7 +73,7 @@ export default class ApplicationsAddon {
       if(!data.length){root.innerHTML='<p class="docker-empty">Nothing to display yet.</p>';return;}
       const keys=view==='containers'?['Names','Image','State','Status']:view==='stacks'?['Name','Containers']:view==='images'?['Tags','Size']:view==='volumes'?['Name','Driver']:view==='networks'?['Name','Driver']:['Mount','Total','Used','Free'];
       root.innerHTML=`<div class="docker-scroll"><table class="data-table"><thead><tr>${keys.map(k=>`<th>${k}</th>`).join('')}${['containers','volumes','networks','images'].includes(view)?'<th>Actions</th>':''}</tr></thead><tbody>
-        ${data.map(item=>`<tr>${keys.map(k=>`<td>${this.esc(Array.isArray(item[k])?item[k].join(', '):item[k])}</td>`).join('')}${view==='containers'?`<td><button class="action-btn" data-log="${this.esc(item.Id)}">Logs</button>${!this.readOnly&&item.Managed?['start','stop','restart','remove'].map(action=>`<button class="action-btn" data-container-action="${action}" data-id="${this.esc(item.Id)}">${action}</button>`).join(''):''} </td>`:view==='volumes'&&!this.readOnly?`<td>${String(item.Name||'').startsWith('moci-')?`<button class="action-btn" data-resource-action="volume_action" data-id="${this.esc(item.Name)}">Remove</button>`:'Protected'}</td>`:view==='networks'&&!this.readOnly?`<td>${String(item.Name||'').startsWith('moci-')?`<button class="action-btn" data-resource-action="network_action" data-id="${this.esc(item.Name)}">Remove</button>`:'Protected'}</td>`:view==='images'&&!this.readOnly?`<td><button class="action-btn" data-resource-action="image_action" data-id="${this.esc(item.Id)}">Remove unused</button></td>`:['volumes','networks','images'].includes(view)?'<td>Read only</td>':''}</tr>`).join('')}
+        ${data.map(item=>`<tr>${keys.map(k=>`<td>${this.esc(Array.isArray(item[k])?item[k].join(', '):item[k])}</td>`).join('')}${view==='containers'?`<td><button class="action-btn" data-log="${this.esc(item.Id)}">Logs</button><button class="action-btn" data-stats="${this.esc(item.Id)}">Statistics</button>${!this.readOnly&&item.Managed?['start','stop','restart','remove'].map(action=>`<button class="action-btn" data-container-action="${action}" data-id="${this.esc(item.Id)}">${action}</button>`).join(''):''} </td>`:view==='volumes'&&!this.readOnly?`<td>${String(item.Name||'').startsWith('moci-')?`<button class="action-btn" data-resource-action="volume_action" data-id="${this.esc(item.Name)}">Remove</button>`:'Protected'}</td>`:view==='networks'&&!this.readOnly?`<td>${String(item.Name||'').startsWith('moci-')?`<button class="action-btn" data-resource-action="network_action" data-id="${this.esc(item.Name)}">Remove</button>`:'Protected'}</td>`:view==='images'&&!this.readOnly?`<td><button class="action-btn" data-resource-action="image_action" data-id="${this.esc(item.Id)}">Remove unused</button></td>`:['volumes','networks','images'].includes(view)?'<td>Read only</td>':''}</tr>`).join('')}
         </tbody></table></div><pre class="docker-log" hidden></pre>`;
       if(!this.readOnly&&(view==='networks'||view==='volumes')){
         const create=document.createElement('button');
@@ -111,6 +111,23 @@ export default class ApplicationsAddon {
         b.disabled=true;
         try {await this.rpc('container_action',{id,action});this.core.showToast('Container '+action+' requested','success');await this.renderView('containers');}
         catch(e){this.core.showToast(e.message,'error');b.disabled=false;}
+      }));
+      root.querySelectorAll('[data-stats]').forEach(b=>b.addEventListener('click',async()=>{
+        const display=root.querySelector('.docker-log');
+        display.hidden=false;display.textContent='Loading container statistics…';
+        b.disabled=true;
+        try{
+          const report=(await this.rpc('container_stats',{id:b.dataset.stats})).stats;
+          const mb=x=>(Number(x||0)/1048576).toFixed(1)+' MB';
+          display.textContent=[
+            'Container: '+b.dataset.stats.slice(0,12),
+            'CPU: '+Number(report.cpu_percent||0).toFixed(2)+'%',
+            'Memory: '+mb(report.memory_used)+' / '+mb(report.memory_limit)+' ('+report.memory_percent+'%)',
+            'Network received: '+mb(report.network_rx),
+            'Network transmitted: '+mb(report.network_tx)
+          ].join('\n');
+        }catch(error){display.textContent='Statistics unavailable: '+error.message;}
+        finally{b.disabled=false;}
       }));
       root.querySelectorAll('[data-log]').forEach(b=>b.addEventListener('click',async()=>{
         const log=root.querySelector('.docker-log');log.hidden=false;log.textContent='Loading logs…';
