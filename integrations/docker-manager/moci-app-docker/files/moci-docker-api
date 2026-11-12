@@ -431,6 +431,24 @@ def diagnostics():
             if x['name'] not in ('Deployment approval','Stacks directory'))}
 
 def run(method,args):
+    if method=='set_deployments':
+        # Authenticated deployer-role RPC. Never an arbitrary command runner.
+        enable=args.get('enabled')
+        phrase=args.get('confirmation')
+        if type(enable) is not bool or not isinstance(phrase,str):
+            raise ValueError('Invalid deployment mode request')
+        required='ENABLE LOCAL DOCKER MANAGEMENT' if enable else 'DISABLE'
+        if phrase!=required:
+            raise ValueError('Deployment mode change was not confirmed')
+        command=subprocess.run(['/usr/sbin/moci-docker-policy',
+                                'enable' if enable else 'disable'],
+                               stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,
+                               timeout=10,check=False)
+        if command.returncode:
+            raise ValueError('Deployment mode could not be changed')
+        if writes_enabled()!=enable:
+            raise ValueError('Deployment mode could not be verified')
+        return {'enabled':enable}
     if method in WRITE_METHODS and not writes_enabled():
         raise ValueError('Deployment disabled pending non-root authentication verification')
     if method=='prepare_app':
@@ -553,7 +571,8 @@ def run(method,args):
                 'data_preserved':action=='remove'}
     raise ValueError('Unknown method')
 
-METHODS={k:({} if k not in ('logs','deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action') else {'logs':{'id':'str'},'deploy':{'name':'str','spec':'str'},'prepare_app':{'id':'str'},'prepare_custom':{'image':'str'},'install_catalog':{'id':'str'},'stack_action':{'name':'str','action':'str'},'container_action':{'id':'str','action':'str'},'volume_action':{'name':'str','action':'str'},'network_action':{'name':'str','action':'str'},'image_action':{'id':'str','action':'str'}}[k]) for k in READ_METHODS+WRITE_METHODS}
+METHODS={'set_deployments':{'enabled':'bool','confirmation':'str'}}
+METHODS.update({k:({} if k not in ('logs','deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action') else {'logs':{'id':'str'},'deploy':{'name':'str','spec':'str'},'prepare_app':{'id':'str'},'prepare_custom':{'image':'str'},'install_catalog':{'id':'str'},'stack_action':{'name':'str','action':'str'},'container_action':{'id':'str','action':'str'},'volume_action':{'name':'str','action':'str'},'network_action':{'name':'str','action':'str'},'image_action':{'id':'str','action':'str'}}[k]) for k in READ_METHODS+WRITE_METHODS})
 if __name__=='__main__':
     if len(sys.argv)==2 and sys.argv[1]=='list':
         print(json.dumps(METHODS))
