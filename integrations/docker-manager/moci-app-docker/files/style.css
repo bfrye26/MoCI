@@ -47,3 +47,25 @@
 .docker-check-ok,.docker-check-fail{font-size:10px;font-weight:700;letter-spacing:.07em}
 .docker-check-ok{color:var(--success-green)}
 .docker-check-fail{color:var(--warning-amber)}
+
+.docker-quick-setup{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:13px;
+  border:1px solid var(--glass-border);border-radius:10px;padding:18px;
+  background:var(--theme-surface);margin:16px 0;
+}
+.docker-quick-setup h4,.docker-quick-setup p{grid-column:1/-1}
+.docker-quick-setup label{display:flex;flex-direction:column;gap:7px}
+.docker-quick-setup textarea,.docker-quick-setup select{
+  min-width:0;width:100%;color:var(--starship-steel);
+  background:var(--theme-input);border:1px solid var(--glass-border);border-radius:6px;padding:10px;
+}
+.docker-quick-setup button{justify-self:start;align-self:end}
+.docker-advanced-json{padding:14px 0}
+.docker-advanced-json summary{cursor:pointer;color:var(--primary-accent);margin-bottom:12px}
+.docker-credential{
+  border:1px solid var(--primary-accent);background:var(--glass-bg);
+  border-radius:9px;padding:17px;margin-bottom:18px;
+}
+.docker-credential input{width:100%;margin-top:12px}
+.docker-management-mode{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+@media(max-width:700px){.docker-quick-setup{grid-template-columns:1fr}}
