@@ -9,6 +9,7 @@ export default class SystemModule {
 		this.servicePending = new Map();
 		this.serviceFeedback = new Map();
 		this.serviceBootNames = null;
+		this.serviceContext = null;
 
 		this.core.registerRoute('/system', (path, subPaths) => {
 			const pageElement = document.getElementById('system-page');
@@ -445,7 +446,7 @@ export default class SystemModule {
 	}
 
 	serviceIsOneShot(name) {
-		return new Set(['acme','firewall']).has(name);
+		return new Set(['acme','firewall','urandom_seed']).has(name);
 	}
 
 	serviceIsRunning(info) {
@@ -476,6 +477,49 @@ export default class SystemModule {
 		}
 	}
 
+	async loadServiceContext(force=false){
+		if(!force && this.serviceContext!==null && this.serviceContext!==undefined)return this.serviceContext;
+		let values={BANIP_ENABLED:'unknown',BANIP_STATE:'unknown',NUT_DRIVER_CONFIGURED:'unknown'};
+		try{
+			const [status,result]=await this.core.ubusCall('file','exec',{
+				command:'/usr/libexec/moci-service-inspect',params:['summary']
+			},{timeout:15000});
+			if(status!==0||result?.code!==0||typeof result?.stdout!=='string')
+				throw new Error('Unavailable service summary');
+			for(const line of result.stdout.split(/\r?\n/)){
+				const match=/^(BANIP_ENABLED|BANIP_STATE|NUT_DRIVER_CONFIGURED)=(yes|no|active|inactive|disabled|unavailable|unknown)$/.exec(line);
+				if(match)values[match[1]]=match[2];
+			}
+		}catch(error){console.warn('Service application summary unavailable:',error);}
+		this.serviceContext=values;
+		return values;
+	}
+
+	serviceNeedsSetup(name){
+		return (name==='nut-server' && this.serviceContext?.NUT_DRIVER_CONFIGURED==='no') ||
+			(name==='banip' && this.serviceContext?.BANIP_ENABLED==='no');
+	}
+
+	serviceDisplay(name,running,pending,feedback){
+		if(pending)return {variant:'info',label:pending.action==='stop'?'STOPPING…':'STARTING…'};
+		if(feedback?.kind==='failed')return {variant:'error',label:'FAILED',hint:'Open Details to inspect the start/stop error'};
+		if(feedback?.kind==='completed')return {variant:'success',label:'COMPLETED'};
+		if(running)return {variant:'success',label:'RUNNING'};
+		if(feedback && feedback.expected!==running)return {
+			variant:'info',label:'UNCONFIRMED',hint:'No persistent process confirmed. Open Details'};
+		if(name==='urandom_seed')return {variant:'info',label:'BOOT TASK',hint:'Runs briefly when random seeds are initialized'};
+		if(name==='banip'){
+			if(this.serviceContext?.BANIP_STATE==='active')return {variant:'success',label:'ACTIVE'};
+			if(this.serviceContext?.BANIP_ENABLED==='no')return {
+				variant:'info',label:'APP DISABLED',hint:'Enable BanIP and configure feeds before starting'};
+			return {variant:'info',label:'INACTIVE',hint:'Use Details to inspect BanIP blocklist status'};
+		}
+		if(name==='nut-server' && this.serviceContext?.NUT_DRIVER_CONFIGURED==='no')return {
+			variant:'info',label:'SETUP NEEDED',hint:'No UPS driver configured for this router'};
+		if(this.serviceIsOneShot(name))return {variant:'info',label:'IDLE'};
+		return {variant:'error',label:'STOPPED'};
+	}
+
 	serviceHint(name){
 		const hints={
 			'ddns':'Dynamic DNS needs at least one enabled, configured provider before it can run.',
@@ -483,7 +527,9 @@ export default class SystemModule {
 			'irqbalance':'IRQ balancing may exit when no eligible interrupts or CPU topology is available.',
 			'miniupnpd':'Check Network > UPnP & Port Mapping. Enabled UCI settings do not prove the daemon started.',
 			'moci-wifi-scheduler':'Wi-Fi scheduling needs a configured wireless interface.',
-			'banip':'BanIP only runs after its configuration and sources are valid.',
+			'banip':'BanIP manages nftables rules, not just a daemon. Check its application status, enable it and select blocklist feeds before starting.',
+			'nut-server':'NUT Server needs an actual UPS driver and a configured device. The VirtualBox VM may have no UPS to serve.',
+			'urandom_seed':'urandom_seed is a boot-time random seeding task. Exiting after it runs is expected.',
 			'acme':'ACME is an on-demand certificate task, not a continuously running daemon.',
 			'firewall':'Firewall rule application is not a persistent daemon.'
 		};
@@ -502,7 +548,7 @@ export default class SystemModule {
 
 	async loadStartup() {
 		await this.core.loadResource('services-table',4,'services',async()=>{
-			await this.loadBootServiceNames();
+			await Promise.all([this.loadBootServiceNames(),this.loadServiceContext()]);
 			const result=await this.serviceSnapshot();
 			const services=Object.entries(result).map(([name,info])=>({
 				name,info,running:this.serviceIsRunning(info),pending:this.servicePending.get(name),
@@ -510,26 +556,24 @@ export default class SystemModule {
 			})).sort((a,b)=>a.name.localeCompare(b.name));
 			this.core.renderTable('#services-table',services,4,'No procd services found',service=>{
 				const {name,running,pending,feedback}=service;
-				let badge=running?this.core.renderBadge('success','RUNNING'):
-					this.serviceIsOneShot(name)?this.core.renderBadge('info','IDLE'):
-					this.core.renderBadge('error','STOPPED');
-				if(pending)badge=this.core.renderBadge('info',pending.action==='start'?'STARTING…':'STOPPING…');
-				else if(feedback?.kind==='completed')badge=this.core.renderBadge('success','COMPLETED');
-				else if(feedback && feedback.expected!==running)badge=this.core.renderBadge(feedback.kind==='failed'?'error':'info',feedback.kind==='failed'?'FAILED':'UNCONFIRMED');
-				else if(feedback && feedback.expected===running)this.serviceFeedback.delete(name);
-				const note=feedback && !pending && (feedback.kind==='completed'||feedback.expected!==running)?
-					`<small class="service-status-note">${this.core.escapeHtml(feedback.message)}</small>`:'';
-				const advice=!running && !pending && !feedback && ['ddns','gpio_switch','irqbalance','miniupnpd','moci-wifi-scheduler'].includes(name) ?
-					`<small class="service-status-note">${this.core.escapeHtml(this.serviceHint(name))}</small>` :'';
-				const operation=pending?(pending.action==='start'?'STARTING…':'STOPPING…'):(running?'STOP':this.serviceIsOneShot(name)?'RUN':'START');
+				if(feedback && feedback.expected===running && feedback.kind!=='completed' && feedback.kind!=='failed')this.serviceFeedback.delete(name);
+				const view=this.serviceDisplay(name,running,pending,feedback);
+				const badge=this.core.renderBadge(view.variant,view.label);
+				const advice=view.hint?
+					`<small class="service-status-note">${this.core.escapeHtml(view.hint)}</small>`:
+					(!running && ['ddns','miniupnpd'].includes(name)?
+					`<small class="service-status-note">${this.core.escapeHtml(this.serviceHint(name))}</small>`:'');
+				const setupRequired=this.serviceNeedsSetup(name);
+				const operation=pending?(pending.action==='stop'?'STOPPING…':'STARTING…'):
+				(name==='banip' && this.serviceContext?.BANIP_STATE==='active'?'STOP':running?'STOP':this.serviceIsOneShot(name)?'RUN':'START');
 				return `<tr>
 					<td>${this.core.escapeHtml(name)}</td>
-					<td>${badge}${note}${advice}</td>
+					<td>${badge}${advice}</td>
 					<td>${this.core.escapeHtml(this.serviceAutostart(service.info,name))}</td>
 					<td><div class="action-buttons">
-						<button class="action-btn" type="button" data-action="toggle"
+						${setupRequired?'':`<button class="action-btn" type="button" data-action="toggle"
 							data-id="${this.core.escapeHtml(name)}" ${pending?'disabled aria-busy="true"':''}
-							style="font-size:11px;padding:4px 8px">${operation}</button>
+							style="font-size:11px;padding:4px 8px">${operation}</button>`}
 						<button class="action-btn" type="button" data-action="inspect"
 							data-id="${this.core.escapeHtml(name)}" style="font-size:11px;padding:4px 8px">DETAILS</button>
 					</div></td>
