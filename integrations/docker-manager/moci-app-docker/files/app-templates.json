@@ -2,7 +2,7 @@
   "schema": 1,
   "templates": {
     "uptime-kuma": {
-      "image": "louislam/uptime-kuma:1",
+      "image": "louislam/uptime-kuma:2",
       "repository": "louislam/uptime-kuma",
       "ports": [
         "3001:3001"
@@ -10,8 +10,9 @@
       "volumes": [
         "uptime-kuma-data:/app/data"
       ],
-      "description": "Persistent uptime monitoring; finish administrator setup on first visit.",
-      "path": "http://ROUTER_IP:3001/"
+      "description": "Uptime Kuma v2: local persistent SQLite volume and first-run setup at TCP 3001.",
+      "path": "http://ROUTER_IP:3001/",
+      "needs_write_access": true
     },
     "it-tools": {
       "image": "corentinth/it-tools:latest",
@@ -21,7 +22,8 @@
       ],
       "volumes": [],
       "description": "Self-hosted tools served on LAN TCP port 8081.",
-      "path": "http://ROUTER_IP:8081/"
+      "path": "http://ROUTER_IP:8081/",
+      "needs_write_access": false
     },
     "openspeedtest": {
       "image": "openspeedtest/latest:latest",
@@ -32,7 +34,8 @@
       ],
       "volumes": [],
       "description": "LAN speed test on TCP 3000 and HTTPS on 3001.",
-      "path": "http://ROUTER_IP:3000/"
+      "path": "http://ROUTER_IP:3000/",
+      "needs_write_access": false
     }
   }
 }
