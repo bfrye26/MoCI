@@ -164,8 +164,11 @@ def reconcile(desired):
     zone_exists,rules=current_owned()
     if existing==digest and zone_exists==bool(desired['devices']) and rules==sorted(desired['rules']):
         return {'changed':False,'bridges':len(desired['devices']),'rules':len(desired['rules'])}
-    backup=Path(tempfile.mktemp(prefix='moci-fw-',dir='/tmp'))
-    shutil.copy2('/etc/config/firewall',backup)
+    fd,backup_name=tempfile.mkstemp(prefix='moci-fw-',dir='/tmp')
+    os.close(fd)
+    backup=Path(backup_name)
+    os.chmod(backup,0o600)
+    shutil.copyfile('/etc/config/firewall',backup)
     try:
         # Remove only sections owned by MoCI Docker automation.
         for name in rules:
