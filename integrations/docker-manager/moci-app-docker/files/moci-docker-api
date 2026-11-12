@@ -25,7 +25,7 @@ MAX_SPEC=16384
 NAME=re.compile(r'^[a-z][a-z0-9-]{0,39}$')
 IMAGE=re.compile(r'^[A-Za-z0-9][A-Za-z0-9._/-]*@sha256:[0-9a-f]{64}$')
 IDENT=re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$|^[a-f0-9]{12,64}$')
-READ_METHODS=['status','containers','stacks','images','volumes','networks','storage','logs','catalog','managed_stacks']
+READ_METHODS=['status','containers','stacks','images','volumes','networks','storage','logs','catalog','managed_stacks','diagnostics']
 WRITE_METHODS=['deploy','prepare_app','install_catalog','stack_action','container_action']
 # Deployments are opt-in: secure default for a router control plane.
 # The root administrator must explicitly create this local-only enable file.
@@ -240,6 +240,49 @@ def docker_no_reply(method,path):
     finally:
         conn.close()
 
+def diagnostics():
+    checks=[]
+    def report(name,ok,detail):
+        checks.append({'name':name,'ok':bool(ok),'detail':str(detail)[:160]})
+    try:
+        info=docker('GET','/version')
+        report('Docker Engine',bool(info.get('Version')),'Version '+str(info.get('Version','unknown')))
+    except Exception:
+        report('Docker Engine',False,'Daemon socket or service unavailable')
+    binary='/usr/lib/docker/cli-plugins/docker-compose'
+    if not os.path.isfile(binary):
+        binary='/usr/bin/docker-compose'
+    exists=os.path.isfile(binary)
+    report('Docker Compose',exists,'Installed' if exists else 'Missing Compose CLI plugin')
+    if exists:
+        try:
+            process=subprocess.run([binary,'version','--short'],capture_output=True,
+                text=True,timeout=8,check=False)
+            report('Compose executable',process.returncode==0,
+                (process.stdout or process.stderr).strip()[:100] if process.returncode==0 else 'Could not execute plugin')
+        except (OSError,subprocess.SubprocessError):
+            report('Compose executable',False,'Compose executable failed')
+    for label,path in [('Stacks directory',STACKS),('Policy directory',ROOT)]:
+        exists=os.path.isdir(path)
+        report(label,exists,'Present' if exists else 'Not created yet')
+    for label,name in [('Image allowlist','allowed-images.json'),('Approved image pins','app-pins.json'),
+                       ('App catalogue','app-catalog.json'),('App templates','app-templates.json')]:
+        try:
+            with open(ROOT+'/'+name,encoding='utf-8') as source:
+                json.load(source)
+            report(label,True,'Valid JSON')
+        except (OSError,ValueError):
+            report(label,False,'Missing or invalid JSON')
+    try:
+        ip=lan_ip()
+        report('LAN interface',True,ip)
+    except ValueError:
+        report('LAN interface',False,'No private br-lan IPv4 address')
+    report('Deployment approval',writes_enabled(),
+           'Explicitly enabled' if writes_enabled() else 'Read-only by default')
+    return {'diagnostics':checks,'ready':all(x['ok'] for x in checks
+            if x['name'] not in ('Deployment approval','Stacks directory'))}
+
 def run(method,args):
     if method in WRITE_METHODS and not writes_enabled():
         raise ValueError('Deployment disabled pending non-root authentication verification')
@@ -255,6 +298,7 @@ def run(method,args):
         return {'prepared':True,'id':app_id}
     if method=='container_action':
         return managed_container_action(args.get('id'),args.get('action'))
+    if method=='diagnostics':return diagnostics()
     if method=='status':
         try:
             v=docker('GET','/version')
