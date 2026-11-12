@@ -263,7 +263,7 @@
       "profile": "both",
       "complexity": "easy",
       "risk": "review",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "grafana",
