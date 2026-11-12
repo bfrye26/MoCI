@@ -112,7 +112,37 @@ export default class SecurityProfilesModule{
         line.append(revoke);grants.append(line);
       }
       const subhead=this.make('h4','Allowed LAN services');
-      panel.append(title,status,subhead,allowForm,grants,remove);current.append(panel);
+      const quietTitle=this.make('h4','Profile quiet hours (block forwarded Internet traffic)');
+      const quietForm=this.make('form',undefined,'profiles-allow-form');
+      const start=this.make('input');start.type='time';start.value='22:00';start.required=true;
+      start.setAttribute('aria-label','Quiet hours start');
+      const end=this.make('input');end.type='time';end.value='07:00';end.required=true;
+      end.setAttribute('aria-label','Quiet hours end');
+      const days=this.make('fieldset',undefined,'schedule-days');
+      days.append(this.make('legend','Quiet-hour start days'));
+      const choices=[];
+      for(const [index,day] of ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].entries()){
+        const wrap=this.make('label',undefined,'profiles-check');
+        const input=this.make('input');input.type='checkbox';input.checked=true;
+        choices.push([index,input]);
+        wrap.append(input,this.make('span',day));days.append(wrap);
+      }
+      const block=this.make('button','SAVE QUIET HOURS','action-btn');block.type='submit';
+      const forwards=Object.values(this.firewall).filter(v=>v?.['.type']==='forwarding'&&v.src===zone.name);
+      block.disabled=!forwards.length;
+      quietForm.append(start,end,days,block);
+      quietForm.addEventListener('submit',event=>{
+        event.preventDefault();
+        this.setQuietHours(name,zone.name,start.value,end.value,choices.filter(([,c])=>c.checked).map(([n])=>n));
+      });
+      const activeQuiet=Object.entries(this.firewall).filter(([id,v])=>id.startsWith('moci_q_'+name+'_')&&v?.['.type']==='rule');
+      const clear=this.make('button','CLEAR QUIET HOURS','action-btn danger');clear.type='button';
+      clear.disabled=!activeQuiet.length;
+      clear.addEventListener('click',()=>this.clearQuietHours(name));
+      const quietStatus=this.make('p',activeQuiet.length?'Quiet-hour rules active: '+activeQuiet.length:
+        forwards.length?'No quiet-hour restrictions':'Internet forwarding is not enabled for this profile',
+        'profiles-description');
+      panel.append(title,status,subhead,allowForm,grants,quietTitle,quietStatus,quietForm,clear,remove);current.append(panel);
     }
     root.append(current);
   }
@@ -197,13 +227,66 @@ export default class SecurityProfilesModule{
     }catch(e){this.core.showToast('Access change failed: '+e.message,'error');}
     finally{this.busy=false;}
   }
+  async clearQuietHours(profile){
+    if(this.busy||!SLUG.test(profile))return;
+    const rules=Object.keys(this.firewall).filter(id=>id.startsWith('moci_q_'+profile+'_'));
+    if(!rules.length)return;
+    if(!window.confirm('Remove all quiet-hour restrictions from '+profile+'?'))return;
+    this.busy=true;
+    try{
+      for(const section of rules)await this.call('uci','delete',{config:'firewall',section});
+      await this.apply();
+      this.core.showToast('Quiet hours cleared','success');await this.show();
+    }catch(e){this.core.showToast('Unable to clear quiet hours: '+e.message,'error');}
+    finally{this.busy=false;}
+  }
+  async setQuietHours(profile,zone,start,end,days){
+    if(this.busy||!SLUG.test(profile)||!/^moci_[a-z0-9]{2,20}$/.test(zone)||
+      !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(start)||!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(end)||
+      start===end||!Array.isArray(days)||!days.length||days.some(d=>!Number.isInteger(d)||d<0||d>6)){
+      this.core.showToast('Invalid quiet hours or weekday selection','error');return;
+    }
+    const forwards=Object.values(this.firewall).filter(v=>v?.['.type']==='forwarding'&&v.src===zone);
+    const destinations=[...new Set(forwards.map(v=>v.dest).filter(Boolean))];
+    if(!destinations.length||destinations.length>4){
+      this.core.showToast('Profile needs one to four explicit forwarding destinations','error');return;
+    }
+    if(!window.confirm('Block '+profile+' Internet forwarding between '+start+' and '+end+
+      ' on selected weekdays? Rule changes roll back unless you confirm.'))return;
+    const names=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const weekdayString=list=>list.map(d=>names[d]).join(' ');
+    const ranges=[];
+    if(start<end){
+      ranges.push([start+':00',end+':00',weekdayString(days)]);
+    }else{
+      ranges.push([start+':00','23:59:59',weekdayString(days)]);
+      ranges.push(['00:00:00',end+':00',weekdayString(days.map(d=>(d+1)%7))]);
+    }
+    this.busy=true;
+    try{
+      const old=Object.keys(this.firewall).filter(id=>id.startsWith('moci_q_'+profile+'_'));
+      for(const id of old)await this.call('uci','delete',{config:'firewall',section:id});
+      let count=0;
+      for(const dest of destinations){
+        for(const [from,to,weekdays] of ranges){
+          const id='moci_q_'+profile+'_'+count++;
+          await this.add('rule',id);
+          await this.set('firewall',id,{name:'MoCI '+profile+' quiet '+count,src:zone,dest,
+            proto:'all',start_time:from,stop_time:to,weekdays,utc_time:'0',target:'REJECT'});
+        }
+      }
+      await this.apply();
+      this.core.showToast('Quiet hours applied','success');await this.show();
+    }catch(e){this.core.showToast('Quiet hours were not confirmed: '+e.message,'error');}
+    finally{this.busy=false;}
+  }
   async remove(name,section){
     if(this.busy||!SLUG.test(name))return;
     if(!window.confirm('Delete security profile '+name+' and its MoCI-owned firewall rules? Network interfaces and DHCP configuration will be preserved.'))return;
     if(!window.confirm('Confirm removal of '+name+' firewall isolation?'))return;
     this.busy=true;
     try{
-      const ownedRules=Object.keys(this.firewall).filter(key=>key.startsWith('moci_allow_'+name+'_'));
+      const ownedRules=Object.keys(this.firewall).filter(key=>key.startsWith('moci_allow_'+name+'_')||key.startsWith('moci_q_'+name+'_'));
       for(const key of [section,'moci_'+name+'_dns','moci_'+name+'_dhcp','moci_'+name+'_wan',...ownedRules]){
         if(this.firewall[key])await this.call('uci','delete',{config:'firewall',section:key});
       }
