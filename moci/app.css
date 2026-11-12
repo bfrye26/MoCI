@@ -2132,3 +2132,38 @@ body {
 .service-status-note{display:block;max-width:380px;font-size:11px;line-height:1.35;margin-top:5px;color:var(--warning-amber);overflow-wrap:anywhere}
 :root[data-theme="cloud"] .service-help{color:#526780}
 :root[data-theme="cloud"] .service-status-note{color:#975b19}
+
+/* Native UPnP: independent controls and an action footer, never a giant grid button. */
+.upnp-workspace .profiles-create.upnp-form{width:100%;max-width:1120px;display:flex;flex-direction:column;align-items:stretch;gap:20px;padding:22px;margin:16px 0 24px}
+.upnp-controls-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:stretch}
+.upnp-controls-card{display:flex;flex-direction:column;align-items:stretch;gap:15px;min-width:0;padding:18px;border:1px solid var(--glass-border);border-radius:8px;background:var(--theme-surface)}
+.upnp-controls-card h4{margin:0 0 4px;font-size:13px;letter-spacing:.04em}
+.upnp-controls-card .profiles-check{display:flex;align-items:flex-start;gap:10px;margin:0;line-height:1.5;grid-column:auto}
+.upnp-controls-card .profiles-check input{margin:3px 0 0;flex:0 0 auto}
+.upnp-controls-card .advanced-field{width:100%;min-width:0}
+.upnp-controls-card select{width:100%;max-width:100%;min-width:0}
+.upnp-workspace .upnp-range-editor{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;max-width:none;margin:0;padding:18px;border:1px solid var(--glass-border);border-radius:8px;background:var(--theme-surface)}
+.upnp-workspace .upnp-range-editor h4{grid-column:1/-1;margin:0 0 4px;font-size:13px;letter-spacing:.04em}
+.upnp-workspace .upnp-range-editor input{width:100%;min-width:0;max-width:none}
+.upnp-actions{display:flex;gap:16px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--glass-border);padding-top:18px}
+.upnp-workspace .upnp-form .upnp-save-btn{display:inline-flex;align-items:center;justify-content:center;align-self:auto;justify-self:auto;width:auto;max-width:100%;height:auto;min-height:42px;padding:10px 18px;white-space:normal;line-height:1.4;flex:0 0 auto}
+.upnp-action-note{margin:0;max-width:560px;flex:1 1 250px;font-size:12px;line-height:1.55;color:var(--steel-muted)}
+.upnp-runtime-warning{margin:12px 0 4px}
+.service-inspection-row td{padding:16px 20px;background:var(--theme-surface)}
+.service-inspection-row strong{display:block;margin-bottom:10px}
+.service-inspection-row pre{white-space:pre-wrap;overflow-wrap:anywhere;max-width:1050px;font-size:12px;line-height:1.55;margin:0;padding:14px;border:1px solid var(--glass-border);border-radius:6px}
+:root[data-theme="cloud"] .upnp-controls-card,
+:root[data-theme="cloud"] .upnp-workspace .upnp-range-editor{background:#f8fafd;border-color:#dce5f0}
+:root[data-theme="cloud"] .upnp-action-note{color:#526780}
+:root[data-theme="cloud"] .service-inspection-row td{background:#f7f9fd}
+@media(max-width:860px){
+  .upnp-controls-grid{grid-template-columns:minmax(0,1fr)}
+  .upnp-workspace .upnp-range-editor{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:560px){
+  .upnp-workspace .profiles-create.upnp-form{padding:14px}
+  .upnp-controls-card{padding:14px}
+  .upnp-workspace .upnp-range-editor{grid-template-columns:minmax(0,1fr);padding:14px}
+  .upnp-actions{align-items:stretch}
+  .upnp-workspace .upnp-form .upnp-save-btn{width:100%}
+}
