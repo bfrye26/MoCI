@@ -21,7 +21,7 @@ cp -a "$MOCI_SRC/files" "$MOCI_SRC/dist" package/moci/
 cp -a "$SOURCE_V07/moci-app-docker"/. package/moci-app-docker/
 mkdir -p files
 cp -a "$WORK/files"/. files/
-chmod 0755 files/etc/uci-defaults/90-moci-setup
+chmod 0755 files/etc/uci-defaults/90-moci-setup files/etc/uci-defaults/91-moci-secure-admin
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 cat > .config <<'CONFIG'
@@ -34,6 +34,7 @@ CONFIG_TARGET_ROOTFS_PARTSIZE=8192
 CONFIG_PACKAGE_luci=y
 # Secure web management and full hostapd for PPSK/dynamic VLAN.
 CONFIG_PACKAGE_luci-ssl=y
+CONFIG_PACKAGE_openssl-util=y
 CONFIG_PACKAGE_luci-app-uhttpd=y
 CONFIG_PACKAGE_wpad-basic-mbedtls=n
 CONFIG_PACKAGE_wpad-mbedtls=y
