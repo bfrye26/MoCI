@@ -608,6 +608,18 @@ if __name__=='__main__':
             args=json.load(sys.stdin)
             if not isinstance(args,dict):raise ValueError('Invalid RPC arguments')
             print(json.dumps(run(sys.argv[2],args)))
+        except ValueError as error:
+            # Only return safe, human-readable validation messages to the UI.
+            # Docker/Compose stderr can contain registry URLs or credentials,
+            # so it is intentionally not forwarded to browsers.
+            message=str(error)
+            if message.startswith('Compose operation failed:'):
+                message='Compose failed to start or update the service. Check Docker Diagnostics and container logs.'
+            elif any(secret in message.lower() for secret in ('authorization:', 'password=', 'token=', 'secret=', 'api_key=', 'bearer ')):
+                message='The operation failed. Sensitive error details are not shown.'
+            elif len(message)>180 or any(ord(c)<32 for c in message):
+                message='The operation failed. Consult local router logs.'
+            print(json.dumps({'error':message}))
         except Exception:
             print(json.dumps({'error':'Operation denied or failed. Consult local router logs.'}))
     else:
