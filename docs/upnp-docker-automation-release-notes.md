@@ -21,8 +21,10 @@ Status: **draft development release, not production validated**. Branch:
    Beszel Hub (not the privileged agent) and Grafana (first-install password
    generation), all with LAN-bound web ports and named storage. Total reviewed
    template candidates: 8/73. **These new three have not passed runtime tests**.
-4. **Firmware** includes `miniupnpd-nftables` and `luci-app-upnp`, but the
-   UPnP daemon is configured disabled until opt-in.
+4. **Firmware** includes `miniupnpd-nftables`, but the UPnP daemon is
+   configured disabled until opt-in. `luci-app-upnp` is deliberately not
+   bundled while the stored-XSS advisory GHSA-8v49-6387-7f89 is unresolved;
+   MoCI displays descriptions using `textContent`.
 
 ## Security
 - UPnP is explicitly opt-in. NAT-PMP/PCP is distinct from UPnP IGD.
