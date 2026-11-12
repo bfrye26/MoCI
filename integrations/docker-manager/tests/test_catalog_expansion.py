@@ -28,7 +28,7 @@ class CatalogueExpansionTests(unittest.TestCase):
         self.assertFalse(required - {a["id"] for a in self.apps})
 
     def test_new_apps_not_installable(self):
-        supported = {"adguard-home", "uptime-kuma", "it-tools", "openspeedtest", "cyberchef"}
+        supported = {"adguard-home", "uptime-kuma", "it-tools", "openspeedtest", "cyberchef", "gotify"}
         for app in self.apps:
             if app["id"] not in supported:
                 self.assertFalse(app["template_available"], app["id"])
