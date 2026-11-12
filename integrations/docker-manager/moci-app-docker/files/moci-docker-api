@@ -26,9 +26,18 @@ NAME=re.compile(r'^[a-z][a-z0-9-]{0,39}$')
 IMAGE=re.compile(r'^[A-Za-z0-9][A-Za-z0-9._/-]*@sha256:[0-9a-f]{64}$')
 IDENT=re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$|^[a-f0-9]{12,64}$')
 READ_METHODS=['status','containers','stacks','images','volumes','networks','storage','logs','catalog','managed_stacks']
-WRITE_METHODS=['deploy','install_catalog','stack_action']
-# Deliberately disabled until real OpenWrt non-root/deny-test security gate.
+WRITE_METHODS=['deploy','install_catalog','stack_action','container_action']
+# Deployments are opt-in: secure default for a router control plane.
+# The root administrator must explicitly create this local-only enable file.
 WRITES_ENABLED=False
+ENABLE_FILE=ROOT+'/enable-deployments'
+def writes_enabled():
+    try:
+        st=os.stat(ENABLE_FILE)
+        return st.st_uid==0 and (st.st_mode & 0o022)==0 and open(ENABLE_FILE,encoding='ascii').read(32).strip()=='enabled'
+    except (OSError,UnicodeError):
+        return False
+
 
 class UnixHTTP(http.client.HTTPConnection):
     def __init__(self):
@@ -81,7 +90,7 @@ def catalog():
         appid=app.get('id')
         if not isinstance(appid,str) or not NAME.fullmatch(appid): continue
         image=pinned.get(appid)
-        ready=bool(WRITES_ENABLED and app.get('template_available') and image in approved and image.split('@')[0]==app.get('repository')) if image else False
+        ready=bool(writes_enabled() and app.get('template_available') and image in approved and image.split('@')[0]==app.get('repository')) if image else False
         apps.append({k:app.get(k) for k in ('id','name','description','category','repository','profile','complexity','risk') } | {'ready':ready})
     return {'catalog':apps}
 
@@ -114,7 +123,7 @@ def spec_validate(spec):
         for v in volumes:
             if not isinstance(v,str) or not re.fullmatch(r'[a-z][a-z0-9_-]{0,39}:/[A-Za-z0-9_./-]{1,120}',v) or '..' in v.split(':')[1].split('/'):
                 raise ValueError('Only named volumes with safe paths allowed')
-        safe[name]={'image':image,'ports':ports,'volumes':volumes,'read_only':True,'user':'65534:65534','cap_drop':['ALL'],'security_opt':['no-new-privileges:true'],'pids_limit':128,'mem_limit':'512m','restart':'unless-stopped'}
+        safe[name]={'labels':{'com.moci.managed':'true'},'image':image,'ports':ports,'volumes':volumes,'read_only':True,'user':'65534:65534','cap_drop':['ALL'],'security_opt':['no-new-privileges:true'],'pids_limit':128,'mem_limit':'512m','restart':'unless-stopped'}
     return {'services':safe}
 
 def compose(name,arguments):
@@ -149,13 +158,38 @@ def deploy(name,raw):
             if os.path.exists(tmp): os.unlink(tmp)
     return {'deployed':True,'name':name}
 
+def managed_container_action(cid,action):
+    if action not in ('start','stop','restart'):
+        raise ValueError('Unknown container action')
+    container=ident(cid)
+    details=docker('GET','/containers/'+container+'/json')
+    labels=(details.get('Config') or {}).get('Labels') or {}
+    if labels.get('com.moci.managed')!='true':
+        raise ValueError('Only MoCI-managed containers can be controlled')
+    # Docker API requires POST. No arbitrary Docker endpoints are exposed.
+    return docker_no_reply('POST','/containers/'+container+'/'+action+'?t=10')
+
+def docker_no_reply(method,path):
+    conn=UnixHTTP()
+    try:
+        conn.request(method,'/v1.41'+path,headers={'Host':'docker'})
+        res=conn.getresponse()
+        res.read(4096)
+        if res.status not in (204,304):
+            raise ValueError('Docker operation failed')
+        return {'ok':True}
+    finally:
+        conn.close()
+
 def run(method,args):
-    if method in WRITE_METHODS and not WRITES_ENABLED:
+    if method in WRITE_METHODS and not writes_enabled():
         raise ValueError('Deployment disabled pending non-root authentication verification')
+    if method=='container_action':
+        return managed_container_action(args.get('id'),args.get('action'))
     if method=='status':
         try:
             v=docker('GET','/version')
-            return {'available':True,'version':v.get('Version','?'),'read_only':not WRITES_ENABLED}
+            return {'available':True,'version':v.get('Version','?'),'read_only':not writes_enabled()}
         except Exception:
             return {'available':False,'message':'Docker Engine unavailable','read_only':True}
     if method=='catalog':return catalog()
@@ -170,7 +204,7 @@ def run(method,args):
         return {'storage':result}
     if method=='containers':
         data=docker('GET','/containers/json?all=1')
-        return {'containers':[{'Id':x.get('Id',''),'Names':', '.join(n.lstrip('/') for n in x.get('Names',[])),'Image':x.get('Image',''),'State':x.get('State',''),'Status':x.get('Status','')} for x in data[:500]]}
+        return {'containers':[{'Managed':(x.get('Labels') or {}).get('com.moci.managed')=='true','Id':x.get('Id',''),'Names':', '.join(n.lstrip('/') for n in x.get('Names',[])),'Image':x.get('Image',''),'State':x.get('State',''),'Status':x.get('Status','')} for x in data[:500]]}
     if method=='stacks':
         data=docker('GET','/containers/json?all=1')
         stacks={}
@@ -198,7 +232,20 @@ def run(method,args):
         finally: conn.close()
     if method=='deploy':return deploy(args.get('name'),args.get('spec'))
     if method=='install_catalog':
-        raise ValueError('Install template not yet reviewed for this firmware')
+        app_id=args.get('id')
+        if not isinstance(app_id,str) or not NAME.fullmatch(app_id):
+            raise ValueError('Invalid application ID')
+        listing=catalog()['catalog']
+        selected=next((a for a in listing if a['id']==app_id),None)
+        if not selected or not selected['ready']:
+            raise ValueError('Application requires approval before installation')
+        image=pins()[app_id]
+        # Only reviewed, noncritical single-service templates may install
+        # through this path. Network facing ports require a separate review.
+        if selected.get('risk') not in ('review',None) or selected.get('complexity')!='easy':
+            raise ValueError('Application requires advanced setup')
+        return deploy(app_id,json.dumps({'services':{'app':{'image':image}}}))
+
     if method=='stack_action':
         name=args.get('name');action=args.get('action')
         if not isinstance(name,str) or not NAME.fullmatch(name) or action not in ('start','stop','remove') or not os.path.isfile(STACKS+'/'+name+'/compose.json'):
@@ -207,7 +254,7 @@ def run(method,args):
         return {'ok':True,'name':name,'action':action}
     raise ValueError('Unknown method')
 
-METHODS={k:({} if k not in ('logs','deploy','install_catalog','stack_action') else {'logs':{'id':'str'},'deploy':{'name':'str','spec':'str'},'install_catalog':{'id':'str'},'stack_action':{'name':'str','action':'str'}}[k]) for k in READ_METHODS+WRITE_METHODS}
+METHODS={k:({} if k not in ('logs','deploy','install_catalog','stack_action','container_action') else {'logs':{'id':'str'},'deploy':{'name':'str','spec':'str'},'install_catalog':{'id':'str'},'stack_action':{'name':'str','action':'str'},'container_action':{'id':'str','action':'str'}}[k]) for k in READ_METHODS+WRITE_METHODS}
 if __name__=='__main__':
     if len(sys.argv)==2 and sys.argv[1]=='list':
         print(json.dumps(METHODS))
