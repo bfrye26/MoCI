@@ -30,11 +30,22 @@
       "repository": "openspeedtest/latest",
       "ports": [
         "3000:3000",
-        "3001:3001"
+        "3002:3001"
       ],
       "volumes": [],
       "description": "LAN speed test on TCP 3000 and HTTPS on 3001.",
       "path": "http://ROUTER_IP:3000/",
+      "needs_write_access": false
+    },
+    "cyberchef": {
+      "image": "mpepping/cyberchef:latest",
+      "repository": "mpepping/cyberchef",
+      "ports": [
+        "8000:8000"
+      ],
+      "volumes": [],
+      "description": "Stateless CyberChef web utilities on LAN TCP 8000.",
+      "path": "http://ROUTER_IP:8000/",
       "needs_write_access": false
     }
   }
