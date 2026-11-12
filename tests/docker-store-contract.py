@@ -98,6 +98,24 @@ class DockerStoreContract(unittest.TestCase):
             entry=next(a for a in API['catalog']()['catalog'] if a['id']=='uptime-kuma')
             self.assertEqual(entry['setup_state'],'installed')
 
+    def test_catalog_open_link_only_for_running_managed_stack(self):
+        root=self.root/'stacks'/'uptime-kuma'
+        root.mkdir(parents=True)
+        (root/'compose.json').write_text('{"services":{}}')
+        approved={'writes_enabled':lambda:True,
+                  'policy':lambda:{DIGEST},
+                  'pins':lambda:{'uptime-kuma':DIGEST}}
+        def inspect(state,url):
+            with patch.dict(API['catalog'].__globals__,dict(approved,
+                managed_stacks=lambda:{'managed_stacks':[{
+                    'name':'uptime-kuma','state':state,'url':url}]})):
+                return next(x for x in API['catalog']()['catalog']
+                            if x['id']=='uptime-kuma')
+        self.assertIsNone(inspect('stopped',None)['url'])
+        self.assertIsNone(inspect('unhealthy',None)['url'])
+        self.assertEqual(inspect('running','http://192.168.50.1:3001/')['url'],
+                         'http://192.168.50.1:3001/')
+
     def test_it_tools_tmpfs_is_narrowly_scoped_to_reviewed_image(self):
         docker_image='corentinth/it-tools@sha256:'+('b'*64)
         spec={'services':{'app':{
