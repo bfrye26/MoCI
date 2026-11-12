@@ -1,0 +1,218 @@
+#!/usr/bin/env python3
+"""Reconcile LAN-only firewall4 access for MoCI-managed Docker Compose ports.
+
+This helper owns only firewall.moci_docker_zone and moci_docker_allow_* sections.
+No global forwarding is created. Docker itself owns DNAT and IP masquerading.
+Every ACCEPT rule is scoped to a running managed container's private IPv4 and
+published TCP target port, not to all apps on a bridge.
+"""
+import hashlib
+import http.client
+import ipaddress
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+SOCK='/var/run/docker.sock'
+STATE=Path('/var/run/moci-docker-firewall.state')
+ZONE='moci_docker_zone'
+ZONE_NAME='moci_docker'
+PREFIX='moci_docker_allow_'
+ID=re.compile(r'^[a-z][a-z0-9-]{0,39}$')
+BRIDGE=re.compile(r'^br-[0-9a-f]{12}$')
+REASONABLE_PORTS=128
+
+class UnixHTTP(http.client.HTTPConnection):
+    def __init__(self):
+        super().__init__('localhost', timeout=5)
+    def connect(self):
+        import socket
+        self.sock=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+        self.sock.settimeout(5)
+        self.sock.connect(SOCK)
+
+def docker(path):
+    conn=UnixHTTP()
+    try:
+        conn.request('GET','/v1.41'+path,headers={'Host':'docker'})
+        response=conn.getresponse()
+        payload=response.read(2*1024*1024)
+        if response.status!=200:
+            raise RuntimeError('Docker unavailable')
+        return json.loads(payload)
+    finally:
+        conn.close()
+
+def call(*args,ok=True):
+    r=subprocess.run(args,stdout=subprocess.PIPE,stderr=subprocess.PIPE,
+                     text=True,timeout=25,check=False)
+    if ok and r.returncode:
+        raise RuntimeError('Firewall command failed: '+args[0])
+    return r
+
+def plan(networks,containers,lan_ip):
+    """Pure policy selection function, intentionally testable without root."""
+    lan=ipaddress.IPv4Address(lan_ip)
+    if not lan.is_private:
+        raise ValueError('Router LAN must have a private IPv4 address')
+    bridges={}
+    for network in networks:
+        if not isinstance(network,dict):continue
+        if network.get('Driver')!='bridge':continue
+        labels=network.get('Labels') or {}
+        project=labels.get('com.docker.compose.project','')
+        if not isinstance(project,str) or not project.startswith('moci-'):continue
+        suffix=project[5:]
+        if not ID.fullmatch(suffix):continue
+        network_id=network.get('Id','')
+        if not isinstance(network_id,str) or not re.fullmatch('[a-f0-9]{64}',network_id):continue
+        options=network.get('Options') or {}
+        iface=options.get('com.docker.network.bridge.name') or ('br-'+network_id[:12])
+        if not BRIDGE.fullmatch(iface):continue
+        bridges[network_id]=(iface,project)
+    rules={}
+    used=set()
+    for container in containers:
+        if not isinstance(container,dict) or container.get('State')!='running':continue
+        labels=container.get('Labels') or {}
+        if labels.get('com.moci.managed')!='true':continue
+        project=labels.get('com.docker.compose.project','')
+        if not isinstance(project,str) or not project.startswith('moci-') or not ID.fullmatch(project[5:]):
+            continue
+        # /containers/json exposes published ports, but not the destination
+        # network's per-container address. Inspect includes NetworkSettings.
+        cid=container.get('Id','')
+        if not isinstance(cid,str) or not re.fullmatch('[0-9a-f]{64}',cid):continue
+        networks_for_container=(container.get('NetworkSettings') or {}).get('Networks') or {}
+        if not isinstance(networks_for_container,dict):continue
+        for network_data in networks_for_container.values():
+            if not isinstance(network_data,dict):continue
+            network_id=network_data.get('NetworkID')
+            if network_id not in bridges or bridges[network_id][1]!=project:continue
+            inner_ip=network_data.get('IPAddress','')
+            try:
+                ip=ipaddress.IPv4Address(inner_ip)
+                if not ip.is_private or ip.is_loopback:continue
+            except ipaddress.AddressValueError:continue
+            iface=bridges[network_id][0]
+            for binding in container.get('Ports') or []:
+                if not isinstance(binding,dict) or binding.get('Type')!='tcp':continue
+                if binding.get('IP')!=str(lan):continue
+                inside=binding.get('PrivatePort')
+                outside=binding.get('PublicPort')
+                if type(inside)!=int or not 1<=inside<=65535 or type(outside)!=int or not 1024<=outside<=65535:continue
+                identifier=(iface,str(ip),inside)
+                key=PREFIX+hashlib.sha256(('|'.join(map(str,identifier))).encode()).hexdigest()[:12]
+                rules[key]={'ip':str(ip),'port':str(inside),'iface':iface}
+                used.add(iface)
+    if len(rules)>REASONABLE_PORTS:raise ValueError('Too many managed Docker ports')
+    # No bridge is trusted unless it has at least one approved active binding.
+    return {'devices':sorted(used),'rules':dict(sorted(rules.items()))}
+
+def collect():
+    # A single network listing and container listing bounds the work. Inspect
+    # each managed network/container to resolve Docker-assigned private IPs.
+    listed=docker('/networks')
+    networks=[]
+    for network in listed[:200]:
+        if not isinstance(network,dict):continue
+        if network.get('Driver')!='bridge':continue
+        labels=network.get('Labels') or {}
+        if not str(labels.get('com.docker.compose.project','')).startswith('moci-'):continue
+        try:networks.append(docker('/networks/'+network['Id']))
+        except (KeyError,RuntimeError):continue
+    listed_containers=docker('/containers/json?all=0')
+    containers=[]
+    for container in listed_containers[:300]:
+        if not isinstance(container,dict):continue
+        labels=container.get('Labels') or {}
+        if labels.get('com.moci.managed')!='true':continue
+        if not str(labels.get('com.docker.compose.project','')).startswith('moci-'):continue
+        try:
+            details=docker('/containers/'+container['Id']+'/json')
+            if not details.get('State',{}).get('Running'):continue
+            # Docker's list and inspect have different port shapes. Use the
+            # list record for actual published host bindings.
+            details['Ports']=container.get('Ports',[])
+            details['State']='running'
+            details['Labels']=(details.get('Config') or {}).get('Labels') or labels
+            details['Id']=container['Id']
+            containers.append(details)
+        except (KeyError,RuntimeError):continue
+    # Obtain the actual br-lan address, not an untrusted browser-provided IP.
+    info=call('/sbin/ip','-4','-j','addr','show','br-lan').stdout
+    addr=json.loads(info)
+    ips=[item.get('local','') for entry in addr for item in entry.get('addr_info',[])
+         if item.get('family')=='inet']
+    if len(ips)!=1:raise ValueError('No unambiguous IPv4 LAN address')
+    return plan(networks,containers,ips[0])
+
+def current_owned():
+    data=call('/sbin/uci','-q','show','firewall',ok=False).stdout
+    pattern=re.compile(r'^firewall\.('+re.escape(PREFIX)+r'[a-z0-9]+)=(?:rule|redirect)$',re.M)
+    rules=set(pattern.findall(data))
+    return (ZONE in data,sorted(rules))
+
+def reconcile(desired):
+    state=json.dumps(desired,sort_keys=True,separators=(',',':'))
+    digest=hashlib.sha256(state.encode()).hexdigest()
+    existing=STATE.read_text().strip() if STATE.is_file() else ''
+    zone_exists,rules=current_owned()
+    if existing==digest and zone_exists==bool(desired['devices']) and rules==sorted(desired['rules']):
+        return {'changed':False,'bridges':len(desired['devices']),'rules':len(desired['rules'])}
+    backup=Path(tempfile.mktemp(prefix='moci-fw-',dir='/tmp'))
+    shutil.copy2('/etc/config/firewall',backup)
+    try:
+        # Remove only sections owned by MoCI Docker automation.
+        for name in rules:
+            call('/sbin/uci','-q','delete','firewall.'+name,ok=False)
+        if zone_exists:
+            call('/sbin/uci','-q','delete','firewall.'+ZONE,ok=False)
+        if desired['devices']:
+            call('/sbin/uci','set','firewall.'+ZONE+'=zone')
+            for key,value in [('name',ZONE_NAME),('input','REJECT'),('output','REJECT'),('forward','REJECT')]:
+                call('/sbin/uci','set','firewall.'+ZONE+'.'+key+'='+value)
+            for device in desired['devices']:
+                call('/sbin/uci','add_list','firewall.'+ZONE+'.device='+device)
+            for name,rule in desired['rules'].items():
+                call('/sbin/uci','set','firewall.'+name+'=rule')
+                options={'name':'MoCI Docker LAN only '+name[-12:],
+                         'src':'lan','dest':ZONE_NAME,'proto':'tcp',
+                         'dest_ip':rule['ip'],'dest_port':rule['port'],
+                         'family':'ipv4','target':'ACCEPT'}
+                for key,value in options.items():
+                    call('/sbin/uci','set','firewall.'+name+'.'+key+'='+value)
+        call('/sbin/uci','commit','firewall')
+        call('/sbin/fw4','check')
+        call('/etc/init.d/firewall','reload')
+        fd,tmp=tempfile.mkstemp(dir='/var/run',prefix='.moci-fw-state-')
+        with os.fdopen(fd,'w') as f:f.write(digest+'\n')
+        os.replace(tmp,STATE)
+        return {'changed':True,'bridges':len(desired['devices']),'rules':len(desired['rules'])}
+    except (OSError,ValueError,RuntimeError,subprocess.TimeoutExpired):
+        shutil.copy2(backup,'/etc/config/firewall')
+        call('/etc/init.d/firewall','reload',ok=False)
+        raise
+    finally:
+        backup.unlink(missing_ok=True)
+
+def main():
+    if len(sys.argv)!=2 or sys.argv[1] not in ('plan','sync'):
+        raise SystemExit('usage: moci-docker-firewall plan|sync')
+    desired=collect()
+    if sys.argv[1]=='plan':
+        print(json.dumps({'devices':desired['devices'],
+                          'rule_count':len(desired['rules'])}))
+    else:
+        print(json.dumps(reconcile(desired)))
+
+if __name__=='__main__':
+    try:main()
+    except (OSError,RuntimeError,ValueError,subprocess.TimeoutExpired,TypeError) as exc:
+        print('MoCI Docker firewall synchronization failed: '+str(exc),file=sys.stderr)
+        sys.exit(1)
