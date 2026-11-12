@@ -554,7 +554,30 @@ def run(method,args):
         for key in ('environment','command','mem_limit'):
             if key in template:
                 service[key]=template[key]
-        return deploy(app_id,json.dumps({'services':{'app':service}}),app_id=app_id)
+        initial_secret=None
+        secret_env=template.get('initial_password_env')
+        if secret_env is not None:
+            # Permit only explicitly reviewed credential variables; no arbitrary
+            # shell commands or free-form image-supplied secret names.
+            if app_id!='gotify' or secret_env!='GOTIFY_DEFAULTUSER_PASS':
+                raise ValueError('Unapproved initial credential profile')
+            previous=STACKS+'/'+app_id+'/compose.json'
+            password=None
+            if os.path.isfile(previous) and not os.path.islink(previous):
+                try:
+                    existing=json.load(open(previous,encoding='utf-8'))
+                    password=existing['services']['app']['environment'].get(secret_env)
+                except (OSError,ValueError,KeyError,TypeError,AttributeError):
+                    password=None
+            if not isinstance(password,str) or len(password)<20:
+                password=os.urandom(24).hex()
+                initial_secret=password
+            env=service.setdefault('environment',{})
+            env[secret_env]=password
+        result=deploy(app_id,json.dumps({'services':{'app':service}}),app_id=app_id)
+        if initial_secret:
+            result['initial_credentials']={'username':'admin','password':initial_secret}
+        return result
 
     if method=='stack_action':
         name=args.get('name');action=args.get('action')
