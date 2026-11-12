@@ -71,6 +71,12 @@
         ],
         "/bin/df -h": [
           "exec"
+        ],
+        "/usr/libexec/moci-pkg-call list-all-installed": [
+          "exec"
+        ],
+        "/usr/libexec/moci-pkg-call search-general *": [
+          "exec"
         ]
       },
       "ubus": {
@@ -194,6 +200,12 @@
           "exec"
         ],
         "/bin/rm -f /tmp/firmware.bin": [
+          "exec"
+        ],
+        "/usr/libexec/moci-pkg-call install-general *": [
+          "exec"
+        ],
+        "/usr/libexec/moci-pkg-call remove-general *": [
           "exec"
         ]
       },
