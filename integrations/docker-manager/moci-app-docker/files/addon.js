@@ -170,7 +170,23 @@ export default class ApplicationsAddon {
           b.dataset.needsPrepare='false';
           this.core.showToast('Image digest approved; deploying…','info');
         }
-        await this.rpc('install_catalog',{id:b.dataset.install});this.core.showToast('Deployment completed','success');await this.renderView('managed_stacks');
+        const installed=await this.rpc('install_catalog',{id:b.dataset.install});
+        this.core.showToast('Deployment completed','success');
+        await this.renderView('managed_stacks');
+        if(installed.initial_credentials){
+          const info=installed.initial_credentials;
+          const parent=this.page.querySelector('#docker-content');
+          const box=document.createElement('section');box.className='docker-credential';
+          const title=document.createElement('h3');title.textContent='Save your initial application credentials';
+          const note=document.createElement('p');note.textContent='These credentials are shown only after a new install. Store them in your password manager before navigating away.';
+          const user=document.createElement('p');user.textContent='Username: '+info.username;
+          const input=document.createElement('input');
+          input.type='text';input.value=info.password;input.readOnly=true;
+          input.setAttribute('aria-label','Initial application password');
+          input.addEventListener('click',()=>input.select());
+          box.append(title,note,user,input);
+          parent?.prepend(box);
+        }
       }
       catch(e){this.core.showToast('Install failed: '+e.message,'error');b.disabled=false;b.textContent='RETRY INSTALL';}
     }));
