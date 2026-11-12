@@ -62,6 +62,7 @@ export class OpenWrtCore {
 			profiles: 'profiles',
 			schedules: 'schedules',
 			'wifi-profiles': 'wifi-profiles',
+			'vpn-policies': 'vpn-policies',
 			addons: 'addons'
 		};
 		if (routeModuleMap[basePath]) return routeModuleMap[basePath];
@@ -203,6 +204,7 @@ export class OpenWrtCore {
 			profiles: './modules/profiles.js',
 			schedules: './modules/wifi-schedules.js',
 			'wifi-profiles': './modules/wifi-profiles.js',
+			'vpn-policies': './modules/vpn-policies.js',
 			addons: './modules/addons.js'
 		};
 	}
@@ -245,6 +247,7 @@ export class OpenWrtCore {
 			profiles: ['firewall'],
 			schedules: ['wireless'],
 			'wifi-profiles': ['wireless'],
+			'vpn-policies': ['wireguard'],
 			addons: ['addons']
 		};
 
