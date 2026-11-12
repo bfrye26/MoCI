@@ -201,7 +201,7 @@ class DockerStoreContract(unittest.TestCase):
     def test_twenty_candidate_templates_have_unique_host_ports_and_volume_owners(self):
         host_ports=set()
         catalog={app['id']:app for app in CATALOG}
-        self.assertEqual(len(TEMPLATES),16)
+        self.assertEqual(len(TEMPLATES),20)
         for name,template in TEMPLATES.items():
             self.assertTrue(catalog[name]['template_available'])
             self.assertEqual(catalog[name]['repository'],template['repository'])
