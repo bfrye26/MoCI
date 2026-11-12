@@ -2212,13 +2212,13 @@
 									<div class="section-title">SYSTEM SERVICES</div>
 									<button class="action-btn" type="button" id="refresh-startup-btn">REFRESH SERVICE STATUS</button>
 								</div>
-								<p class="service-help">Service status is checked against running procd instances, not merely registered services. Start and stop operations are confirmed after the init script completes. Some services require hardware or configuration before they can run.</p>
+								<p class="service-help">Status distinguishes background daemons, short-lived boot tasks and application-level services. Starts at boot indicates the init script is enabled, not that the app is configured or running. Open Details for logs and reasons a service remains inactive.</p>
 								<table class="data-table" id="services-table">
 									<thead>
 										<tr>
 											<th>SERVICE</th>
 											<th>STATUS</th>
-											<th>ENABLED</th>
+											<th>STARTS AT BOOT</th>
 											<th>ACTIONS</th>
 										</tr>
 									</thead>
