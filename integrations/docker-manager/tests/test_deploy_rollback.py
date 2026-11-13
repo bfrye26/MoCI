@@ -17,7 +17,9 @@ class DeploymentRecovery(unittest.TestCase):
     def test_failed_first_install_stops_partial_containers(self):
         with tempfile.TemporaryDirectory() as location:
             calls=[]
-            def compose(name,arguments):
+            timeouts=[]
+            def compose(name,arguments,timeout=None):
+                timeouts.append(timeout)
                 calls.append(list(arguments))
                 if arguments[0]=='up':
                     raise ValueError('unhealthy container')
@@ -29,6 +31,7 @@ class DeploymentRecovery(unittest.TestCase):
             self.assertEqual(calls,[['up','-d','--wait','--remove-orphans'],
                                     ['down','--remove-orphans']])
             self.assertFalse((Path(location)/'first'/'compose.json').exists())
+            self.assertEqual(timeouts,[180,None])
 
     def test_failed_update_redeploys_previous_compose(self):
         with tempfile.TemporaryDirectory() as location:
@@ -37,7 +40,9 @@ class DeploymentRecovery(unittest.TestCase):
             original=b'{"services":{"app":{"image":"old@sha256:aaa"}}}'
             (directory/'compose.json').write_bytes(original)
             calls=[]
-            def compose(name,arguments):
+            timeouts=[]
+            def compose(name,arguments,timeout=None):
+                timeouts.append(timeout)
                 calls.append(list(arguments))
                 if len(calls)==1:raise ValueError('new container unhealthy')
             spec={'services':{'app':{'image':'new@sha256:bbb'}}}
@@ -48,6 +53,7 @@ class DeploymentRecovery(unittest.TestCase):
             self.assertEqual((directory/'compose.json').read_bytes(),original)
             self.assertEqual(calls,[['up','-d','--wait','--remove-orphans'],
                                     ['up','-d','--wait','--remove-orphans']])
+            self.assertEqual(timeouts,[180,None])
 
     def test_failed_restore_reports_manual_recovery(self):
         with tempfile.TemporaryDirectory() as location:
@@ -95,3 +101,4 @@ class DeploymentRecovery(unittest.TestCase):
 
 if __name__=='__main__':
     unittest.main()
+
