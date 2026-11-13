@@ -125,7 +125,7 @@
 					<div id="dashboard-page" class="page">
 						<div class="hero-card" id="wan-status-hero">
 							<div class="hero-status">
-								<div class="hero-indicator">●</div>
+								<div class="hero-indicator">?</div>
 								<div class="hero-text">
 									<div class="hero-label">INTERNET STATUS</div>
 									<div class="hero-value" id="wan-status">CHECKING...</div>
@@ -145,21 +145,21 @@
 
 						<div class="stats-grid metrics-3col" style="margin-top: 24px">
 							<div class="stat-card metric-card">
-								<div class="metric-icon">↓</div>
+								<div class="metric-icon"></div>
 								<div class="metric-content">
 									<div class="metric-value" id="bandwidth-down">0 Mbps</div>
 									<div class="metric-label">DOWNLOAD</div>
 								</div>
 							</div>
 							<div class="stat-card metric-card">
-								<div class="metric-icon">↑</div>
+								<div class="metric-icon"></div>
 								<div class="metric-content">
 									<div class="metric-value" id="bandwidth-up">0 Mbps</div>
 									<div class="metric-label">UPLOAD</div>
 								</div>
 							</div>
 							<div class="stat-card metric-card">
-								<div class="metric-icon">◆</div>
+								<div class="metric-icon">?</div>
 								<div class="metric-content">
 									<div class="metric-value" id="clients">0</div>
 									<div class="metric-label">DEVICES</div>
@@ -2358,7 +2358,7 @@
 									"
 								>
 									<div style="color: var(--neon-orange); font-weight: 600; margin-bottom: 8px">
-										⚠ WARNING
+										? WARNING
 									</div>
 									<div style="color: var(--steel-light); font-size: 13px; line-height: 1.6">
 										Firmware upgrade will replace the entire system. Make sure to backup your
@@ -2368,8 +2368,8 @@
 								</div>
 
 								<div class="form-group">
-									<label class="form-label">SELECT FIRMWARE IMAGE (.bin)</label>
-									<input type="file" id="firmware-file" accept=".bin" style="display: none" />
+									<label class="form-label">SELECT FIRMWARE IMAGE (.bin, .img, .img.gz)</label>
+									<input type="file" id="firmware-file" accept=".bin,.img,.gz,.itb,.trx" style="display: none" />
 									<div
 										id="file-upload-area"
 										style="
@@ -2382,7 +2382,7 @@
 										"
 									>
 										<div style="color: var(--neon-cyan); font-size: 48px; margin-bottom: 12px">
-											📁
+											??
 										</div>
 										<div
 											style="color: var(--steel-light); font-weight: 500; margin-bottom: 8px"
@@ -2391,7 +2391,7 @@
 											Click to select firmware file
 										</div>
 										<div style="color: var(--steel-muted); font-size: 12px">
-											or drag and drop .bin file here
+											or drag and drop a firmware image here. Installer ISO files are not upgrade images.
 										</div>
 									</div>
 								</div>
@@ -2591,3 +2591,4 @@
 		</script>
 	</body>
 </html>
+

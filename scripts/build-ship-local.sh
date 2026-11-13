@@ -91,6 +91,8 @@ export PYTHONDONTWRITEBYTECODE=1
 python3 tests/docker-store-contract.py
 python3 tests/docker-firewall-reconcile.py
 node tests/session-expiry.test.mjs
+node tests/router-config.test.mjs
+node tests/firmware-upgrade.test.mjs
 python3 -m unittest discover -s integrations/docker-manager/tests -p 'test*.py'
 node tests/service-controls.test.mjs
 node tests/release-interface-contract.mjs

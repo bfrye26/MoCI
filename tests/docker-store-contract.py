@@ -140,6 +140,28 @@ class DockerStoreContract(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'Unsupported Compose service'):
                 API['spec_validate'](spec,advanced=True)
 
+    def test_cyberchef_tmpfs_uses_same_reviewed_scratch_profile(self):
+        # CyberChef's Nginx image is stateless and runs read-only as nobody,
+        # so it needs exactly the reviewed IT Tools scratch mount set.
+        docker_image='mpepping/cyberchef@sha256:'+('d'*64)
+        spec={'services':{'app':{
+            'image':docker_image,
+            'ports':['192.168.50.1:8000:8000'],
+            'volumes':[]}}}
+        with patch.dict(API['spec_validate'].__globals__,{
+            'policy':lambda:{docker_image},
+            'pins':lambda:{'cyberchef':docker_image},
+            'template_specs':lambda:TEMPLATES,
+            'lan_ip':lambda:'192.168.50.1'}):
+            validated=API['spec_validate'](spec,app_id='cyberchef')
+            app=validated['services']['app']
+            self.assertTrue(app['read_only'])
+            self.assertEqual(app['user'],'65534:65534')
+            self.assertEqual(app['tmpfs'],[
+                '/var/cache/nginx:uid=65534,gid=65534,mode=1777,size=16m',
+                '/var/run:uid=65534,gid=65534,mode=1777,size=4m',
+                '/tmp:uid=65534,gid=65534,mode=1777,size=16m'])
+
     def test_openspeedtest_reviewed_runtime_allows_nginx_cron_without_global_root(self):
         speed_image='openspeedtest/latest@sha256:'+('c'*64)
         spec={'services':{'app':{
@@ -157,6 +179,31 @@ class DockerStoreContract(unittest.TestCase):
             self.assertEqual(actual['cap_drop'],['ALL'])
             self.assertEqual(actual['cap_add'],[
                 'CHOWN','DAC_OVERRIDE','FOWNER','SETGID','SETUID'])
+
+    def test_homarr_reviewed_root_startup_is_limited_to_dac_override(self):
+        # Homarr's startup rewrites root-owned nginx configuration and needs
+        # its database directory pre-created; the reviewed profile allows only
+        # root startup with DAC_OVERRIDE and no other capability.
+        homarr_image='ghcr.io/homarr-labs/homarr@sha256:'+('f'*64)
+        spec={'services':{'app':{
+            'image':homarr_image,
+            'ports':['192.168.50.1:7575:7575'],
+            'volumes':['homarr-appdata:/appdata'],
+            'environment':{'SECRET_ENCRYPTION_KEY':'a'*64},
+            'mem_limit':'768m'}}}
+        opts={'policy':lambda:{homarr_image},
+              'pins':lambda:{'homarr':homarr_image},
+              'template_specs':lambda:TEMPLATES,
+              'lan_ip':lambda:'192.168.50.1'}
+        with patch.dict(API['spec_validate'].__globals__,opts):
+            actual=API['spec_validate'](spec,app_id='homarr')['services']['app']
+            self.assertEqual(actual['user'],'0:0')
+            self.assertFalse(actual['read_only'])
+            self.assertEqual(actual['cap_drop'],['ALL'])
+            self.assertEqual(actual['cap_add'],['CHOWN','DAC_OVERRIDE'])
+            self.assertEqual(actual['healthcheck'],
+                {'interval':'15s','timeout':'5s','retries':20,
+                 'start_period':'300s'})
             self.assertEqual(actual['security_opt'],['no-new-privileges=true'])
             self.assertEqual(actual['ports'],spec['services']['app']['ports'])
             # Generic compose callers cannot get the reviewed root/capability
@@ -237,6 +284,7 @@ class DockerStoreContract(unittest.TestCase):
                 self.assertTrue(1<=item['uid']<=65534)
                 self.assertTrue(1<=item['gid']<=65534)
         self.assertEqual(TEMPLATES['homarr']['generated_secret_env'],'SECRET_ENCRYPTION_KEY')
+        self.assertEqual(TEMPLATES['homarr']['volume_initializer']['dirs'],['db'])
         self.assertEqual(TEMPLATES['homepage']['environment']['HOMEPAGE_ALLOWED_HOSTS'],'ROUTER_IP:3333')
 
     def test_reviewed_environment_is_not_browser_editable(self):

@@ -12,9 +12,15 @@ on:
       - 'scripts/Start-MoCI-Ship-Build.ps1'
       - 'tests/local-build-source-selection.sh'
       - 'tests/session-expiry.test.mjs'
+      - 'tests/router-config.test.mjs'
+      - 'tests/firmware-upgrade.test.mjs'
+      - 'scripts/router-release-check.py'
+      - 'scripts/Test-MoCI-Release.ps1'
+      - 'scripts/apply-core-fixes.py'
       - 'firmware/**'
       - 'files/moci-hardware-check'
       - 'Makefile'
+      - 'rpcd-acl.json'
       - '.github/workflows/docker-store-contract.yml'
   workflow_dispatch:
 jobs:
@@ -31,6 +37,7 @@ jobs:
           python-version: '3.12'
       - name: Compile Python adapters and test harness
         run: |
+          python -m py_compile scripts/router-release-check.py scripts/apply-core-fixes.py
           python -m py_compile integrations/docker-manager/moci-app-docker/files/moci-docker-api
           python -m py_compile integrations/docker-manager/moci-app-docker/files/moci-docker-policy
           python -m py_compile integrations/docker-manager/moci-app-docker/files/moci-docker-firewall
@@ -60,6 +67,10 @@ jobs:
         run: node tests/service-controls.test.mjs
       - name: Test expired sessions and relogin
         run: node tests/session-expiry.test.mjs
+      - name: Test router configuration and firmware upgrade safety
+        run: |
+          node tests/router-config.test.mjs
+          node tests/firmware-upgrade.test.mjs
       - name: Test Docker manager integration
         run: python -m unittest discover -s integrations/docker-manager/tests -p 'test*.py'
       - name: Check hardware inventory and installer syntax

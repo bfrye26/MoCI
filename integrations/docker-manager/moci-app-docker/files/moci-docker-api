@@ -351,7 +351,7 @@ def spec_validate(spec, app_id=None, advanced=False):
         command=svc.get('command',None)
         if command is not None:
             if not isinstance(command,list) or not 1<=len(command)<=12:
-                raise ValueError('Custom command must be a 1–12 element string list')
+                raise ValueError('Custom command must be a 1-12 element string list')
             if any(not isinstance(token,str) or not token or len(token.encode('utf-8'))>512 or
                    any(ord(c)<32 for c in token) for token in command):
                 raise ValueError('Invalid command argument')
@@ -420,13 +420,14 @@ def spec_validate(spec, app_id=None, advanced=False):
                 raise ValueError('Application memory setting differs from reviewed template')
             approved_tmpfs=approved_template.get('tmpfs',[])
             if approved_tmpfs:
-                # Only the reviewed IT Tools image is allowed the Nginx scratch
-                # mounts; never expose arbitrary tmpfs paths through Compose RPC.
+                # Only reviewed stateless Nginx images (IT Tools, CyberChef)
+                # are allowed these exact scratch mounts; never expose
+                # arbitrary tmpfs paths through Compose RPC.
                 expected=[
                     '/var/cache/nginx:uid=65534,gid=65534,mode=1777,size=16m',
                     '/var/run:uid=65534,gid=65534,mode=1777,size=4m',
                     '/tmp:uid=65534,gid=65534,mode=1777,size=16m']
-                if app_id!='it-tools' or approved_tmpfs!=expected:
+                if app_id not in ('it-tools','cyberchef') or approved_tmpfs!=expected:
                     raise ValueError('Unapproved application scratch storage')
                 managed['tmpfs']=approved_tmpfs
             if approved_template.get('needs_write_access') is True:
@@ -436,10 +437,11 @@ def spec_validate(spec, app_id=None, advanced=False):
                 managed.pop('user')
                 profile_user=approved_template.get('run_as_user')
                 if profile_user is not None:
-                    # The OpenSpeedTest upstream image edits root-owned /etc/nginx
-                    # config on start, and crond needs a fixed capability set.
-                    # Root UID is allowed for THIS reviewed app only.
-                    if app_id=='openspeedtest' and profile_user=='0:0':
+                    # Some reviewed upstream images edit root-owned /etc/nginx
+                    # configuration on start (OpenSpeedTest also runs crond;
+                    # Homarr rewrites its nginx.conf and redis setup).
+                    # Root UID is allowed for these reviewed apps only.
+                    if app_id in ('openspeedtest','homarr') and profile_user=='0:0':
                         managed['user']='0:0'
                     elif isinstance(profile_user,str) and re.fullmatch(r'[1-9][0-9]{0,4}:[1-9][0-9]{0,4}',profile_user):
                         managed['user']=profile_user
@@ -449,14 +451,25 @@ def spec_validate(spec, app_id=None, advanced=False):
             if profile_caps:
                 # No arbitrary capability additions for custom Compose;
                 # immutable image digest and exact approved app template required.
-                limited=['CHOWN','DAC_OVERRIDE','FOWNER','SETGID','SETUID']
-                if app_id!='openspeedtest' or profile_caps!=limited or managed.get('user')!='0:0' or managed.get('read_only') is not False:
+                reviewed_caps={'openspeedtest':['CHOWN','DAC_OVERRIDE','FOWNER','SETGID','SETUID'],
+                               'homarr':['CHOWN','DAC_OVERRIDE']}
+                if app_id not in reviewed_caps or profile_caps!=reviewed_caps[app_id] or managed.get('user')!='0:0' or managed.get('read_only') is not False:
                     raise ValueError('Unapproved application capabilities')
                 managed['cap_add']=profile_caps
+            # Reviewed slow-start applications ship a health probe that turns
+            # unhealthy before their first-boot migration finishes. Only the
+            # timing may be relaxed, never the probe command from the image.
+            reviewed_health={'homarr':{'interval':'15s','timeout':'5s',
+                                       'retries':20,'start_period':'300s'}}
+            profile_health=approved_template.get('healthcheck')
+            if profile_health:
+                if app_id not in reviewed_health or profile_health!=reviewed_health[app_id]:
+                    raise ValueError('Unapproved application health profile')
+                managed['healthcheck']=profile_health
         safe[name]=managed
     return {'services':safe,'volumes':{key:{} for key in sorted(named_volumes)}}
 
-def compose(name,arguments):
+def compose(name,arguments,timeout=180):
     base=STACKS+'/'+name
     # OpenWrt ships Compose both as Docker CLI plugin and standalone symlink.
     # Prefer the plugin and fall back to the standalone executable.
@@ -467,7 +480,7 @@ def compose(name,arguments):
         raise ValueError('Docker Compose is not installed in the firmware')
     result=subprocess.run(command+['--project-name','moci-'+name,
         '--file',base+'/compose.json']+arguments,
-        stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=180,
+        stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=timeout,
         env={'PATH':'/usr/bin:/bin','DOCKER_HOST':'unix:///var/run/docker.sock'},
         check=False)
     if result.returncode:
@@ -496,13 +509,21 @@ def initialize_approved_volume(app_id,spec):
         raise ValueError('Approved app must use the app service')
     used=set()
     for initializer in initializers:
-        if not isinstance(initializer,dict) or set(initializer)!={'path','uid','gid'}:
+        if not isinstance(initializer,dict) or not {'path','uid','gid'} <= set(initializer) <= {'path','uid','gid','dirs'}:
             raise ValueError('Invalid approved volume initializer')
         uid=initializer['uid'];gid=initializer['gid'];path=initializer['path']
         if any(not isinstance(v,int) or isinstance(v,bool) or not 1<=v<=65534 for v in (uid,gid)):
             raise ValueError('Invalid volume owner')
         if not isinstance(path,str) or not re.fullmatch(r'/[A-Za-z0-9_-]+(?:/[A-Za-z0-9_.-]+)*',path):
             raise ValueError('Invalid volume initialization mount')
+        # Reviewed applications may require one or two existing subdirectories
+        # (for example a database directory) inside their data volume. Names
+        # are strictly validated literals; creation is idempotent and never
+        # modifies files inside directories that already exist.
+        subdirs=initializer.get('dirs',[])
+        if not isinstance(subdirs,list) or len(subdirs)>2 or any(
+                not isinstance(d,str) or not re.fullmatch(r'[A-Za-z0-9_.-]{1,32}',d) for d in subdirs):
+            raise ValueError('Invalid approved volume directories')
         if path in used:raise ValueError('Duplicate volume initialization mount')
         used.add(path)
         named=[v.split(':',1)[0] for v in service['volumes'] if v.split(':',1)[1]==path]
@@ -512,13 +533,26 @@ def initialize_approved_volume(app_id,spec):
             raise ValueError('Invalid Docker volume name')
         subprocess.run(['/usr/bin/docker','volume','create','--label','com.moci.managed=true',volume],
             stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,timeout=15,check=True)
+        # A freshly mounted empty volume inherits the image directory's
+        # ownership (root) via copy-on-first-mount, and Docker repeats that
+        # reset on every mount while the volume has no entries. Create the
+        # reviewed subdirectories first (euid 0 owns the mounted directory, so
+        # plain mkdir needs no capabilities), then transfer ownership of the
+        # directory inodes only. The volume is non-empty afterwards, so later
+        # mounts no longer reset anything. Existing application files are
+        # never modified.
         setup=['/usr/bin/docker','run','--rm','--network','none','--read-only',
             '--user','0:0','--cap-drop','ALL','--cap-add','CHOWN',
             '--security-opt','no-new-privileges=true','--pids-limit','64',
             '--memory','128m','--mount',
             'type=volume,source='+volume+',target='+path,
             '--entrypoint','/bin/sh',service['image'],'-c',
-            'chown "$1" "$2"','moci-volume-init',str(uid)+':'+str(gid),path]
+            'owner="$1"; root="$2"; shift 2; '
+            'for d in "$@"; do mkdir -p "$d" || exit 1; done; '
+            'chown "$owner" "$root" || exit 1; '
+            'for d in "$@"; do chown "$owner" "$d" || exit 1; done',
+            'moci-volume-init',str(uid)+':'+str(gid),path]\
+            +[path+'/'+d for d in subdirs]
         result=subprocess.run(setup,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,
                               timeout=45,check=False)
         if result.returncode:
@@ -611,7 +645,12 @@ def deploy(name,raw,app_id=None,advanced=False):
             try:
                 if app_id:
                     initialize_approved_volume(app_id,validated)
-                compose(name,['up','-d','--wait','--remove-orphans'])
+                # Reviewed slow-start apps get a longer wait window; their
+                # health profile already failed fast on first boot.
+                wait_timeout=480 if (app_id and template_specs().get(
+                    app_id,{}).get('healthcheck')) else 180
+                compose(name,['up','-d','--wait','--remove-orphans'],
+                        timeout=wait_timeout)
             except Exception as failure:
                 # A failed `up` may leave newly created containers running.
                 # Roll back the on-disk spec AND reconcile the Docker project.
