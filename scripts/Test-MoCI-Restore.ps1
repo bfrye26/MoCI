@@ -41,7 +41,14 @@ $null = Assert-TestVM
 Write-Host 'Testing fresh backup and restore on the disposable VM only.'
 & ssh $remote "python3 '$stage/router-restore-check.py' --expect-hardware-uuid '$hardwareId'"
 $restoreExit = $LASTEXITCODE
-foreach ($file in @('restore-report.json','configuration-backup.tar.gz','backup-sha256.txt')) {
+& scp -O "${remote}:$stage/restore-report.json" (Join-Path $output 'restore-report.json')
+if ($LASTEXITCODE -ne 0) { throw "Could not retrieve restore report. Inspect the test VM. Results: $output" }
+$restoreReport = Get-Content -LiteralPath (Join-Path $output 'restore-report.json') -Raw | ConvertFrom-Json
+if ($restoreExit -ne 0 -or -not $restoreReport.restore_checks_passed) {
+    $failed = @($restoreReport.checks | Where-Object status -eq 'FAIL' | ForEach-Object detail) -join '; '
+    throw "Restore test stopped: $failed. No automatic power cycle will be attempted. Results: $output"
+}
+foreach ($file in @('configuration-backup.tar.gz','backup-sha256.txt')) {
     & scp -O "${remote}:$stage/$file" (Join-Path $output $file)
     if ($LASTEXITCODE -ne 0) { throw "Could not retrieve $file. Inspect $output and the test VM. Original VM remains preserved." }
 }
@@ -50,7 +57,7 @@ $actual = (Get-FileHash -LiteralPath (Join-Path $output 'configuration-backup.ta
 if ($expected -ne $actual -or $restoreExit -ne 0) { throw "Restore or backup checksum failed. Do not power-cycle automatically. Results: $output" }
 $null = Assert-TestVM
 Write-Host 'Restore content checks passed. Gracefully powering down the test VM before a cold start.'
-& ssh $remote "test `"`$(cat /sys/class/dmi/id/product_uuid | tr A-F a-f)`" = '$hardwareId' && sync && poweroff"
+& ssh $remote "python3 '$stage/router-restore-check.py' --expect-hardware-uuid '$hardwareId' --verify-identity-only && sync && poweroff"
 if ($LASTEXITCODE -notin @(0,255)) { throw 'Test VM shutdown failed. No forced power-off used.' }
 $deadline = [DateTime]::UtcNow.AddSeconds(120)
 do {

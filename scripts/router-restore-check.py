@@ -20,15 +20,24 @@ def command(args, timeout=30):
 
 def verify_identity(expected):
     actual = uuid.UUID(Path('/sys/class/dmi/id/product_uuid').read_text().strip())
-    if actual != uuid.UUID(expected):
-        raise RuntimeError('Target hardware UUID does not match the disposable VM')
+    canonical = uuid.UUID(expected)
+    # SMBIOS/UEFI can expose the first three UUID fields in the opposite byte
+    # order. Both accepted values still identify only this explicitly named VM.
+    smbios_order = uuid.UUID(bytes=canonical.bytes_le)
+    if actual not in (canonical, smbios_order):
+        raise RuntimeError(f'Target hardware UUID does not match the disposable VM (actual {actual}; expected {canonical} or SMBIOS {smbios_order})')
+    return str(actual)
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--expect-hardware-uuid', required=True)
     parser.add_argument('--verify-only', action='store_true')
+    parser.add_argument('--verify-identity-only', action='store_true')
     args = parser.parse_args()
+    if args.verify_identity_only:
+        verify_identity(args.expect_hardware_uuid)
+        return 0
     os.umask(0o077)
     root = Path(__file__).resolve().parent
     report = {'schema':1,'release_ready':False,'restore_checks_passed':False,

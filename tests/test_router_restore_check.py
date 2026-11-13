@@ -6,6 +6,7 @@ from pathlib import Path
 import tarfile
 import tempfile
 import unittest
+import uuid
 from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('restore_check',Path(__file__).parents[1]/'scripts/router-restore-check.py')
@@ -15,6 +16,17 @@ TEST_ID = '97b3d07b-5b50-4662-9d1e-86f3fa22a857'
 
 
 class RestoreCheck(unittest.TestCase):
+    def test_identity_accepts_smbios_byte_order(self):
+        observed = str(uuid.UUID(bytes=uuid.UUID(TEST_ID).bytes_le))
+        with patch.object(Path,'read_text',return_value=observed):
+            self.assertEqual(restore.verify_identity(TEST_ID),observed)
+
+    def test_original_vm_identity_is_rejected_in_both_orders(self):
+        original = uuid.UUID('3164c3c8-a30a-4171-99ec-a4fc4bda96dd')
+        for observed in (str(original),str(uuid.UUID(bytes=original.bytes_le))):
+            with patch.object(Path,'read_text',return_value=observed), self.assertRaisesRegex(RuntimeError,'does not match'):
+                restore.verify_identity(TEST_ID)
+
     def exercise(self, mismatch=False, pending=False, fail_restore=False):
         with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as directory:
             root = Path(directory)
