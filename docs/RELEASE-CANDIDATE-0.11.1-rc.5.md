@@ -46,3 +46,12 @@ standard full-image x86 upgrades can overwrite root-resident application data.
 Durable app storage/migration remains unresolved and must be addressed before
 claiming upgrades preserve installed apps. The installer ISO is for fresh installs
 only and must never be used as a sysupgrade payload.
+
+The first rc.5 cold-boot test confirmed guest power-off, then VirtualBox rejected
+startvm because its GUI session was still locked. This is a harness timing issue,
+not evidence of a guest cold-boot failure. The retry now rechecks VM identity and
+power-off before every attempt and retries only that exact session-lock error for
+up to 60 seconds. Other failures stop immediately. Use -Resume with the test VM
+still off to retain the original guest boot-ID baseline. No processes are killed,
+locks removed, forced shutdowns performed or firmware flashed. Mocked retry/guard
+checks and PowerShell syntax validation passed; the live resume remains pending.
