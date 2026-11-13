@@ -149,3 +149,42 @@ The -Resume option requires the matching pending record and verifies that its
 existing snapshot is accessible before proceeding, avoiding another snapshot or
 shutdown. APIC, lock-retry and identity/state regression checks passed. Successful
 boot with the corrected profile remains pending live validation.
+
+## Fresh-install validation completed
+
+The clean-install VM was found in an `aborted` state with CPU APIC disabled
+(`apic="off"`), which is what prevented the 64-bit guest from booting. The
+known-good MoCI3 reference uses `apic="on"`. After clearing the aborted state,
+the CPU/clock profile was set to match the tested router
+(`--paravirt-provider none --x86-x2apic off --apic on --ioapic on --x86-pae on`)
+and the installed disk was cold-started headless. The guest booted cleanly:
+`0.11.1-rc.5`, correct wall clock, advancing uptime. The kernel logs a benign
+"TSC doesn't count with P0 frequency" warning and falls back to a working
+clocksource; this does not affect the validated clock.
+
+Two defects in the validation tooling were found and fixed while completing this
+gate (commit `40fd6c9`):
+
+- Legacy `scp -O` derives the remote basename by splitting on `/`, so Windows
+  backslash source paths were stored on the guest under their full path and the
+  guest checks could not be found. All local upload paths now use forward
+  slashes.
+- The clean-install MAC-mapping check read `brif/<port>/address`, which
+  bridge-port sysfs does not expose. It now reads the interface's own
+  `/sys/class/net/<port>/address`. The regression test models the real layout.
+
+`Test-MoCI-CleanInstall.ps1` then passed all nine checks
+(`artifacts/cleaninstall-check-20261113T213959Z-5674c728/cleaninstall-report.json`,
+`success: true`): fresh-VM identity, installed version/runtime source, root
+expanded and corrected to fill the 64 GiB disk (`resize_inode` absent),
+installer LAN/WAN adapter mapping (`br-lan`/`eth1`, recorded MACs), disabled
+unconfigured UPS, persistent Docker defaults, default-container DNS and HTTP
+egress, and router plus isolated namespace-client connectivity. A fresh private
+settings backup was downloaded and checksum-verified. No repairs were applied.
+
+This closes the tested-VM fresh-install gate. `release_ready` remains false:
+independent external WAN-client isolation, real firewall allow/deny and
+port-forward traffic tests with cleanup, management-loss rollback, durable
+app-data migration and physical P09B/J4125 hardware qualification are still
+outstanding. The installer ISO remains for fresh installs only, never a
+sysupgrade payload.
