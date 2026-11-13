@@ -60,6 +60,8 @@ Reports are saved under artifacts/client-check-TIMESTAMP/client-report.json. Mis
 
 Python compilation, five lease-validation regression cases and PowerShell syntax checks passed locally. Live client results are pending execution on the router; this runner does not set release_ready true.
 
+Live execution subsequently passed at 2026-11-13T12:44:50Z. Report: artifacts/client-check-20261113T124440Z-4ca3ea4c/client-report.json. The isolated LAN client obtained and reacquired 192.168.50.169/24 from 192.168.50.1, received that router as its gateway and DNS, resolved openwrt.org, and received five upstream ping replies with 0% loss. All six checks and cleanup passed. This closes the namespace-client IPv4 forwarding check. External WAN isolation, physical client behavior, timed DHCP renewal, restore and upgrade remain unverified; release_ready remains false.
+
 ### Follow-up live checks, 2026-11-13
 
 Browser control reconnected. A fresh dashboard load showed the corrected UTF-8 symbols, LAN 192.168.50.1, WAN 10.0.3.15 and updated system statistics. The diagnostics page returned five upstream pings with 0% loss and resolved openwrt.org through 127.0.0.1. This is router-originated evidence only.
