@@ -97,3 +97,15 @@ The user clarified that VirtualBox did not complete the restart. Host VBox.log.1
 | Hardware | P09B/J4125 boot, SSD, six I225-V ports/MAC mapping, load/temperature and exact Wi-Fi chipset/AP capability |
 
 Do not mark these gates passed based on static tests, router-self probes or the existence of UI controls. A new firmware image must include the final tested source and be verified independently of this live UI update.
+
+### Current rc.5 evidence
+
+The checksum-pinned rc.5 upgrade subsequently passed all ten checks, including
+automatic root growth, retained core configuration, Docker DNS/HTTP and separate
+namespace LAN-client connectivity. The guarded cold-boot test also passed with
+confirmed VM power-off and a changed guest boot ID. Usable root storage remains
+46,194,905,088 bytes. These later results supersede earlier pending statements
+for those specific VM tests. See RELEASE-CANDIDATE-0.11.1-rc.5.md for the candidate
+identity, evidence and outstanding gates. A fresh rc.5 installer test is prepared;
+WAN isolation, firewall traffic controls, management-loss rollback, physical
+hardware and durable application-data migration remain unvalidated.

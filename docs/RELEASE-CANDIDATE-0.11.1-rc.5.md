@@ -55,3 +55,33 @@ up to 60 seconds. Other failures stop immediately. Use -Resume with the test VM
 still off to retain the original guest boot-ID baseline. No processes are killed,
 locks removed, forced shutdowns performed or firmware flashed. Mocked retry/guard
 checks and PowerShell syntax validation passed; the live resume remains pending.
+
+The resumed test subsequently passed. Its original guest boot ID
+7e1cb973-7f1e-4085-a429-5bd4bdaffed3 changed to
+4430e428-ea8b-479d-9ff2-84e84d7b6904. The report in
+artifacts/coldboot-check-20261113T200713Z-00551aba/coldboot-report.json confirms
+power-off, cold start and rc.5 router/client/storage checks. This closes the
+tested VM cold-boot gate. The original session-lock race remains part of the
+harness history, and physical hardware/warm-reset reliability is not established.
+
+## Fresh-installer test preparation
+
+New-MoCI-CleanInstallVM.ps1 verifies the exact rc.5 image and installer hashes,
+creates a separate UEFI VM with a single new dynamically allocated 64 GiB SATA
+disk and two Ethernet adapters, and records its UUID and LAN/WAN MACs. It reuses
+the established host-only LAN and NAT WAN topology without changing Windows
+network settings. Only after preparing the new VM does it request a guarded,
+clean shutdown of the working upgrade-test VM, which is preserved with its disk
+and snapshots. The original MoCI3 must remain off. The new VM starts only after
+both older routers are confirmed off to avoid duplicate gateway IPs.
+
+The installer must select the blank 64 GiB disk, WAN and LAN by the displayed MACs,
+LAN IP 192.168.50.1, hostname and root password. After successful installation,
+Quit the installer and run sudo poweroff. Complete-MoCI-CleanInstall.ps1 verifies
+all VM identities/states, ejects only the new VM's ISO and boots its installed disk.
+It retries only the known VirtualBox session-unlock race. Neither launcher deletes
+VMs, attaches an existing router disk to the new VM or marks installation passed.
+
+Both launchers passed PowerShell syntax checks; their VirtualBox create/attach
+execution and the fresh rc.5 installation remain pending live validation. Installer
+ISO SHA256: 7893e733f0be365ad3ce77109513912d7aed1b92799312976d7695a2c1c485e6.
