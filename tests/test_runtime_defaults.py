@@ -23,6 +23,24 @@ def standard():
 
 
 class RuntimeDefaults(unittest.TestCase):
+    def test_diagnostics_do_not_enter_configuration_repair(self):
+        identity='97b3d07b-5b50-4662-9d1e-86f3fa22a857'
+        with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as directory:
+            previous=os.umask(0o077)
+            try:
+                def collect(report):
+                    report['success']=True
+                    report['diagnostics_only']=True
+                with patch.object(runtime,'diagnose',side_effect=collect), patch.object(runtime,'config') as configuration, patch.object(runtime,'run') as command, patch.object(Path,'read_text',return_value=identity), patch('sys.argv',['check','--diagnose-only','--live','--expect-hardware-uuid',identity,'--output',directory]), patch('sys.stdout',new_callable=io.StringIO):
+                    self.assertEqual(runtime.main(),0)
+                    configuration.assert_not_called()
+                    command.assert_not_called()
+                report=json.loads((Path(directory)/'runtime-report.json').read_text())
+                self.assertFalse(report['applied'])
+                self.assertFalse(report['release_ready'])
+            finally:
+                os.umask(previous)
+
     def test_missing_default_docker_wan_forwarding_is_added(self):
         firewall={'wan':{'.type':'zone','name':'wan','input':'REJECT'},'docker':{'.type':'zone','name':'docker','network':'docker','input':'ACCEPT'}}
         self.assertEqual(runtime.egress_plan(firewall),'ADD_FORWARDING')

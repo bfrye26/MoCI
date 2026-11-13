@@ -135,12 +135,66 @@ def smoke_test(report, image):
         raise RuntimeError('Default container network validation failed; see DNS and HTTP results')
 
 
+def diagnose(report):
+    """Bounded probes; no UCI writes, firewall reloads or daemon restarts."""
+    probes=[]
+    report['diagnostics_only']=True
+    report['probes']=probes
+    def probe(label, args, timeout=15):
+        try:
+            result=run(args,timeout,optional=True)
+            entry={'name':label,'exit_code':result.returncode,'stdout':result.stdout[-8000:],'stderr':result.stderr[-1500:]}
+        except subprocess.TimeoutExpired:
+            entry={'name':label,'exit_code':None,'stderr':'Timed out after '+str(timeout)+' seconds'}
+        except Exception as error:
+            entry={'name':label,'exit_code':None,'stderr':str(error)}
+        probes.append(entry)
+        return entry
+    probe('router-google-dns',['nslookup','openwrt.org','8.8.8.8'])
+    probe('router-cloudflare-dns',['nslookup','openwrt.org','1.1.1.1'])
+    probe('bridge-address',['ip','-4','addr','show','dev','docker0'])
+    probe('router-default-route',['ip','-4','route','show','default'])
+    probe('docker-default-network',['docker','network','inspect','bridge'])
+    for file in ('/tmp/dockerd/daemon.json','/etc/docker/daemon.json'):
+        if Path(file).is_file():
+            data=json.loads(Path(file).read_text())
+            report.setdefault('daemon_options',{})[file]={key:data.get(key) for key in ('dns','iptables','ip-masq','ip-forward','bridge','firewall-backend')}
+    report['ipv4_forwarding']=Path('/proc/sys/net/ipv4/ip_forward').read_text().strip()
+    gateways=sorted(default_gateway())
+    lan=json.loads(run(['ubus','call','network.interface.lan','status']).stdout)
+    addresses=[str(ipaddress.IPv4Address(item['address'])) for item in lan.get('ipv4-address',[])]
+    name='moci-net-diagnostic-'+uuid.uuid4().hex[:8]
+    try:
+        run(['docker','run','-d','--rm','--name',name,'--read-only','--cap-drop=ALL',
+             '--security-opt','no-new-privileges','--pids-limit','32','--memory','32m',
+             'busybox:1.37','sleep','180'],30)
+        for label,args in (
+            ('client-address',['ip','-4','addr']),('client-route',['ip','-4','route']),
+            ('client-resolvers',['cat','/etc/resolv.conf']),
+            ('client-http-without-dns',['wget','-S','-T','8','-O','/dev/null','http://1.1.1.1/cdn-cgi/trace']),
+            ('client-google-dns',['nslookup','openwrt.org','8.8.8.8']),
+            ('client-cloudflare-dns',['nslookup','openwrt.org','1.1.1.1'])
+        ):
+            probe(label,['docker','exec',name]+args)
+        for server in sorted(set(gateways+addresses)):
+            probe('client-router-dns-'+server,['docker','exec',name,'nslookup','openwrt.org',server])
+        probe('client-neighbours',['docker','exec',name,'ip','neigh','show'])
+        probe('nat-postrouting',['iptables','-t','nat','-L','POSTROUTING','-n','-v'])
+        probe('nft-ip-nat',['nft','list','table','ip','nat'])
+        probe('fw4-docker-forward',['nft','list','chain','inet','fw4','forward_docker'])
+        probe('fw4-wan-masquerade',['nft','list','chain','inet','fw4','srcnat_wan'])
+    finally:
+        run(['docker','rm','-f',name],optional=True)
+    report['success']=True
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--live', action='store_true')
     parser.add_argument('--expect-hardware-uuid')
     parser.add_argument('--output')
+    parser.add_argument('--diagnose-only',action='store_true')
     args = parser.parse_args()
     os.umask(0o077)
     report={'schema':1,'release_ready':False,'checks':[],'applied':False}
@@ -153,6 +207,11 @@ def main():
             observed=uuid.UUID(Path('/sys/class/dmi/id/product_uuid').read_text().strip())
             if observed not in (expected,uuid.UUID(bytes=expected.bytes_le)):
                 raise RuntimeError('Live target is not the expected disposable VM')
+        if args.diagnose_only:
+            if not args.live:
+                raise RuntimeError('Diagnostics require the live disposable VM identity guard')
+            diagnose(report)
+            return 0
         nut = config('nut_server')
         manual = Path('/etc/nut/ups.conf')
         manual_ups = manual.is_file() and bool(re.search(r'^\s*\[[^\]]+\]',manual.read_text(),re.M))

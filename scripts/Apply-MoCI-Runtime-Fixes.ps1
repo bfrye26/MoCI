@@ -1,6 +1,6 @@
 #Requires -Version 5.1
 [CmdletBinding()]
-param([string]$RouterAddress='192.168.50.1')
+param([string]$RouterAddress='192.168.50.1',[switch]$DiagnoseOnly)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $address=$null
@@ -34,17 +34,25 @@ $stage="/root/$name"
 if ($LASTEXITCODE -ne 0) { throw 'Could not prepare private staging. No repairs started.' }
 & scp -O (Join-Path $project 'firmware\files\usr\libexec\moci-runtime-defaults') "${remote}:$stage/"
 if ($LASTEXITCODE -ne 0) { throw 'Could not upload runtime repair helper.' }
-Write-Host 'Repairing only the disposable VM. Network and firewall settings are backed up under the private staging directory.'
-Write-Host 'The helper may restart an idle Docker daemon and pull the official BusyBox test image. It publishes no ports.'
-& ssh -o ServerAliveInterval=10 -o ServerAliveCountMax=3 $remote "python3 '$stage/moci-runtime-defaults' --apply --live --expect-hardware-uuid '$hardwareId' --output '$stage'"
+$mode='--apply'
+if ($DiagnoseOnly) {
+    $mode='--diagnose-only'
+    Write-Host 'Collecting Docker route, NAT and DNS probes. No network settings or services will be changed.'
+} else {
+    Write-Host 'Repairing only the disposable VM. Network and firewall settings are backed up under the private staging directory.'
+    Write-Host 'The helper may restart an idle Docker daemon and pull the official BusyBox test image. It publishes no ports.'
+}
+& ssh -o ServerAliveInterval=10 -o ServerAliveCountMax=3 $remote "python3 '$stage/moci-runtime-defaults' $mode --live --expect-hardware-uuid '$hardwareId' --output '$stage'"
 $repairExit=$LASTEXITCODE
 & scp -O "${remote}:$stage/runtime-report.json" (Join-Path $output 'runtime-report.json')
 if ($LASTEXITCODE -ne 0) { throw "Could not retrieve runtime report. Inspect the test VM; no pass recorded. Results: $output" }
 $report=Get-Content -LiteralPath (Join-Path $output 'runtime-report.json') -Raw | ConvertFrom-Json
 if ($repairExit -ne 0 -or -not $report.success) {
     $details=@($report.checks | Where-Object status -eq 'FAIL' | ForEach-Object { $_.name + ': ' + $_.detail }) -join [Environment]::NewLine
+    if ($DiagnoseOnly) { throw "Diagnostic collection was incomplete:$([Environment]::NewLine)$details$([Environment]::NewLine)Report: $output\runtime-report.json" }
     throw "Runtime validation failed:$([Environment]::NewLine)$details$([Environment]::NewLine)Settings backup: $stage/before. Report: $output\runtime-report.json"
 }
+if ($DiagnoseOnly) { Write-Host "Diagnostic collection completed. This does not record a network pass. Report: $output\runtime-report.json"; return }
 if ($report.plan.docker -eq 'PRESERVE_CUSTOM') { Write-Host 'Custom Docker configuration was preserved; default bridge checks were skipped.' }
 Write-Host "Runtime repair checks completed. Report: $output\runtime-report.json"
 Write-Host 'The next firmware image also includes these startup defaults. No firmware was flashed.'
