@@ -17,7 +17,7 @@ BIOS='21686148-6449-6e6f-744e-656564454649'
 def command(args, input=None, timeout=30):
     result=subprocess.run(args,input=input,capture_output=True,text=True,timeout=timeout)
     if result.returncode:
-        raise RuntimeError(f'{args[0]} failed ({result.returncode}): '+result.stderr[-1000:])
+        raise RuntimeError(f'{args[0]} failed ({result.returncode}): '+result.stdout[-1500:]+result.stderr[-1000:])
     return result.stdout
 
 
@@ -81,9 +81,33 @@ def root_device():
     return '/dev/'+disk,'/dev/'+root,sectors*512
 
 
+def storage_diagnostics(disk,root):
+    """Read metadata only. Never retry resize or run a repair on mounted root."""
+    result={}
+    probes={
+        'partition_table':['sfdisk','--json',disk],
+        'filesystem_header':['dumpe2fs','-h',root],
+        'kernel_messages':['dmesg'],
+    }
+    for name,args in probes.items():
+        try:
+            probe=subprocess.run(args,capture_output=True,text=True,timeout=30)
+            output=probe.stdout
+            if name=='kernel_messages':
+                output='\n'.join(line for line in output.splitlines() if re.search(r'ext4|resize|sda.*capacity',line,re.I))[-12000:]
+            result[name]={'exit_code':probe.returncode,'stdout':output[-16000:],'stderr':probe.stderr[-1000:]}
+        except Exception as error:
+            result[name]={'error':str(error)}
+    result['root_mounts']=[line for line in Path('/proc/self/mountinfo').read_text().splitlines() if line.split()[4]=='/']
+    result['kernel_partition_bytes']=int((Path('/sys/class/block')/Path(root).name/'size').read_text())*512
+    return result
+
+
 def main():
     parser=argparse.ArgumentParser()
-    parser.add_argument('--apply',action='store_true')
+    mode=parser.add_mutually_exclusive_group()
+    mode.add_argument('--apply',action='store_true')
+    mode.add_argument('--diagnose-only',action='store_true')
     parser.add_argument('--expect-hardware-uuid')
     parser.add_argument('--output')
     args=parser.parse_args()
@@ -98,6 +122,13 @@ def main():
                 raise RuntimeError('Target is not the expected disposable VM')
         if not re.search(r'^MOCI_VERSION=0\.11\.',Path('/etc/moci-release').read_text(),re.M):
             raise RuntimeError('MoCI release marker is missing')
+        if args.diagnose_only:
+            disk,root,_=root_device()
+            filesystem=os.statvfs('/')
+            report.update(success=True,diagnostic_only=True,disk=disk,root=root,
+                          filesystem_bytes=filesystem.f_blocks*filesystem.f_frsize,
+                          diagnostics=storage_diagnostics(disk,root))
+            return 0
         if Path('/etc/config/moci_storage').is_file() and command(['uci','-q','get','moci_storage.root.grow']).strip()!='1':
             report.update(success=True,skipped='Root growth disabled in moci_storage.root.grow')
             return 0
@@ -133,10 +164,12 @@ def main():
                 (output/'disk-tail.bin').write_bytes(source.read(1024*1024))
             if plan['grow_partition']:
                 write_partition_table(disk,plan['start'],plan['after_sectors'])
+                report['partition_table_written']=True
                 after=json.loads(command(['sfdisk','--json',disk]))['partitiontable']
                 assert_preserved(before,after,root,plan['after_sectors'])
                 command(['partx','--update','--nr','2',disk])
             kernel_bytes=int((Path('/sys/class/block')/Path(root).name/'size').read_text())*512
+            report['kernel_partition_bytes']=kernel_bytes
             expected_bytes=(plan['after_sectors'] if plan['grow_partition'] else plan['before_sectors'])*512
             if kernel_bytes!=expected_bytes:
                 raise RuntimeError('Kernel partition size was not updated; filesystem growth was not attempted')
@@ -148,6 +181,10 @@ def main():
             report.update(success=True,applied=True,backup_directory=str(output))
     except Exception as error:
         report['error']=str(error)
+        if 'root' in locals():
+            filesystem=os.statvfs('/')
+            report['filesystem_after_bytes']=filesystem.f_blocks*filesystem.f_frsize
+            report['diagnostics']=storage_diagnostics(disk,root)
     finally:
         if output is not None:
             output.mkdir(parents=True,exist_ok=True,mode=0o700)

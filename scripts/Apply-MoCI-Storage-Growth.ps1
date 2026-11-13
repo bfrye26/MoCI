@@ -1,6 +1,6 @@
 #Requires -Version 5.1
 [CmdletBinding()]
-param([string]$RouterAddress='192.168.50.1')
+param([string]$RouterAddress='192.168.50.1',[switch]$DiagnoseOnly)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $address=$null
@@ -28,7 +28,7 @@ function Assert-TestVM {
     return ([guid]$clone['hardwareuuid']).ToString()
 }
 $hardwareId=Assert-TestVM
-if ((Get-PSDrive C).Free -lt 12GB) { throw 'At least 12 GB free on C: is required for the running-VM recovery snapshot.' }
+if (-not $DiagnoseOnly -and (Get-PSDrive C).Free -lt 12GB) { throw 'At least 12 GB free on C: is required for the running-VM recovery snapshot.' }
 $name='storage-grow-'+[DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ')+'-'+[guid]::NewGuid().ToString('N').Substring(0,8)
 $output=Join-Path $project ('artifacts\'+$name)
 New-Item -ItemType Directory -Path $output | Out-Null
@@ -40,6 +40,18 @@ if ($LASTEXITCODE -ne 0) { throw 'Could not prepare private staging. No storage 
 if ($LASTEXITCODE -ne 0) { throw 'Could not upload storage helpers.' }
 & ssh $remote "python3 '$stage/router-restore-check.py' --verify-identity-only --expect-hardware-uuid '$hardwareId'"
 if ($LASTEXITCODE -ne 0) { throw 'Remote identity did not match the disposable VM. No storage changes started.' }
+if ($DiagnoseOnly) {
+    Write-Host 'Reading partition geometry, ext4 metadata and filtered kernel messages. No storage repairs will run.'
+    & ssh $remote "python3 '$stage/moci-grow-root' --diagnose-only --expect-hardware-uuid '$hardwareId' --output '$stage'"
+    $diagnosticExit=$LASTEXITCODE
+    & scp -O "${remote}:$stage/storage-report.json" (Join-Path $output 'storage-report.json')
+    if ($LASTEXITCODE -ne 0) { throw 'Could not retrieve storage diagnostic report.' }
+    $diagnostic=Get-Content -LiteralPath (Join-Path $output 'storage-report.json') -Raw | ConvertFrom-Json
+    if ($diagnosticExit -ne 0 -or -not $diagnostic.success) { throw "Storage diagnostic collection failed. Report: $output\storage-report.json" }
+    Write-Host "Diagnostic report: $output\storage-report.json"
+    Write-Host 'This collected diagnostics only; storage remains unverified.'
+    return
+}
 $snapshot='before-storage-growth-'+[DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ')
 Write-Host 'Creating a recovery snapshot of the disposable VM before installing tools or expanding storage.'
 & $vbox snapshot $cloneId take $snapshot --description 'Before guarded MoCI root growth; original MoCI3 remains off'

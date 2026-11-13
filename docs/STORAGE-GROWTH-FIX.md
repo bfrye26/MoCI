@@ -31,3 +31,20 @@ This fixes capacity, not application-data migration. Standard x86 full-image
 upgrades can replace root filesystem contents. The upgrade runner still refuses
 existing Docker containers, volumes and stacks. Durable app storage and external
 WAN and hardware tests remain separate release gates.
+
+## First live growth attempt
+
+The 2026-11-13 18:32 disposable-VM attempt reached `resize2fs`, after partition
+metadata preservation and the kernel partition-size check. It failed with
+`Invalid argument While checking for on-line resizing support`. The report's
+`applied: false` meant the whole operation did not complete, not that the
+partition table was untouched. Preserve recovery snapshot
+`before-storage-growth-20261113T183233Z`. Do not assume filesystem capacity is
+unchanged after a failed online resize, since the tool can make partial progress.
+
+Run `Apply-MoCI-Storage-Growth.ps1 -DiagnoseOnly` to read current partition
+geometry, the ext4 header and filtered ext4 kernel messages. This mode does not
+install packages, retry resizing, run fsck or change filesystem features. Root
+capacity and automatic migration remain unverified; the rc.5 source must not be
+treated as release validated. Sparse-disk CI validated GPT manipulation only,
+not this firmware's mounted ext4 filesystem.

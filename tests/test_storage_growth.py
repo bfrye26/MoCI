@@ -1,4 +1,6 @@
 import copy
+import contextlib
+import io
 import importlib.machinery
 import importlib.util
 import json
@@ -7,6 +9,8 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 source=Path(__file__).parents[1]/'firmware/files/usr/libexec/moci-grow-root'
 loader=importlib.machinery.SourceFileLoader('storage_growth',str(source))
@@ -22,6 +26,21 @@ def stock():
 
 
 class StorageGrowth(unittest.TestCase):
+    def test_diagnostic_mode_does_not_run_storage_mutations(self):
+        args=SimpleNamespace(apply=False,diagnose_only=True,expect_hardware_uuid=None,output=None)
+        with patch.object(grow.argparse.ArgumentParser,'parse_args',return_value=args), \
+             patch.object(Path,'read_text',return_value='MOCI_VERSION=0.11.1-rc.4\n'), \
+             patch.object(grow,'root_device',return_value=('/dev/sda','/dev/sda2',64*1024**3)), \
+             patch.object(grow,'storage_diagnostics',return_value={'read_only':True}), \
+             patch.object(grow.os,'statvfs',return_value=SimpleNamespace(f_blocks=1000,f_frsize=4096),create=True), \
+             patch.object(grow,'command') as command, \
+             patch.object(grow,'write_partition_table') as write, \
+             patch.object(grow.shutil,'which') as tool_lookup, contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(grow.main(),0)
+        command.assert_not_called();write.assert_not_called();tool_lookup.assert_not_called()
+        report=json.loads(output.getvalue())
+        self.assertTrue(report['diagnostic_only']);self.assertFalse(report['applied'])
+
     def test_grows_root_only_into_tail_space(self):
         table=stock();plan=grow.growth_plan(table,64*1024**3,'/dev/sda2')
         self.assertTrue(plan['grow_partition']);self.assertEqual(plan['start'],33280)
