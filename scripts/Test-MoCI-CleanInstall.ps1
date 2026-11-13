@@ -14,6 +14,18 @@ function Get-VMInfo([string]$Id) {
     foreach ($line in $lines) { if ($line -match '^([^=]+)="(.*)"$') { $values[$matches[1].Trim('"')]=$matches[2] } }
     return $values
 }
+function Test-InstallerMediaDetached([hashtable]$Info) {
+    if ($Info.ContainsKey('SATA-1-0')) { return $Info['SATA-1-0'] -in @('emptydrive','none') }
+    # Some VBox versions omit unattached slots. Confirm current XML, excluding snapshots.
+    if (-not $Info['CfgFile']) { return $false }
+    try {
+        [xml]$configuration=[IO.File]::ReadAllText($Info['CfgFile'])
+        $machine=$configuration.SelectSingleNode('/*[local-name()="VirtualBox"]/*[local-name()="Machine"]')
+        if (-not $machine) { return $false }
+        $images=$machine.SelectNodes('.//*[local-name()="StorageController" and not(ancestor::*[local-name()="Snapshot"])]/*[local-name()="AttachedDevice" and @type="DVD"]/*[local-name()="Image"]')
+        return $images.Count -eq 0
+    } catch { return $false }
+}
 $records=Join-Path $project 'artifacts\clean-install-vm'
 $recordFile=Get-ChildItem -LiteralPath $records -File -Filter 'MoCI-Clean-Install-*.json' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if (-not $recordFile) { throw 'No clean-install VM record exists.' }
@@ -23,7 +35,8 @@ $hardwareId=([guid]$state.hardware_uuid).ToString()
 if ($id -in @('3164c3c8-a30a-4171-99ec-a4fc4bda96dd','97b3d07b-5b50-4662-9d1e-86f3fa22a857') -or $state.name -notlike 'MoCI-Clean-Install-*' -or $state.status -ne 'INSTALLED_DISK_BOOT_REQUESTED' -or $state.image_sha256 -ne 'd68a89a508f9c5441ab0cbce9d1c840ef59525062bfa550348e32835606e3de0' -or $state.disk_bytes -ne 64GB -or $state.lan_mac -notmatch '^[0-9a-f]{12}$' -or $state.wan_mac -notmatch '^[0-9a-f]{12}$') { throw 'Unexpected clean-install VM record.' }
 foreach ($other in @('3164c3c8-a30a-4171-99ec-a4fc4bda96dd','97b3d07b-5b50-4662-9d1e-86f3fa22a857')) { if ((Get-VMInfo $other)['VMState'] -ne 'poweroff') { throw 'Both preserved router VMs must remain off.' } }
 $fresh=Get-VMInfo $id
-if ($fresh['VMState'] -ne 'running' -or $fresh['name'] -ne $state.name -or $fresh['hardwareuuid'] -ne $hardwareId -or $fresh['SATA-1-0'] -ne 'emptydrive') { throw 'Expected the recorded fresh VM running from disk with its installer ISO ejected.' }
+if ($fresh['VMState'] -ne 'running' -or $fresh['name'] -ne $state.name -or $fresh['hardwareuuid'] -ne $hardwareId) { throw "Fresh VM identity/state mismatch. State: $($fresh['VMState']); name: $($fresh['name']); hardware UUID: $($fresh['hardwareuuid'])." }
+if (-not (Test-InstallerMediaDetached $fresh)) { throw "Installer media is still attached or its detached state cannot be verified. DVD slot: $($fresh['SATA-1-0'])." }
 $name='cleaninstall-check-'+[DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ')+'-'+[guid]::NewGuid().ToString('N').Substring(0,8)
 $output=Join-Path $project ('artifacts\'+$name)
 New-Item -ItemType Directory -Path $output | Out-Null

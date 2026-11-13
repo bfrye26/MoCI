@@ -106,3 +106,13 @@ This verifier applies no firmware or runtime repairs and changes no UCI settings
 Six identity/mapping/capacity safeguard tests, the nine upgrade safeguard tests,
 Python compilation and PowerShell syntax checks passed locally. Live fresh-install
 validation remains pending; online management alone is not a complete pass.
+
+The first fresh-install validation stopped at its host-side media guard. The
+completion command had detached the DVD device entirely (`--medium none`), while
+the verifier accepted only an empty attached DVD drive. Inspection of current VM
+XML confirmed no DVD image/device. The verifier now accepts either explicit empty
+or removed slots, or checks current VM XML when the slot is omitted. Attached ISO
+paths and unverifiable state still fail, and identity/state checks remain strict.
+Future completion retains an empty drive with `--medium emptydrive`. Regression
+checks for detached/attached/unknown media and snapshot isolation passed. No router
+validation ran during the failed host guard, and the VM was not restarted.

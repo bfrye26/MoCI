@@ -23,7 +23,7 @@ function Assert-InstallVMOff {
     if ($fresh['VMState'] -ne 'poweroff' -or $fresh['name'] -ne $state.name -or $fresh['hardwareuuid'] -ne $state.hardware_uuid) { throw 'The recorded clean-install VM must be powered off with its expected identity. No forced shutdown attempted.' }
 }
 Assert-InstallVMOff
-& $vbox storageattach $id --storagectl SATA --port 1 --device 0 --type dvddrive --medium none
+& $vbox storageattach $id --storagectl SATA --port 1 --device 0 --type dvddrive --medium emptydrive
 if ($LASTEXITCODE -ne 0) { throw 'Could not eject the installer ISO.' }
 & $vbox modifyvm $id --boot1 disk --boot2 dvd
 if ($LASTEXITCODE -ne 0) { throw 'Could not set disk boot order.' }
