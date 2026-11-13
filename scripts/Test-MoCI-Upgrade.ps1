@@ -88,6 +88,9 @@ if ($VerifyOnly) {
         & scp -O "${remote}:$stage/$file" (Join-Path $output $file)
         if ($LASTEXITCODE -ne 0) { throw "Could not retrieve $file" }
     }
+    $state | Add-Member -NotePropertyName upgrade_verified -NotePropertyValue $true -Force
+    $state | Add-Member -NotePropertyName last_verified_utc -NotePropertyValue ([DateTime]::UtcNow.ToString('o')) -Force
+    $state | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'upgrade-state.json') -Encoding UTF8
     Write-Host "Upgrade to rc.5, retained router settings and post-upgrade connectivity passed. Results: $output"
     Write-Host 'This does not validate physical hardware, external WAN isolation or app-data migration.'
     return

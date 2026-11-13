@@ -130,3 +130,10 @@ verification immediately afterward found SSH unavailable. The VM log read at
 success. Preserve the VM and inspect its console if management does not return;
 never automatically repeat the flash. Verification now waits for port 22 and
 describes a failed connection without implying that the earlier flash never ran.
+
+The subsequent rc.5 verification passed all ten checks without a requested
+post-upgrade repair. Usable root capacity was 46,194,810,880 bytes before and
+46,194,905,088 after, with a 47,068,217,344-byte root partition, the exact installed
+growth-helper hash and resize_inode absent. This closes the demonstrated rc.4
+storage-capacity defect for this VM upgrade. See RELEASE-CANDIDATE-0.11.1-rc.5.md
+for current release limits; release_ready remains false.
