@@ -64,4 +64,16 @@ The pinned OpenWrt x86 platform upgrade rewrites root partitions, so app data un
 
 Local Python compilation, six upgrade safeguard tests and PowerShell parsing passed. Actual preflight, flash and post-upgrade results remain pending.
 
+The first live attempt (artifacts/upgrade-check-20261113T174638Z-6ec1d229) passed identity, empty-app-state, pinned checksum/platform validation and fresh backup checks. The downloaded backup digest matched d2fce88e4773031d83511caa108f03388be0564dfad4a0fc51210ecd7468d3bd. Before-upgrade usable root capacity was 46,167,982,080 bytes. Recovery snapshot before-rc4-upgrade-20261113T174731Z was taken successfully. Sysupgrade reported a changed partition layout and reached the ubus system.sysupgrade handoff, which returned Connection failed / exit 246. This is not evidence of a completed upgrade or evidence that no write occurred. At inspection the VM log showed snapshot/resume but no subsequent ACPI reset; native console inspection was unavailable. Preserve the current VM state, do not reflash/force restart/restore automatically, and inspect the guest console before deciding recovery. Flash request remains recorded; installed rc.4 and post-upgrade success remain unverified.
+
+A subsequent log read recorded ACPI reset at elapsed 04:44:40, followed by RESETTING -> RUNNING. The guest therefore progressed to reboot after the handoff error. Exit 246 remains an ambiguous handoff disconnect, not an upgrade pass. Validate the booted firmware before deciding that the flash failed or attempting any repeat.
+
 Build the next pinned candidate using Start-MoCI-Ship-Build.ps1. Verify its exported image and manifest, installed source/version, preservation of configuration and client connectivity after upgrading the disposable VM. An installer ISO is not a sysupgrade payload. Failed image validation must leave Flash unavailable. Keep release_ready false until live evidence is recorded.
+
+Post-boot verification of that same rc.4 upgrade subsequently confirmed the
+installed version and helper hash, retained core settings, Docker defaults and
+router/client connectivity. The storage gate failed: usable root capacity fell
+from 46,167,982,080 to 8,302,063,616 bytes. This is an upgrade defect, not a release
+pass. The guarded growth fix and disposable-VM repair procedure are documented
+in STORAGE-GROWTH-FIX.md. A manual repair must be recorded separately from
+automatic growth during a future firmware upgrade.
