@@ -22,6 +22,9 @@ on:
       - 'scripts/Test-MoCI-Client.ps1'
       - 'scripts/router-restore-check.py'
       - 'scripts/Test-MoCI-Restore.ps1'
+      - 'scripts/Test-MoCI-Upgrade.ps1'
+      - 'scripts/router-upgrade-check.py'
+      - 'tests/test_upgrade_check.py'
       - 'scripts/Apply-MoCI-Runtime-Fixes.ps1'
       - 'tests/test_runtime_defaults.py'
       - 'tests/test_router_restore_check.py'
@@ -51,6 +54,7 @@ jobs:
           python -m py_compile scripts/router-release-check.py scripts/apply-core-fixes.py
           python -m py_compile scripts/router-client-check.py
           python -m py_compile scripts/router-restore-check.py
+          python -m py_compile scripts/router-upgrade-check.py
           python -m py_compile firmware/files/usr/libexec/moci-runtime-defaults
           python -m py_compile integrations/docker-manager/moci-app-docker/files/moci-docker-api
           python -m py_compile integrations/docker-manager/moci-app-docker/files/moci-docker-policy
@@ -87,6 +91,7 @@ jobs:
         run: |
           python tests/test_router_client_check.py
           python tests/test_router_restore_check.py
+          python tests/test_upgrade_check.py
           python tests/test_runtime_defaults.py
       - name: Test router configuration and firmware upgrade safety
         run: |

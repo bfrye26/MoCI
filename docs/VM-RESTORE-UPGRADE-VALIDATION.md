@@ -32,10 +32,36 @@ Results are stored under artifacts/restore-check-TIMESTAMP. Keep the configurati
 
 The first live run stopped at the guest hardware UUID check before backup or mutation (artifacts/restore-check-20261113T125908Z-445865b3/restore-report.json). The wrapper incorrectly attempted to fetch a nonexistent backup afterward. The clone XML and VBox log confirm little-endian SMBIOS UUID encoding. The identity helper now accepts exactly the expected VM UUID and its corresponding SMBIOS byte-order representation, rejects the original VM in both forms, and reports actual/expected UUIDs on further mismatch. The shutdown guard uses the same identity helper. The wrapper now downloads the report first and stops on failure before retrieving backups or power-cycling. Six safeguard tests and syntax checks passed; successful live restore remains pending.
 
+The next live run passed all five restore content checks (artifacts/restore-check-20261113T130422Z-571b7390/restore-report.json): disposable identity, fresh archive integrity, temporary setting mutation, restored core-file equality and firewall syntax. The downloaded 21,776-byte backup SHA-256 was independently verified against backup-sha256.txt (57e3fd36dc788d0b3a55d510994858808fa86f6c654ef28fbda80114ae965303). At inspection, restore-summary.json, restore-post-boot.json and the post-boot router/client reports had not been downloaded. Do not mark full restore/cold-start validation passed until those results are obtained. The clone log shows a subsequent boot session; this alone does not prove the post-boot checks completed.
+
+The user subsequently supplied the post-boot terminal output: clone cold-start succeeded, the guest identity matched, post-boot core-file hashes matched and all seven router checks passed (LAN/WAN, local DNS, upstream ping, firewall syntax/default policies and backup integrity). IPv6 reported NO_DEFAULT_ROUTE. This closes the post-boot core-file/router checks based on supplied output. Final isolated-client output and downloaded summary are still pending; do not infer completion of the full runner from the earlier restore_checks_passed flag.
+
 On the disposable VM, create a fresh configuration backup and verify its archive integrity and SHA-256. Record baseline LAN/WAN, DHCP/DNS and administrative access. Make a harmless identifiable configuration change, restore the backup and verify that the change is removed. Check restored configuration and post-boot DHCP, DNS and forwarding. Keep the original archive private and preserve the recovery snapshot. Account for the observed UEFI warm-reset stall separately from restore correctness.
 
 ## Upgrade validation, pending
 
-The available Windows firmware image is rc.2, source 01c164c69030, with SHA-256 ee1b1eb5d17122bb10985a4c6ca65736a43d3b31b4916e8e60afdd10d2b0d07b. Its hash was verified locally, but it predates the UTF-8 and dashboard-action fixes and is not the next release candidate. Do not flash it as though it contains those changes.
+The older Windows firmware image is rc.2, source 01c164c69030, with SHA-256 ee1b1eb5d17122bb10985a4c6ca65736a43d3b31b4916e8e60afdd10d2b0d07b. It predates the fixes and is superseded for this test.
+
+The user built and copied rc.4 from source 8cd226c8b7b8689990a17ad953820a5d12b36750. The Windows image is C:\moci-build\ship-8cd226c8b7b8-20261113T170016Z\openwrt-x86-64-generic-ext4-combined-efi.img.gz. Its SHA-256 was independently verified as 730e8bce878515b248de90a304d2668019a09fe909b7e4921b538f7fdb6be305, and the installed runtime helper must match SHA-256 13e3117daaeb2b4755d8f66b35375feb486adf9387a08e5adf48e44bbf485f19. The local helper content also matches the pinned Git blob.
+
+Start the guarded test, which WILL flash the disposable VM after passing preflight:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\moci-build\MoCI\scripts\Test-MoCI-Upgrade.ps1
+```
+
+The original must be off and the clone running. Hardware UUID is verified in the guest, the image checksum is checked before OpenWrt sysupgrade -T, and app containers/volumes/stacks block this test. A fresh private router backup is downloaded and verified before a recovery snapshot is created. Twenty GB of free host disk space is required for the running-VM snapshot and rewritten disk blocks. The helper then rechecks VM identity, image validity and the unchanged core baseline before invoking ordinary sysupgrade without force or reset flags. Disconnect is recorded only as a request, never proof of success. No automatic forced power-off or flash retry occurs.
+
+After the router returns:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\moci-build\MoCI\scripts\Test-MoCI-Upgrade.ps1 -VerifyOnly
+```
+
+Verification checks rc.4 and the shipped runtime helper, retained system/network/DHCP/firewall/dockerd files, UPS state, the Docker bridge/reply policy, default-container DNS/HTTP, router health and a separate namespace LAN client. It also fails if usable root capacity shrank. It does not apply runtime repairs to mask firmware defects. Results and the baseline are under artifacts/upgrade-check-TIMESTAMP. Preserve private configuration archives. The known VirtualBox UEFI warm-reset stall may require investigation before verification; never rerun a flash just because management is initially unreachable.
+
+The pinned OpenWrt x86 platform upgrade rewrites root partitions, so app data under the root filesystem is not inherently retained by the standard configuration backup. This runner permits only an empty-app disposable VM. A durable app-data layout or migration strategy, clean-install behavior, retained capacity, physical hardware and external WAN isolation remain release concerns. Passing core-router upgrade checks must not be represented as app-data migration support.
+
+Local Python compilation, six upgrade safeguard tests and PowerShell parsing passed. Actual preflight, flash and post-upgrade results remain pending.
 
 Build the next pinned candidate using Start-MoCI-Ship-Build.ps1. Verify its exported image and manifest, installed source/version, preservation of configuration and client connectivity after upgrading the disposable VM. An installer ISO is not a sysupgrade payload. Failed image validation must leave Flash unavailable. Keep release_ready false until live evidence is recorded.
