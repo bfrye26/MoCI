@@ -1,0 +1,205 @@
+#!/usr/bin/python3
+"""Repair only recognised unconfigured UPS/default Docker bridge settings."""
+import argparse
+import ipaddress
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import shutil
+import subprocess
+import time
+import uuid
+
+
+def run(args, timeout=20, optional=False):
+    result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+    if result.returncode and not optional:
+        raise RuntimeError(f'{args[0]} {args[1] if len(args)>1 else ""} failed ({result.returncode})')
+    return result
+
+
+def config(name):
+    if not (Path('/etc/config')/name).is_file():
+        return {}
+    output = run(['uci','-q','-X','show',name]).stdout
+    sections = {}
+    for line in output.splitlines():
+        key, separator, value = line.partition('=')
+        if not separator or not key.startswith(name+'.'):
+            raise RuntimeError('Unexpected UCI format')
+        components = key.split('.')[1:]
+        if len(components) not in (1,2) or not all(re.fullmatch(r'[A-Za-z0-9_]+',part) for part in components):
+            raise RuntimeError('Unsupported UCI section/option name')
+        tokens = shlex.split(value)
+        sections.setdefault(components[0],{})[components[1] if len(components)==2 else '.type'] = tokens[0] if len(tokens)==1 else tokens
+    return sections
+
+
+def plan(network, dockerd, nut, manual_ups=False):
+    ups_configured = manual_ups or any(section.get('.type')=='driver' for section in nut.values())
+    result = {'ups':'PRESERVE_CONFIGURED' if ups_configured else 'DISABLE_UNCONFIGURED', 'docker':'PRESERVE_CUSTOM', 'device_section':None}
+    if dockerd.get('globals',{}).get('alt_config_file'):
+        return result
+    interface = network.get('docker',{})
+    devices = [(name,section) for name,section in network.items() if section.get('name')=='docker0']
+    if not interface and not devices and 'moci_docker_default' not in network:
+        result['docker']='CREATE_DEFAULT_BRIDGE'
+        result['device_section']='moci_docker_default'
+        return result
+    if interface.get('.type')!='interface' or interface.get('device')!='docker0' or interface.get('proto')!='none' or len(devices)!=1:
+        return result
+    name, device = devices[0]
+    if device.get('.type')!='device' or device.get('type')!='bridge' or device.get('ports') or device.get('ifname'):
+        return result
+    # Do not override VLAN filtering, STP or other custom bridge policies.
+    if set(device)-{'.type','name','type','bridge_empty'} or set(interface)-{'.type','device','proto','auto'}:
+        return result
+    if device.get('bridge_empty')=='1' and interface.get('auto')=='1':
+        result['docker']='ALREADY_CONFIGURED'
+    else:
+        result['docker']='KEEP_DEFAULT_BRIDGE'
+    result['device_section']=name
+    return result
+
+
+def default_gateway():
+    data = json.loads(run(['docker','network','inspect','bridge']).stdout)[0]
+    if data.get('Driver')!='bridge' or data.get('Options',{}).get('com.docker.network.bridge.name','docker0')!='docker0':
+        raise RuntimeError('Docker default network does not use docker0')
+    gateways = [entry.get('Gateway') for entry in data.get('IPAM',{}).get('Config',[]) if entry.get('Gateway')]
+    return {str(ipaddress.ip_address(value)) for value in gateways if ipaddress.ip_address(value).version==4}
+
+
+def bridge_ready():
+    if not Path('/sys/class/net/docker0/bridge').is_dir():
+        return False
+    output = run(['ip','-4','addr','show','dev','docker0']).stdout
+    addresses = set(re.findall(r'\binet\s+([0-9.]+)/',output))
+    return bool(default_gateway() & addresses)
+
+
+def inventory():
+    networks=run(['docker','network','ls','--no-trunc','--format','{{.ID}} {{.Name}}']).stdout.splitlines()
+    managed=sorted(line.split()[0] for line in networks if line.split()[1] not in ('bridge','host','none'))
+    containers=sorted(run(['docker','ps','-aq','--no-trunc']).stdout.splitlines())
+    return {'custom_network_ids':managed,'container_ids':containers}
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--apply', action='store_true')
+    parser.add_argument('--live', action='store_true')
+    parser.add_argument('--expect-hardware-uuid')
+    parser.add_argument('--output')
+    args = parser.parse_args()
+    os.umask(0o077)
+    report={'schema':1,'release_ready':False,'checks':[],'applied':False}
+    output = Path(args.output) if args.output else None
+    try:
+        if args.live:
+            if not args.expect_hardware_uuid:
+                raise RuntimeError('Live repair requires the disposable VM hardware UUID')
+            expected=uuid.UUID(args.expect_hardware_uuid)
+            observed=uuid.UUID(Path('/sys/class/dmi/id/product_uuid').read_text().strip())
+            if observed not in (expected,uuid.UUID(bytes=expected.bytes_le)):
+                raise RuntimeError('Live target is not the expected disposable VM')
+        nut = config('nut_server')
+        manual = Path('/etc/nut/ups.conf')
+        manual_ups = manual.is_file() and bool(re.search(r'^\s*\[[^\]]+\]',manual.read_text(),re.M))
+        selected=plan(config('network'),config('dockerd'),nut,manual_ups)
+        report['plan']=selected
+        if not args.apply:
+            return 0
+        if run(['uci','changes']).stdout.strip():
+            raise RuntimeError('Pending UCI edits exist; no repair applied')
+        if args.live and selected['docker'] in ('CREATE_DEFAULT_BRIDGE','KEEP_DEFAULT_BRIDGE','ALREADY_CONFIGURED'):
+            if run(['docker','ps','-q']).stdout.strip():
+                raise RuntimeError('Containers are running; repair refuses to interrupt them')
+            baseline_inventory=inventory()
+        if output is None:
+            output=Path('/root')/('moci-runtime-backup-'+time.strftime('%Y%m%dT%H%M%SZ')+'-'+uuid.uuid4().hex[:8])
+        output.mkdir(parents=True,exist_ok=True,mode=0o700)
+        before=output/'before'; before.mkdir(mode=0o700)
+        original=Path('/etc/config/network')
+        if original.is_file(): shutil.copy2(original,before/'network')
+        ups=Path('/etc/init.d/nut-server')
+        if ups.is_file() and selected['ups']=='DISABLE_UNCONFIGURED':
+            report['ups_previously_enabled']=run([str(ups),'enabled'],optional=True).returncode==0
+            run([str(ups),'disable'])
+            if args.live:
+                run([str(ups),'stop'])
+                state=json.loads(run(['ubus','call','service','list',json.dumps({'name':'nut-server'})]).stdout)
+                if any(instance.get('running') for instance in state.get('nut-server',{}).get('instances',{}).values()):
+                    raise RuntimeError('Unconfigured UPS daemon did not stop')
+            if run([str(ups),'enabled'],optional=True).returncode==0:
+                raise RuntimeError('Unconfigured UPS service remains boot-enabled')
+            report['checks'].append({'name':'unconfigured-ups-disabled','status':'PASS'})
+        if selected['docker'] in ('CREATE_DEFAULT_BRIDGE','KEEP_DEFAULT_BRIDGE'):
+            device=selected['device_section']
+            try:
+                if selected['docker']=='CREATE_DEFAULT_BRIDGE':
+                    run(['uci','set',f'network.{device}=device'])
+                    run(['uci','set',f'network.{device}.name=docker0'])
+                    run(['uci','set',f'network.{device}.type=bridge'])
+                    run(['uci','set','network.docker=interface'])
+                    run(['uci','set','network.docker.device=docker0'])
+                    run(['uci','set','network.docker.proto=none'])
+                run(['uci','set',f'network.{device}.bridge_empty=1'])
+                run(['uci','set','network.docker.auto=1'])
+                run(['uci','commit','network'])
+            except Exception:
+                shutil.copy2(before/'network',original)
+                run(['uci','revert','network'],optional=True)
+                raise
+            report['checks'].append({'name':'persistent-default-bridge','status':'PASS'})
+        report['applied']=True
+        if args.live and selected['docker'] in ('CREATE_DEFAULT_BRIDGE','KEEP_DEFAULT_BRIDGE','ALREADY_CONFIGURED'):
+            # netifd must load the committed bridge-only settings before ifup.
+            run(['ubus','call','network','reload'])
+            run(['/sbin/ifup','docker'])
+            time.sleep(2)
+            if not bridge_ready():
+                # No running containers were allowed above. Never remove networks,
+                # volumes or Docker's persistent metadata to repair a bridge.
+                if run(['docker','ps','-q']).stdout.strip():
+                    raise RuntimeError('Containers started during repair; Docker will not be restarted')
+                run(['/etc/init.d/dockerd','restart'],60)
+                for attempt in range(20):
+                    try:
+                        if bridge_ready(): break
+                    except Exception:
+                        pass
+                    time.sleep(1)
+                else:
+                    raise RuntimeError('Default bridge gateway was not restored')
+            report['checks'].append({'name':'default-bridge-gateway-present','status':'PASS'})
+            # Official small test image; no published ports or host mounts.
+            image='busybox:1.37'
+            run(['docker','pull',image],180)
+            name='moci-bridge-check-'+uuid.uuid4().hex[:8]
+            try:
+                run(['docker','run','--rm','--name',name,'--read-only','--cap-drop=ALL',
+                     '--security-opt','no-new-privileges','--pids-limit','32','--memory','32m',
+                     image,'sh','-ec','nslookup openwrt.org >/dev/null; wget -q -T 15 -O /dev/null http://example.com'],45)
+            finally:
+                run(['docker','rm','-f',name],optional=True)
+            report['checks'].append({'name':'default-container-dns-and-egress','status':'PASS'})
+            if inventory()!=baseline_inventory:
+                raise RuntimeError('Existing container or managed-network inventory changed during repair')
+            report['checks'].append({'name':'existing-containers-and-managed-networks-preserved','status':'PASS'})
+        report['success']=True
+    except Exception as error:
+        report['success']=False
+        report['checks'].append({'name':'runtime-repair','status':'FAIL','detail':str(error)})
+    finally:
+        if output is not None:
+            output.mkdir(parents=True,exist_ok=True,mode=0o700)
+            (output/'runtime-report.json').write_text(json.dumps(report,indent=2)+'\n')
+        print(json.dumps(report,indent=2))
+    return 0 if report.get('success') else 1
+
+
+if __name__=='__main__':
+    raise SystemExit(main())

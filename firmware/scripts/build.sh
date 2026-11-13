@@ -22,6 +22,7 @@ cp -a "$SOURCE_V07/moci-app-docker"/. package/moci-app-docker/
 mkdir -p files
 cp -a "$WORK/files"/. files/
 chmod 0755 files/etc/uci-defaults/90-moci-setup files/etc/uci-defaults/91-moci-secure-admin
+chmod 0755 files/etc/uci-defaults/93-moci-runtime-defaults files/usr/libexec/moci-runtime-defaults
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 cat > .config <<'CONFIG'
