@@ -4,3 +4,4 @@ uci -q set system.@system[0].hostname='moci-router'
 uci -q commit system
 mkdir -p /etc/moci-docker
 exit 0
+

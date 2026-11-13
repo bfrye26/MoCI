@@ -153,3 +153,4 @@ if [ -d "$REPO/.git" ]; then
 	[ -f "$PACKAGES.sig" ] && cp "$PACKAGES.sig" "$REPO/"
 	echo "copied feed to $REPO -- commit and push there to publish"
 fi
+

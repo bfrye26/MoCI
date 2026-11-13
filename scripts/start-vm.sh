@@ -24,3 +24,4 @@ exec qemu-system-x86_64 \
     -device e1000,netdev=net0 \
     -netdev user,id=net0,hostfwd=tcp:127.0.0.1:8080-:80,hostfwd=tcp:127.0.0.1:2222-:22,hostfwd=tcp:127.0.0.1:4443-:443 \
     -nographic
+

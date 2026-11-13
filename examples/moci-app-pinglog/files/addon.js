@@ -47,3 +47,4 @@ export default class PingLogAddon {
 			<tbody>${body}</tbody></table>`;
 	}
 }
+

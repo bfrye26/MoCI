@@ -6,3 +6,4 @@ if [ -x /etc/init.d/moci-wifi-scheduler ]; then
   /etc/init.d/moci-wifi-scheduler start || :
 fi
 exit 0
+

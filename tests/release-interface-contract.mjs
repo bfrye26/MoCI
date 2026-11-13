@@ -93,3 +93,4 @@ for(const [id,t] of Object.entries(templates.templates)){
 console.log('MoCI release contract passed: '+Object.keys(nativeRoutes).length+
   ' native routes, '+themes.length+' themes, '+configNames.length+
   ' UCI configs, '+Object.keys(templates.templates).length+' app profiles.');
+

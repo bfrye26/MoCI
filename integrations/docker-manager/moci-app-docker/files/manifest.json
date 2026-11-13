@@ -2,8 +2,8 @@
   "id": "docker",
   "entry": "addon.js",
   "name": "Applications",
-  "version": "0.11.0-rc.1",
-  "description": "Docker, Compose, automatic LAN firewall and 22 reviewed application templates",
+  "version": "0.11.1-rc.5",
+  "description": "Docker, Compose, automatic LAN firewall and reviewed application recipes",
   "author": {
     "name": "MoCI Docker contributors"
   },

@@ -41,3 +41,4 @@ done
 printf '\nNOTICE: Router-local HTTP success does NOT prove Windows LAN reachability.\n'
 printf 'Review legacy Docker bridge ownership before running moci-docker-firewall sync.\n'
 printf 'Never share compose.json or unredacted application logs (may include secrets).\n'
+

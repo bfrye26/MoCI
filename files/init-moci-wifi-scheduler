@@ -16,3 +16,4 @@ stop() {
   sed -i '\|/usr/sbin/moci-wifi-scheduler|d' /etc/crontabs/root
   /etc/init.d/cron restart >/dev/null 2>&1 || :
 }
+

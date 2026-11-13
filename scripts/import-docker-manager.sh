@@ -18,3 +18,4 @@ cp -R "$SOURCE/scripts" "$ROOT/integrations/docker-manager/"
 cp -R "$SOURCE/.github" "$ROOT/integrations/docker-manager/"
 [ -f "$ROOT/integrations/docker-manager/moci-app-docker/files/allowed-images.json" ] || exit 1
 echo "Imported v0.7.0 into integrations/docker-manager; review changes and run tests before commit."
+

@@ -194,3 +194,4 @@ jobs:
                   try:api.compose('gotify',['down','--volumes','--remove-orphans'])
                   except Exception as e:print('Gotify cleanup warning:',e)
           PY
+

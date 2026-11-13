@@ -20,3 +20,4 @@ The cards offer category filters, app descriptions, and installation availabilit
 
 ## Firmware release gates
 Compile the OpenWrt 25.12.2 x86-64 EFI image in GitHub Actions, boot-test it under UEFI/QEMU with two NICs, validate every application template and hardware recovery, then produce a signed pre-release. Do not ship this firmware as production-ready before these gates pass.
+

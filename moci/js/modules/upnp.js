@@ -229,3 +229,4 @@ export default class UpnpModule {
     root.append(this.el('p','Mapping descriptions are untrusted client input and are displayed as text only. For granular permission-rule editing, use OpenWrt Tools > UPnP configuration until a dedicated rule editor is validated.','profiles-description'));
   }
 }
+

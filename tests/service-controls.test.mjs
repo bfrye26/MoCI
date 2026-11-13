@@ -161,3 +161,4 @@ assert.equal(vm.serviceIsOneShot('luci_statistics'),true);
   assert.equal(await module.waitForApplicationState('banip',false),false);
 }
 console.log('System service controls: verified process status, bounded action feedback and errors');
+

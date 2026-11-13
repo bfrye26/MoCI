@@ -106,3 +106,4 @@ function deployACL() {
 }
 
 console.log('Ready. Save files in moci/ or rpcd-acl.json to trigger deploy.');
+

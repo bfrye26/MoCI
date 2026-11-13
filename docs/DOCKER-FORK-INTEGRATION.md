@@ -35,3 +35,4 @@ The add-on will live under `integrations/docker-manager/moci-app-docker`. Its Op
 ## Status
 
 Fork branch and credential patch: committed. Full v0.7.0 Docker source: **not yet uploaded to GitHub**. QEMU and physical-router tests: pending. Production readiness: blocked.
+

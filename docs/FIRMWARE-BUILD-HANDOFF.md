@@ -22,3 +22,4 @@ The build sets an 8 GiB ext4 root partition. It deliberately does not resize or 
 8. Publish flashable firmware only after QEMU and hardware test gates pass.
 
 No image is published by this workflow automatically. Resulting artifacts are labelled UNTESTED.
+

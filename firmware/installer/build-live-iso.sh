@@ -37,6 +37,8 @@ if [ "${MOCI_DEBIAN_CHROOT:-0}" != 1 ]; then
       mount --bind "$OUTPUT_ABS" "$BUILD_ROOT/mnt/output"
       cp "$SRC_ROOT/firmware/installer/build-live-iso.sh" "$BUILD_ROOT/mnt/moci-src/firmware/installer/"
       cp "$SRC_ROOT/firmware/installer/moci-install" "$BUILD_ROOT/mnt/moci-src/firmware/installer/"
+      mkdir -p "$BUILD_ROOT/mnt/moci-src/files"
+      cp "$SRC_ROOT/files/moci-hardware-check" "$BUILD_ROOT/mnt/moci-src/files/"
       cp "$INPUT_ABS" "$BUILD_ROOT/mnt/moci-src/firmware.img.gz"
       chroot "$BUILD_ROOT" /usr/bin/env DEBIAN_FRONTEND=noninteractive \
         /usr/bin/apt-get update
@@ -103,8 +105,12 @@ util-linux
 udev
 dosfstools
 ca-certificates
+pciutils
+usbutils
+iw
 PKGS
 install -m 0755 "$REPO/firmware/installer/moci-install" config/includes.chroot/usr/local/sbin/moci-install
+install -m 0755 "$REPO/files/moci-hardware-check" config/includes.chroot/usr/local/sbin/moci-hardware-check
 cp "$IMAGE_INPUT" config/includes.chroot/opt/moci/firmware.img.gz
 (cd config/includes.chroot/opt/moci && sha256sum firmware.img.gz > firmware.sha256)
 cat > config/includes.chroot/etc/profile.d/99-moci-installer.sh <<'AUTOSTART'

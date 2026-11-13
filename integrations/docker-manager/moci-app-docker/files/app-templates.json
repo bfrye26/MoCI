@@ -63,9 +63,14 @@
         "8000:8000"
       ],
       "volumes": [],
-      "description": "Stateless CyberChef web utilities on LAN TCP 8000.",
+      "description": "CyberChef web utilities on LAN TCP 8000. Nginx runs without host privileges and uses tightly scoped in-memory writable directories; the container root filesystem remains read-only.",
       "path": "http://ROUTER_IP:8000/",
-      "needs_write_access": false
+      "needs_write_access": false,
+      "tmpfs": [
+        "/var/cache/nginx:uid=65534,gid=65534,mode=1777,size=16m",
+        "/var/run:uid=65534,gid=65534,mode=1777,size=4m",
+        "/tmp:uid=65534,gid=65534,mode=1777,size=16m"
+      ]
     },
     "gotify": {
       "image": "gotify/server:2",
@@ -250,14 +255,27 @@
       "volumes": [
         "homarr-appdata:/appdata"
       ],
-      "description": "Homarr dashboard without Docker socket access. MoCI generates and preserves the application encryption key; complete initial account setup in the web UI.",
+      "description": "Homarr dashboard without Docker socket access. The upstream startup script rewrites root-owned nginx configuration, so this reviewed profile starts as root with only DAC_OVERRIDE, a writable rootfs and a pre-created database directory. MoCI generates and preserves the application encryption key; complete initial account setup in the web UI.",
       "path": "http://ROUTER_IP:7575/",
       "needs_write_access": true,
-      "run_as_user": "1000:1000",
+      "run_as_user": "0:0",
+      "cap_add": [
+        "CHOWN",
+        "DAC_OVERRIDE"
+      ],
+      "healthcheck": {
+        "interval": "15s",
+        "timeout": "5s",
+        "retries": 20,
+        "start_period": "300s"
+      },
       "volume_initializer": {
         "path": "/appdata",
         "uid": 1000,
-        "gid": 1000
+        "gid": 1000,
+        "dirs": [
+          "db"
+        ]
       },
       "mem_limit": "768m",
       "generated_secret_env": "SECRET_ENCRYPTION_KEY"
@@ -585,3 +603,4 @@
     }
   }
 }
+

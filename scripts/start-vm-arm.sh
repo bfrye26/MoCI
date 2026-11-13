@@ -30,3 +30,4 @@ qemu-system-arm \
     -device virtio-net-pci,netdev=wan \
     -nographic \
     -no-reboot
+

@@ -74,3 +74,4 @@ jobs:
             ${{ runner.temp }}/openwrt/bin/targets/x86/64/*manifest
             ${{ runner.temp }}/openwrt/bin/targets/x86/64/moci-firmware-sha256sums.txt
           retention-days: 30
+

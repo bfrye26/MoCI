@@ -38,3 +38,4 @@ echo "Next steps:"
 echo "1. Run: ./scripts/start-vm-arm.sh"
 echo "2. Wait for boot (may take a while - ARM emulation is slow)"
 echo "3. Run: ./scripts/setup-lighttpd-vm.sh (in another terminal)"
+

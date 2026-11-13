@@ -10,3 +10,13 @@ pnpm-lock.yaml
 build/
 dist/
 feed/
+
+# Local lab validation evidence and private configuration backups; never publish.
+artifacts/
+validation-vms/
+
+# Python/build byproducts.
+__pycache__/
+*.pyc
+package-lock.json
+

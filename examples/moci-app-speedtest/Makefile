@@ -34,3 +34,4 @@ define Package/moci-app-speedtest/install
 endef
 
 $(eval $(call BuildPackage,moci-app-speedtest))
+

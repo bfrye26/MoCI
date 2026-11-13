@@ -50,3 +50,4 @@ echo ""
 echo "Setup complete!"
 echo "Access MoCI at: http://localhost:8081/moci/"
 echo "Login with: root / (no password)"
+

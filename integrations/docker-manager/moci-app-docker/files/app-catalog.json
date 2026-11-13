@@ -7,7 +7,7 @@
       "category": "Networking",
       "repository": "adguard/adguardhome",
       "description": "DNS filtering",
-      "template_available": true,
+      "template_available": false,
       "profile": "both",
       "complexity": "medium",
       "risk": "router-critical"

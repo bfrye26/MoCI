@@ -65,3 +65,4 @@ arbitrary code.
 4. **Audit the `ubus.cgi` bridge** (`eval`, shell quoting, pre-auth exposure).
 5. **Stop persisting plaintext credentials**; rely on the session token with a
    shorter TTL.
+

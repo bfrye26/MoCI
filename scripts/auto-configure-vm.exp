@@ -56,3 +56,4 @@ expect "root@OpenWrt:/#"
 send "echo 'SSH: ssh -p 2222 root@localhost'\r"
 
 interact
+

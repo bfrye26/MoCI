@@ -253,3 +253,4 @@ Specific app checks:
 The new code passed the offline `docker-store-contract.yml` contract,
 syntax and frontend build checks. **VM runtime installation of this branch,
 automatic firewall migration, and 22 newly added templates is pending.**
+

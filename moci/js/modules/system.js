@@ -44,9 +44,6 @@ export default class SystemModule {
 			'change-password-btn': () => this.changePassword(),
 			'backup-btn': () => this.createBackup(),
 			'reset-btn': () => this.factoryReset(),
-			'reboot-btn': () => this.rebootSystem(),
-			'restart-network-btn': () => this.core.serviceReload('network'),
-			'restart-firewall-btn': () => this.core.serviceReload('firewall'),
 			'add-cron-btn': () => {
 				this.core.resetModal('cron-modal');
 				this.core.openModal('cron-modal');
@@ -1053,6 +1050,17 @@ export default class SystemModule {
 	}
 
 	handleFirmwareFile(file) {
+		if (this.firmwareBusy) return;
+		this.firmwareValidatedFile = null;
+		const flashBtn = document.getElementById('flash-firmware-btn');
+		if (flashBtn) flashBtn.disabled = true;
+		if (!file?.size || !/\.(bin|img|img\.gz|itb|trx)$/i.test(file.name)) {
+			this.firmwareFile = null;
+			const validateBtn = document.getElementById('validate-firmware-btn');
+			if (validateBtn) validateBtn.disabled = true;
+			this.core.showToast('Select a firmware image (.bin, .img or .img.gz), not an installer ISO.', 'error');
+			return;
+		}
 		this.firmwareFile = file;
 		const uploadText = document.getElementById('file-upload-text');
 		const info = document.getElementById('firmware-info');
@@ -1093,7 +1101,7 @@ export default class SystemModule {
 			}
 			const b64 = btoa(parts.join(''));
 
-			await this.core.ubusCall(
+			const [status] = await this.core.ubusCall(
 				'file',
 				'write',
 				{
@@ -1104,14 +1112,21 @@ export default class SystemModule {
 				},
 				{ timeout: 30000 }
 			);
+			if (status !== 0) throw new Error('Firmware upload chunk rejected');
 			offset += CHUNK_SIZE;
 		}
 	}
 
 	async validateFirmware() {
+		if (this.firmwareBusy || !this.firmwareFile) return;
+		this.firmwareBusy = true;
+		this.firmwareValidatedFile = null;
 		const statusEl = document.getElementById('upgrade-status');
 		const progress = document.getElementById('upgrade-progress');
 		const flashBtn = document.getElementById('flash-firmware-btn');
+		const validateBtn = document.getElementById('validate-firmware-btn');
+		if (flashBtn) flashBtn.disabled = true;
+		if (validateBtn) validateBtn.disabled = true;
 
 		if (progress) progress.style.display = 'block';
 		if (statusEl) statusEl.textContent = 'Uploading firmware...';
@@ -1127,7 +1142,7 @@ export default class SystemModule {
 				{ timeout: 30000 }
 			);
 
-			if (s !== 0 || (r?.code && r.code !== 0)) {
+			if (s !== 0 || r?.code !== 0) {
 				const err = r?.stderr || r?.stdout || 'Validation failed';
 				if (statusEl) statusEl.textContent = 'Validation failed: ' + err;
 				this.core.showToast('Firmware validation failed', 'error');
@@ -1136,6 +1151,7 @@ export default class SystemModule {
 			}
 
 			if (statusEl) statusEl.textContent = 'Firmware validated successfully. Ready to flash.';
+			this.firmwareValidatedFile = this.firmwareFile;
 			if (flashBtn) flashBtn.disabled = false;
 			this.core.showToast('Firmware validated', 'success');
 		} catch {
@@ -1144,12 +1160,23 @@ export default class SystemModule {
 			try {
 				await this.core.ubusCall('file', 'exec', { command: '/bin/rm', params: ['-f', '/tmp/firmware.bin'] });
 			} catch {}
+		} finally {
+			this.firmwareBusy = false;
+			if (validateBtn) validateBtn.disabled = !this.firmwareFile;
 		}
 	}
 
 	async flashFirmware() {
+		if (this.firmwareBusy || !this.firmwareFile || this.firmwareValidatedFile !== this.firmwareFile) {
+			this.core.showToast('Validate the selected firmware image before flashing.', 'error');
+			return;
+		}
 		if (!confirm('Flash firmware now? The device will reboot.')) return;
 		if (!confirm('This will replace the firmware. Proceed?')) return;
+		this.firmwareBusy = true;
+		this.firmwareValidatedFile = null;
+		const flashBtn = document.getElementById('flash-firmware-btn');
+		if (flashBtn) flashBtn.disabled = true;
 
 		const statusEl = document.getElementById('upgrade-status');
 		const keepSettings = document.getElementById('keep-settings')?.checked;
@@ -1158,18 +1185,26 @@ export default class SystemModule {
 		if (statusEl) statusEl.textContent = 'Flashing firmware... Do not power off the device.';
 
 		try {
-			await this.core.ubusCall(
+			const [status, result] = await this.core.ubusCall(
 				'file',
 				'exec',
 				{ command: '/sbin/sysupgrade', params },
 				{ timeout: 120000, retries: 0 }
 			);
-			if (statusEl) statusEl.textContent = 'Firmware flashed. Device is rebooting...';
-			this.core.showToast('Firmware flashed, device rebooting...', 'success');
+			if (status !== 0 || result?.code !== 0) {
+				if (statusEl) statusEl.textContent = 'Firmware upgrade command failed. Check router logs before retrying.';
+				this.core.showToast('Firmware upgrade command failed', 'error');
+				return;
+			}
+			if (statusEl) statusEl.textContent = 'Upgrade command accepted. Wait for reboot, then verify the installed firmware.';
+			this.core.showToast('Upgrade started. Verify firmware after reboot.', 'info');
 		} catch {
-			if (statusEl) statusEl.textContent = 'Flash initiated. Device should be rebooting...';
+			if (statusEl) statusEl.textContent = 'Connection lost during upgrade. The outcome is unverified. Wait for the router to return and check its firmware before retrying.';
+		} finally {
+			this.firmwareBusy = false;
 		}
 	}
 
 	loadUpgrade() {}
 }
+

@@ -36,3 +36,4 @@ echo "1. Run: ./scripts/start-vm.sh"
 echo "2. Wait for boot (30-60 seconds)"
 echo "3. Access LuCI at http://192.168.1.1"
 echo "4. Default credentials: root / (no password)"
+

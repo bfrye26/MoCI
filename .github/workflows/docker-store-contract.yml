@@ -5,7 +5,42 @@ on:
       - 'integrations/docker-manager/moci-app-docker/**'
       - 'moci/**'
       - 'tests/service-controls.test.mjs'
+      - 'tests/dashboard-actions.test.mjs'
       - 'tests/docker-store-contract.py'
+      - 'tests/docker-firewall-reconcile.py'
+      - 'tests/release-interface-contract.mjs'
+      - 'scripts/build-ship-local.sh'
+      - 'scripts/Start-MoCI-Ship-Build.ps1'
+      - 'tests/local-build-source-selection.sh'
+      - 'tests/session-expiry.test.mjs'
+      - 'tests/router-config.test.mjs'
+      - 'tests/firmware-upgrade.test.mjs'
+      - 'tests/text-encoding.test.mjs'
+      - 'scripts/build.js'
+      - 'scripts/router-release-check.py'
+      - 'scripts/router-client-check.py'
+      - 'scripts/Test-MoCI-Client.ps1'
+      - 'scripts/router-restore-check.py'
+      - 'scripts/Test-MoCI-Restore.ps1'
+      - 'scripts/Test-MoCI-Upgrade.ps1'
+      - 'scripts/router-upgrade-check.py'
+      - 'tests/test_upgrade_check.py'
+      - 'tests/test_storage_growth.py'
+      - 'tests/test_cleaninstall_check.py'
+      - 'scripts/router-cleaninstall-check.py'
+      - 'scripts/Test-MoCI-CleanInstall.ps1'
+      - 'tests/test_ext4_image.py'
+      - 'scripts/Apply-MoCI-Storage-Growth.ps1'
+      - 'scripts/Apply-MoCI-Runtime-Fixes.ps1'
+      - 'tests/test_runtime_defaults.py'
+      - 'tests/test_router_restore_check.py'
+      - 'tests/test_router_client_check.py'
+      - 'scripts/Test-MoCI-Release.ps1'
+      - 'scripts/apply-core-fixes.py'
+      - 'firmware/**'
+      - 'files/moci-hardware-check'
+      - 'Makefile'
+      - 'rpcd-acl.json'
       - '.github/workflows/docker-store-contract.yml'
   workflow_dispatch:
 jobs:
@@ -22,12 +57,23 @@ jobs:
           python-version: '3.12'
       - name: Compile Python adapters and test harness
         run: |
+          python -m py_compile scripts/router-release-check.py scripts/apply-core-fixes.py
+          python -m py_compile scripts/router-client-check.py
+          python -m py_compile scripts/router-restore-check.py
+          python -m py_compile scripts/router-upgrade-check.py
+          python -m py_compile scripts/router-cleaninstall-check.py
+          python -m py_compile firmware/files/usr/libexec/moci-runtime-defaults
+          python -m py_compile firmware/files/usr/libexec/moci-grow-root
           python -m py_compile integrations/docker-manager/moci-app-docker/files/moci-docker-api
           python -m py_compile integrations/docker-manager/moci-app-docker/files/moci-docker-policy
           python -m py_compile integrations/docker-manager/moci-app-docker/files/moci-docker-firewall
           python -m py_compile tests/docker-store-contract.py
       - name: Check all catalogue entries and install-security contracts
         run: python tests/docker-store-contract.py
+      - name: Test firewall drift, ownership, rollback and locking
+        run: python tests/docker-firewall-reconcile.py
+      - name: Check release interfaces and package dependencies
+        run: node tests/release-interface-contract.mjs
       - name: Check MoCI frontend and Docker add-on JavaScript
         run: |
           node --check moci/js/core.js
@@ -44,7 +90,44 @@ jobs:
       - name: Check privileged read-only diagnostic helper syntax
         run: sh -n files/moci-service-inspect
       - name: Test real service status and start/stop failure handling
-        run: node tests/service-controls.test.mjs
+        run: |
+          node tests/service-controls.test.mjs
+          node tests/dashboard-actions.test.mjs
+      - name: Test expired sessions and relogin
+        run: node tests/session-expiry.test.mjs
+      - name: Test client lease validation
+        run: |
+          python tests/test_router_client_check.py
+          python tests/test_router_restore_check.py
+          python tests/test_upgrade_check.py
+          python tests/test_cleaninstall_check.py
+          python tests/test_runtime_defaults.py
+      - name: Test guarded GPT storage growth on a sparse disk image
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y fdisk
+          python tests/test_storage_growth.py
+      - name: Verify OpenWrt ext4 metadata and online filesystem growth
+        run: |
+          git clone https://github.com/openwrt/make_ext4fs.git "$RUNNER_TEMP/make_ext4fs"
+          git -C "$RUNNER_TEMP/make_ext4fs" checkout --detach 13767a96fcdffd59fef16f1b86919f63b6dee45a
+          make -C "$RUNNER_TEMP/make_ext4fs" -j2
+          MOCI_MAKE_EXT4FS="$RUNNER_TEMP/make_ext4fs/make_ext4fs" python tests/test_ext4_image.py
+      - name: Test router configuration and firmware upgrade safety
+        run: |
+          node tests/router-config.test.mjs
+          node tests/firmware-upgrade.test.mjs
+      - name: Test Docker manager integration
+        run: python -m unittest discover -s integrations/docker-manager/tests -p 'test*.py'
+      - name: Check hardware inventory and installer syntax
+        run: |
+          sh -n files/moci-hardware-check
+          sh -n firmware/files/etc/uci-defaults/93-moci-runtime-defaults
+          sh -n firmware/files/etc/uci-defaults/94-moci-grow-root
+          bash -n firmware/installer/moci-install
+          bash -n firmware/installer/build-live-iso.sh
+          bash -n firmware/scripts/build.sh
+          bash -n scripts/moci-offline-root-repair.sh
       - name: Build frontend package
         run: |
           npm install --no-audit --no-fund
@@ -54,3 +137,8 @@ jobs:
           test -s dist/moci/js/modules/upnp.js
       - name: Validate read-only Docker LAN diagnostics
         run: sh -n scripts/diagnose-docker-lan.sh
+      - name: Validate local build launcher shell syntax
+        run: bash -n scripts/build-ship-local.sh
+      - name: Test local source selection without network or firmware compilation
+        run: bash tests/local-build-source-selection.sh
+

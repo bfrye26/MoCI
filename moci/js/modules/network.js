@@ -317,7 +317,7 @@ export default class NetworkModule {
 		}
 		try {
 			await this.core.uciSet('network', name, values);
-			await this.core.uciCommit('network');
+			await this.core.uciApplyConfig('network');
 			this.core.closeModal('interface-modal');
 			this.core.showToast('Interface updated', 'success');
 			this.loadInterfaces();
@@ -491,7 +491,7 @@ export default class NetworkModule {
 					if (v.device === oldName) await this.core.uciSet('network', v.section, { device: name });
 				}
 			}
-			await this.core.uciCommit('network');
+			await this.core.uciApplyConfig('network');
 			this.core.closeModal('device-modal');
 			this.core.showToast('Device saved', 'success');
 			this.loadDevices();
@@ -510,7 +510,7 @@ export default class NetworkModule {
 		try {
 			for (const v of vlans) await this.core.uciDelete('network', v.section);
 			await this.core.uciDelete('network', id);
-			await this.core.uciCommit('network');
+			await this.core.uciApplyConfig('network');
 			this.core.showToast('Deleted', 'success');
 			this.loadDevices();
 		} catch {
@@ -598,7 +598,7 @@ export default class NetworkModule {
 				target = res.section;
 			}
 			await this.core.uciSet('network', target, values);
-			await this.core.uciCommit('network');
+			await this.core.uciApplyConfig('network');
 			this.core.closeModal('bridge-vlan-modal');
 			this.core.showToast('Bridge VLAN saved', 'success');
 			this.loadDevices();
@@ -732,7 +732,7 @@ export default class NetworkModule {
 					}
 				}
 			}
-			await this.core.uciCommit('network');
+			await this.core.uciApplyConfig('network');
 			this.core.closeModal('route-modal');
 			this.core.showToast('Route saved', 'success');
 			this.loadRoutes();
@@ -823,7 +823,7 @@ export default class NetworkModule {
 					await this.core.uciSet('wireless', radio, radioValues);
 				}
 			}
-			await this.core.uciCommit('wireless');
+			await this.core.uciApplyConfig('wireless');
 			this.core.closeModal('wireless-modal');
 			this.core.showToast('Wireless settings saved', 'success');
 			this.loadWireless();
@@ -969,7 +969,7 @@ export default class NetworkModule {
 				output: document.getElementById('fw-default-output').value,
 				forward: document.getElementById('fw-default-forward').value
 			});
-			await this.core.uciCommit('firewall');
+			await this.core.uciApplyConfig('firewall');
 			this.core.showToast('Firewall settings saved', 'success');
 			this.loadFirewall();
 		} catch {
@@ -1105,7 +1105,7 @@ export default class NetworkModule {
 				await this.core.uciSet('firewall', res.section, { src: name, dest });
 			}
 
-			await this.core.uciCommit('firewall');
+			await this.core.uciApplyConfig('firewall');
 			this.core.closeModal('zone-modal');
 			this.core.showToast('Zone saved', 'success');
 			this.loadFirewall();
@@ -1123,7 +1123,7 @@ export default class NetworkModule {
 				.filter(f => f.src === name || f.dest === name);
 			for (const f of stale) await this.core.uciDelete('firewall', f.section);
 			await this.core.uciDelete('firewall', id);
-			await this.core.uciCommit('firewall');
+			await this.core.uciApplyConfig('firewall');
 			this.core.showToast('Zone deleted', 'success');
 			this.loadFirewall();
 		} catch {
@@ -1264,16 +1264,23 @@ export default class NetworkModule {
 	}
 
 	async reloadDHCPAfterReservation() {
+		return this.reloadDhcpServices(() => this.loadDHCP());
+	}
+
+	async reloadDhcpServices(refresh, includeIPv6 = false) {
 		// Commit alone does not make dnsmasq pick up UCI host reservations.
 		// A failed service reload must not be reported as a failed UCI commit.
 		try {
-			const [status, response]=await this.core.serviceReload('dnsmasq');
-			if(status!==0||Number(response?.code||0)!==0)throw new Error('dnsmasq reload denied');
+			const services = includeIPv6 ? ['dnsmasq', 'odhcpd'] : ['dnsmasq'];
+			for (const service of services) {
+				const [status, response] = await this.core.serviceReload(service);
+				if (status !== 0 || response?.code !== 0) throw new Error(`${service} reload failed`);
+			}
 		} catch(error) {
-			console.warn('DHCP reservation saved but dnsmasq reload failed:',error);
-			this.core.showToast('Saved. DHCP service reload may be needed before the reservation takes effect.','info');
+			console.warn('Configuration saved but DHCP/DNS service reload failed:', error);
+			this.core.showToast('Saved, but DHCP/DNS service reload failed. Check System services before relying on these settings.', 'error');
 		}
-		await this.loadDHCP();
+		await refresh();
 	}
 
 	async saveStaticLease() {
@@ -1369,14 +1376,14 @@ export default class NetworkModule {
 			await this.core.uciCommit('dhcp');
 			this.core.closeModal('dhcp-pool-modal');
 			this.core.showToast('DHCP pool saved', 'success');
-			this.loadDHCP();
+			await this.reloadDhcpServices(() => this.loadDHCP(), true);
 		} catch {
 			this.core.showToast('Failed to save DHCP pool', 'error');
 		}
 	}
 
 	deleteDhcpPool(id) {
-		this.core.uciDeleteEntry('dhcp', id, `Delete DHCP pool "${id}"?`, () => this.loadDHCP());
+		return this.core.uciDeleteEntry('dhcp', id, `Delete DHCP pool "${id}"?`, () => this.reloadDhcpServices(() => this.loadDHCP(), true));
 	}
 
 	async loadDNS() {
@@ -1464,7 +1471,7 @@ export default class NetworkModule {
 			await this.setListOption('dhcp', target, 'server', servers, this._dnsmasqHadServers);
 			await this.core.uciCommit('dhcp');
 			this.core.showToast('DNS settings saved', 'success');
-			this.loadDNS();
+			await this.reloadDhcpServices(() => this.loadDNS());
 		} catch {
 			this.core.showToast('Failed to save DNS settings', 'error');
 		}
@@ -1475,19 +1482,19 @@ export default class NetworkModule {
 	}
 
 	saveDnsEntry() {
-		this.core.uciSave({
+		return this.core.uciSave({
 			config: 'dhcp',
 			uciType: 'domain',
 			modalId: 'dns-entry-modal',
 			sectionIdField: 'edit-dns-entry-section',
 			fieldMap: DNS_ENTRY_FIELDS,
-			reloadFn: () => this.loadDNS(),
+			reloadFn: () => this.reloadDhcpServices(() => this.loadDNS()),
 			successMsg: 'DNS entry saved'
 		});
 	}
 
 	deleteDnsEntry(id) {
-		this.core.uciDeleteEntry('dhcp', id, 'Delete this DNS entry?', () => this.loadDNS());
+		return this.core.uciDeleteEntry('dhcp', id, 'Delete this DNS entry?', () => this.reloadDhcpServices(() => this.loadDNS()));
 	}
 
 	editHostEntry(index) {
@@ -1525,10 +1532,11 @@ export default class NetworkModule {
 			`${ip}\t${names}`
 		);
 		try {
-			await this.core.ubusCall('file', 'write', { path: '/etc/hosts', data: newContent });
+			const [status] = await this.core.ubusCall('file', 'write', { path: '/etc/hosts', data: newContent });
+			if (status !== 0) throw new Error('Hosts file write rejected');
 			this.core.closeModal('host-entry-modal');
 			this.core.showToast('Hosts entry saved', 'success');
-			this.loadDNS();
+			await this.reloadDhcpServices(() => this.loadDNS());
 		} catch {
 			this.core.showToast('Failed to save hosts entry', 'error');
 		}
@@ -1549,9 +1557,10 @@ export default class NetworkModule {
 			null
 		);
 		try {
-			await this.core.ubusCall('file', 'write', { path: '/etc/hosts', data: newContent });
+			const [status] = await this.core.ubusCall('file', 'write', { path: '/etc/hosts', data: newContent });
+			if (status !== 0) throw new Error('Hosts file write rejected');
 			this.core.showToast('Hosts entry deleted', 'success');
-			this.loadDNS();
+			await this.reloadDhcpServices(() => this.loadDNS());
 		} catch {
 			this.core.showToast('Failed to delete hosts entry', 'error');
 		}
@@ -1736,7 +1745,7 @@ export default class NetworkModule {
 				disabled: disabled ? '1' : '0'
 			};
 			await this.core.uciSet('network', ifaceName, values);
-			await this.core.uciCommit('network');
+			await this.core.uciApplyConfig('network');
 			this.core.showToast('WireGuard configuration saved', 'success');
 		} catch {
 			this.core.showToast('Failed to save WireGuard config', 'error');
@@ -1933,3 +1942,4 @@ export default class NetworkModule {
 		}
 	}
 }
+

@@ -111,3 +111,4 @@
 :root[data-theme="cloud"] .docker-status-stopped,:root[data-theme="cloud"] .docker-status-unknown,:root[data-theme="cloud"] .docker-status-not_deployed{color:#526780}
 :root[data-theme="cloud"] .docker-status-partial,:root[data-theme="cloud"] .docker-status-unhealthy{color:#965a19}
 @media(max-width:700px){.docker-stack-status-row{align-items:stretch}.docker-stack-actions{width:100%}}
+

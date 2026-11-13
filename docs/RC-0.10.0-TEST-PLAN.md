@@ -112,3 +112,4 @@ Changes made after the initial baseline, pending a **fresh firmware rebuild and 
 - [ ] Publish candidate firmware/ISO only after checksums, test reports and release provenance are available.
 
 **Source CI passing is not evidence that the above runtime acceptance checks have passed.**
+
