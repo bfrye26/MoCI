@@ -54,6 +54,8 @@ Backup generation emitted Saving config files in the router log, but no new down
 
 A direct dashboard load exposed unbound quick-action buttons. They were registered only when SystemModule opened its page. DashboardModule now owns these handlers at construction, while SystemModule no longer adds duplicates. The new regression test covers direct dashboard initialization, cancellation, rejected commands and duplicate in-flight requests. Local tests and frontend build passed. This follow-up is prepared in source and built UI files; it still requires application to the lab VM. The attempted reboot did not execute, so reboot persistence remains unverified.
 
+The user subsequently applied this update. The live Reboot action opened its confirmation and returned the acknowledged Reboot requested message. Management then became unreachable while recovery was being checked. Do not mark persistence passed until fresh post-boot status and diagnostics are recorded. Full Linux CI passed for source 8316245becc890824c3ea7300606392bb219ddc5: https://github.com/bfrye26/MoCI/actions/runs/43424617648. The next firmware build is pinned to this tested source, including the dashboard fix.
+
 | Gate | Evidence required |
 | --- | --- |
 | Settings activation | Create/edit/delete DNS entries and DHCP reservations; independently query the router and renew the client lease |
