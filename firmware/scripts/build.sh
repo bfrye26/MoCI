@@ -105,4 +105,7 @@ for p in moci moci-app-docker docker-compose dockerd samba4-server uhttpd-mod-ub
 done
 make download -j"${JOBS:-2}"
 make -j"${JOBS:-2}" V=s
+for image in bin/targets/x86/64/*ext4-combined-efi.img.gz; do
+  python3 "$WORK/scripts/normalize-ext4-image.py" "$image"
+done
 find bin/targets/x86/64 -maxdepth 1 -name '*ext4-combined-efi.img.gz' -print

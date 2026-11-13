@@ -26,6 +26,7 @@ on:
       - 'scripts/router-upgrade-check.py'
       - 'tests/test_upgrade_check.py'
       - 'tests/test_storage_growth.py'
+      - 'tests/test_ext4_image.py'
       - 'scripts/Apply-MoCI-Storage-Growth.ps1'
       - 'scripts/Apply-MoCI-Runtime-Fixes.ps1'
       - 'tests/test_runtime_defaults.py'
@@ -101,6 +102,12 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y fdisk
           python tests/test_storage_growth.py
+      - name: Verify OpenWrt ext4 metadata and online filesystem growth
+        run: |
+          git clone https://github.com/openwrt/make_ext4fs.git "$RUNNER_TEMP/make_ext4fs"
+          git -C "$RUNNER_TEMP/make_ext4fs" checkout --detach 13767a96fcdffd59fef16f1b86919f63b6dee45a
+          make -C "$RUNNER_TEMP/make_ext4fs" -j2
+          MOCI_MAKE_EXT4FS="$RUNNER_TEMP/make_ext4fs/make_ext4fs" python tests/test_ext4_image.py
       - name: Test router configuration and firmware upgrade safety
         run: |
           node tests/router-config.test.mjs
