@@ -4,6 +4,8 @@ The lab UI showed nut-server enabled with SETUP NEEDED and no UPS driver, plus a
 
 The firmware now runs 93-moci-runtime-defaults once during first boot. Its Python helper uses UCI directly, so it does not depend on rpcd being started. An unconfigured nut-server is disabled; any driver section or manual ups.conf UPS definition preserves the server. nut-monitor is untouched, since it may monitor a remote UPS independently. Configured services remain available for deliberate activation.
 
+Source: fd52dda6682c494239d1284a17b173e2ae9fcea8. The local build launcher is pinned to this source. Full Linux CI and live validation must be checked before producing or approving a release image.
+
 For the recognised upstream Docker defaults only, the helper sets the docker0 device bridge_empty=1 and the protocol-none docker interface auto=1. A clean image is preseeded before dockerd boot creates its default UCI sections. netifd manages the persistent empty bridge, while Docker assigns its IP and container endpoints. Custom bridge ports, protocol, options, alternative daemon files and ambiguous duplicate device definitions are preserved. No firewall rules, network databases, volumes or managed bridges are removed.
 
 ## Apply to the disposable VM
