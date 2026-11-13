@@ -81,3 +81,13 @@ Only after PASS, power off the live session and run
 Complete-MoCI-Storage-Recovery.ps1 to eject recovery media and boot the router.
 No automatic repair or firmware installation occurs on ISO boot. This manual
 repair does not establish that an unassisted firmware upgrade preserves capacity.
+
+Full Linux CI run 43485537046 passed on source
+77ac51bf9c725b89233b441926a4115095e97a96. It checks real mounted online growth and
+sentinel contents after offline normalization, plus processing of a gzip combined
+GPT image with byte-for-byte preservation of all regions outside root and correct
+exported checksums/profile metadata. The local builder now pins that source.
+The recovery launcher and offline helper passed PowerShell parsing and Bash syntax
+checks respectively; booting the remastered recovery ISO and repairing this VM
+remain pending live execution. No full firmware rebuild or hardware qualification
+is claimed by these CI tests.
