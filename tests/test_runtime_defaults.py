@@ -80,6 +80,28 @@ class RuntimeDefaults(unittest.TestCase):
         with patch.object(Path,'is_dir',return_value=True), patch.object(runtime,'default_gateway',return_value={'172.17.0.1'}), patch.object(runtime,'run',return_value=SimpleNamespace(stdout='docker0: <UP>\n')):
             self.assertFalse(runtime.bridge_ready())
 
+    def test_container_failure_retains_error_and_cleans_up(self):
+        calls=[]
+        def command(args,*unused,**kwargs):
+            calls.append(args)
+            if args[:2]==['docker','run']:
+                return SimpleNamespace(returncode=125,stderr='OCI runtime: test container could not start',stdout='')
+            return SimpleNamespace(returncode=0,stderr='',stdout='')
+        report={'checks':[]}
+        with patch.object(runtime,'run',side_effect=command), self.assertRaisesRegex(RuntimeError,'could not launch'):
+            runtime.smoke_test(report,'busybox:1.37')
+        self.assertIn('OCI runtime',report['checks'][0]['detail'])
+        self.assertEqual(calls[-1][:3],['docker','rm','-f'])
+
+    def test_dns_failure_does_not_hide_http_result(self):
+        def command(args,*unused,**kwargs):
+            failure=args[:2]==['docker','run'] and 'nslookup' in args
+            return SimpleNamespace(returncode=1 if failure else 0,stderr='DNS timed out' if failure else '',stdout='')
+        report={'checks':[]}
+        with patch.object(runtime,'run',side_effect=command), self.assertRaisesRegex(RuntimeError,'network validation failed'):
+            runtime.smoke_test(report,'busybox:1.37')
+        self.assertEqual([check['status'] for check in report['checks']],['FAIL','PASS'])
+
 
 if __name__=='__main__':
     unittest.main()

@@ -16,7 +16,10 @@ import uuid
 def run(args, timeout=20, optional=False):
     result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
     if result.returncode and not optional:
-        raise RuntimeError(f'{args[0]} {args[1] if len(args)>1 else ""} failed ({result.returncode})')
+        detail=''
+        if args[:2]==['docker','run']:
+            detail=': '+(result.stderr+'\n'+result.stdout).strip()[-2000:]
+        raise RuntimeError(f'{args[0]} {args[1] if len(args)>1 else ""} failed ({result.returncode})'+detail)
     return result
 
 
@@ -85,6 +88,31 @@ def inventory():
     managed=sorted(line.split()[0] for line in networks if line.split()[1] not in ('bridge','host','none'))
     containers=sorted(run(['docker','ps','-aq','--no-trunc']).stdout.splitlines())
     return {'custom_network_ids':managed,'container_ids':containers}
+
+
+def smoke_test(report, image):
+    failed=False
+    for label,command in (
+        ('default-container-dns',['nslookup','openwrt.org']),
+        ('default-container-http-egress',['wget','-S','-T','15','-O','/dev/null','http://example.com'])
+    ):
+        name='moci-bridge-check-'+uuid.uuid4().hex[:8]
+        try:
+            result=run(['docker','run','--rm','--name',name,'--read-only','--cap-drop=ALL',
+                        '--security-opt','no-new-privileges','--pids-limit','32','--memory','32m',
+                        image]+command,45,optional=True)
+            if result.returncode:
+                failed=True
+                report['checks'].append({'name':label,'status':'FAIL','exit_code':result.returncode,
+                                         'detail':(result.stderr+'\n'+result.stdout).strip()[-2000:]})
+                if result.returncode>=125:
+                    raise RuntimeError('Docker could not launch the test container; see per-check error')
+            else:
+                report['checks'].append({'name':label,'status':'PASS'})
+        finally:
+            run(['docker','rm','-f',name],optional=True)
+    if failed:
+        raise RuntimeError('Default container network validation failed; see DNS and HTTP results')
 
 
 def main():
@@ -157,9 +185,10 @@ def main():
         report['applied']=True
         if args.live and selected['docker'] in ('CREATE_DEFAULT_BRIDGE','KEEP_DEFAULT_BRIDGE','ALREADY_CONFIGURED'):
             # netifd must load the committed bridge-only settings before ifup.
-            run(['ubus','call','network','reload'])
-            run(['/sbin/ifup','docker'])
-            time.sleep(2)
+            if selected['docker']!='ALREADY_CONFIGURED' or not bridge_ready():
+                run(['ubus','call','network','reload'])
+                run(['/sbin/ifup','docker'])
+                time.sleep(2)
             if not bridge_ready():
                 # No running containers were allowed above. Never remove networks,
                 # volumes or Docker's persistent metadata to repair a bridge.
@@ -175,17 +204,12 @@ def main():
                 else:
                     raise RuntimeError('Default bridge gateway was not restored')
             report['checks'].append({'name':'default-bridge-gateway-present','status':'PASS'})
+            info=json.loads(run(['docker','info','--format','{{json .}}']).stdout)
+            report['docker_environment']={key:info.get(key) for key in ('ServerVersion','Driver','CgroupDriver','CgroupVersion','SecurityOptions')}
             # Official small test image; no published ports or host mounts.
             image='busybox:1.37'
             run(['docker','pull',image],180)
-            name='moci-bridge-check-'+uuid.uuid4().hex[:8]
-            try:
-                run(['docker','run','--rm','--name',name,'--read-only','--cap-drop=ALL',
-                     '--security-opt','no-new-privileges','--pids-limit','32','--memory','32m',
-                     image,'sh','-ec','nslookup openwrt.org >/dev/null; wget -q -T 15 -O /dev/null http://example.com'],45)
-            finally:
-                run(['docker','rm','-f',name],optional=True)
-            report['checks'].append({'name':'default-container-dns-and-egress','status':'PASS'})
+            smoke_test(report,image)
             if inventory()!=baseline_inventory:
                 raise RuntimeError('Existing container or managed-network inventory changed during repair')
             report['checks'].append({'name':'existing-containers-and-managed-networks-preserved','status':'PASS'})

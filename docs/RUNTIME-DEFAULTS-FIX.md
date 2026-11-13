@@ -6,6 +6,10 @@ The firmware now runs 93-moci-runtime-defaults once during first boot. Its Pytho
 
 Source: fd52dda6682c494239d1284a17b173e2ae9fcea8. The local build launcher is pinned to this source. Full Linux CI and live validation must be checked before producing or approving a release image.
 
+Full Linux CI passed for this source: https://github.com/bfrye26/MoCI/actions/runs/43433845276. Live application and post-boot persistence remain pending.
+
+The first live repair (artifacts/runtime-fix-20261113T132933Z-9fc648cd/runtime-report.json) confirmed unconfigured UPS disable, persistent bridge configuration and presence of the Docker bridge gateway. The test container exited 1, so end-to-end default-network validation remains open. The original helper omitted its stderr. The follow-up separates DNS and HTTP probes, retains bounded errors from these known public test commands, records selected Docker runtime/cgroup details, and skips reloading an already healthy configured bridge. Thirteen tests cover error preservation and cleanup in addition to the original guards. Do not assume a Docker launch, DNS or forwarding root cause until the new error is read.
+
 For the recognised upstream Docker defaults only, the helper sets the docker0 device bridge_empty=1 and the protocol-none docker interface auto=1. A clean image is preseeded before dockerd boot creates its default UCI sections. netifd manages the persistent empty bridge, while Docker assigns its IP and container endpoints. Custom bridge ports, protocol, options, alternative daemon files and ambiguous duplicate device definitions are preserved. No firewall rules, network databases, volumes or managed bridges are removed.
 
 ## Apply to the disposable VM

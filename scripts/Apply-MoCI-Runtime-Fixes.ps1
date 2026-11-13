@@ -41,7 +41,10 @@ $repairExit=$LASTEXITCODE
 & scp -O "${remote}:$stage/runtime-report.json" (Join-Path $output 'runtime-report.json')
 if ($LASTEXITCODE -ne 0) { throw "Could not retrieve runtime report. Inspect the test VM; no pass recorded. Results: $output" }
 $report=Get-Content -LiteralPath (Join-Path $output 'runtime-report.json') -Raw | ConvertFrom-Json
-if ($repairExit -ne 0 -or -not $report.success) { throw "Runtime repair or validation failed. Settings backup remains at $stage/before. Read $output\runtime-report.json" }
+if ($repairExit -ne 0 -or -not $report.success) {
+    $details=@($report.checks | Where-Object status -eq 'FAIL' | ForEach-Object { $_.name + ': ' + $_.detail }) -join [Environment]::NewLine
+    throw "Runtime validation failed:$([Environment]::NewLine)$details$([Environment]::NewLine)Settings backup: $stage/before. Report: $output\runtime-report.json"
+}
 if ($report.plan.docker -eq 'PRESERVE_CUSTOM') { Write-Host 'Custom Docker configuration was preserved; default bridge checks were skipped.' }
 Write-Host "Runtime repair checks completed. Report: $output\runtime-report.json"
 Write-Host 'The next firmware image also includes these startup defaults. No firmware was flashed.'
