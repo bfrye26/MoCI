@@ -2368,8 +2368,8 @@
 								</div>
 
 								<div class="form-group">
-									<label class="form-label">SELECT FIRMWARE IMAGE (.bin)</label>
-									<input type="file" id="firmware-file" accept=".bin" style="display: none" />
+									<label class="form-label">SELECT FIRMWARE IMAGE (.bin, .img, .img.gz)</label>
+									<input type="file" id="firmware-file" accept=".bin,.img,.gz,.itb,.trx" style="display: none" />
 									<div
 										id="file-upload-area"
 										style="
@@ -2391,7 +2391,7 @@
 											Click to select firmware file
 										</div>
 										<div style="color: var(--steel-muted); font-size: 12px">
-											or drag and drop .bin file here
+											or drag and drop a firmware image here. Installer ISO files are not upgrade images.
 										</div>
 									</div>
 								</div>
@@ -2591,3 +2591,4 @@
 		</script>
 	</body>
 </html>
+

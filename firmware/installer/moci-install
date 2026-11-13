@@ -52,7 +52,8 @@ select_network() {
   local -a nics=()
   for link in /sys/class/net/*; do
     nic=${link##*/}
-    [[ "$nic" != lo && -r "$link/address" ]] || continue
+    [[ "$nic" != lo && -r "$link/address" && -e "$link/device" ]] || continue
+    [[ ! -d "$link/wireless" && "$(cat "$link/type" 2>/dev/null)" == 1 ]] || continue
     mac=$(<"$link/address")
     [[ "$mac" =~ ^([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}$ ]] || continue
     nics+=("$nic" "$mac")
@@ -259,6 +260,7 @@ while :; do
     address 'Edit LAN IPv4 address' \
     password 'Set/change administrator password' \
     install 'Install / resume installation' \
+    hardware 'Identify CPU, Ethernet ports and Wi-Fi chipset (read only)' \
     diagnostics 'View installation diagnostics' \
     quit 'Exit installer without further changes') || break
   case "$selected" in
@@ -267,6 +269,7 @@ while :; do
     hostname) set_hostname || : ;;
     address) set_lan_ip || : ;;
     password) set_password || : ;;
+    hardware) /usr/local/sbin/moci-hardware-check > /tmp/moci-hardware-report.txt 2>&1; action --textbox /tmp/moci-hardware-report.txt 22 100 || : ;;
     diagnostics) action --textbox "$LOG" 22 92 || : ;;
     install)
       if ! perform_install && [[ -n "$LAST_ERROR" ]]; then

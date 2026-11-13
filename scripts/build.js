@@ -2,6 +2,7 @@ import { minify } from 'terser';
 import { readFile, writeFile, mkdir, copyFile, readdir } from 'fs/promises';
 import { join } from 'path';
 import CleanCSS from 'clean-css';
+import {execFileSync} from 'node:child_process';
 
 const distDir = 'dist/moci';
 
@@ -75,6 +76,7 @@ async function copyAssets() {
 }
 
 async function build() {
+	execFileSync(process.execPath,['tests/text-encoding.test.mjs'],{stdio:'inherit'});
 	console.log('Building production bundle...\n');
 	await buildJS();
 	await buildCSS();
@@ -83,3 +85,4 @@ async function build() {
 }
 
 build().catch(error => { console.error(error); process.exitCode = 1; });
+

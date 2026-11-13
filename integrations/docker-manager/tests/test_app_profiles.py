@@ -32,7 +32,7 @@ class ReviewedAppProfileTests(unittest.TestCase):
                 self.assertFalse(spec['services']['app']['read_only'])
                 self.assertEqual(spec['services']['app']['user'],'1000:1000')
                 self.assertEqual(spec['services']['app']['cap_drop'],['ALL'])
-                self.assertEqual(spec['services']['app']['security_opt'],['no-new-privileges:true'])
+                self.assertEqual(spec['services']['app']['security_opt'],['no-new-privileges=true'])
                 self.assertEqual(spec['volumes'],{'uptime-kuma-data':{}})
                 locked=api.spec_validate(app)
                 self.assertTrue(locked['services']['app']['read_only'])
@@ -68,7 +68,7 @@ class ReviewedAppProfileTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)
             with patch.object(api,'STACKS',str(root)),patch.object(api,'writes_enabled',return_value=True):
-                with patch.object(api,'catalog',return_value={'catalog':[{'id':'gotify','ready':True}]}):
+                with patch.object(api,'catalog',return_value={'catalog':[{'id':'gotify','ready':True,'risk':'review'}]}):
                     with patch.object(api,'pins',return_value={'gotify':image}):
                         with patch.object(api,'template_specs',return_value={'gotify':template}):
                             with patch.object(api,'lan_ip',return_value='192.168.50.1'):
@@ -101,7 +101,7 @@ class ReviewedAppProfileTests(unittest.TestCase):
             self.assertFalse(app['read_only'])
             self.assertEqual(app['user'],'1000:1000')
             self.assertEqual(app['cap_drop'],['ALL'])
-            self.assertEqual(app['security_opt'],['no-new-privileges:true'])
+            self.assertEqual(app['security_opt'],['no-new-privileges=true'])
             payload['services']['app']['privileged']=True
             with self.assertRaisesRegex(ValueError,'Unsupported Compose service'):
                 api.spec_validate(payload,advanced=True)
@@ -158,13 +158,17 @@ class ReviewedAppProfileTests(unittest.TestCase):
             (policy/'allowed-images.json').write_text(json.dumps({'images':[image]}))
             (policy/'app-pins.json').write_text(json.dumps({'safe':image}))
             (policy/'app-templates.json').write_text(json.dumps({'schema':1,'templates':{
-                'safe':{'repository':'example/safe','path':'http://ROUTER_IP:8000/'}}}))
+                'safe':{'repository':'example/safe','image':'example/safe:1.0','path':'http://ROUTER_IP:8000/'}}}))
             with patch.object(api,'ROOT',str(policy)),patch.object(api,'STACKS',str(stacks)):
                 with patch.object(api,'writes_enabled',return_value=True),patch.object(api,'lan_ip',return_value='192.168.50.1'):
-                    result=api.catalog()['catalog'][0]
+                    with patch.object(api,'managed_stacks',return_value={'managed_stacks':[{'name':'safe','state':'running','url':'http://192.168.50.1:8000/'}]}):
+                        result=api.catalog()['catalog'][0]
+                    with patch.object(api,'managed_stacks',return_value={'managed_stacks':[{'name':'safe','state':'stopped','url':None}]}):
+                        stopped=api.catalog()['catalog'][0]
         self.assertTrue(result['ready'])
         self.assertTrue(result['installed'])
         self.assertEqual(result['url'],'http://192.168.50.1:8000/')
+        self.assertIsNone(stopped['url'])
 
     def test_compose_multiservice_environment_and_resource_limits(self):
         image='example/safe@sha256:'+'a'*64

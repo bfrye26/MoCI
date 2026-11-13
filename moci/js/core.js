@@ -264,9 +264,11 @@ export class OpenWrtCore {
 	}
 
 	startApplication() {
-		this.attachEventListeners();
-
-		window.addEventListener('hashchange', () => this.handleRouteChange());
+		if (!this._applicationStarted) {
+			this.attachEventListeners();
+			window.addEventListener('hashchange', () => this.handleRouteChange());
+			this._applicationStarted = true;
+		}
 
 		if (!window.location.hash) {
 			this.navigate('/dashboard');
@@ -461,6 +463,8 @@ export class OpenWrtCore {
 		document.getElementById('main-view').classList.add('hidden');
 
 		const loginForm = document.getElementById('login-form');
+		const passwordField = document.getElementById('password');
+		if (passwordField) passwordField.value = '';
 
 		loginForm.onsubmit = async e => {
 			e.preventDefault();
@@ -481,9 +485,42 @@ export class OpenWrtCore {
 		document.getElementById('main-view').classList.remove('hidden');
 	}
 
+	async checkSessionAfterDenied(requestSession) {
+		if (!requestSession || requestSession !== this.sessionId) return;
+		if (this._sessionCheck?.id === requestSession) return this._sessionCheck.promise;
+		const controller = new AbortController();
+		const timer = setTimeout(() => controller.abort(), 4000);
+		const promise = (async () => {
+			try {
+				// An individual ACL denial does not prove that login expired.
+				const response = await fetch('/ubus', {
+					method:'POST',headers:{'Content-Type':'application/json'},
+					signal:controller.signal,
+					body:JSON.stringify({jsonrpc:'2.0',id:Math.random(),method:'call',
+						params:[requestSession,'session','access',{}]})
+				});
+				const data = response.ok ? await response.json() : null;
+				const expired = response.status === 401 || [4,6].includes(data?.result?.[0]) || data?.error?.code === -32002;
+				if (expired && this.sessionId === requestSession) {
+					this.stopPolling();
+					sessionStorage.removeItem('ubus_session');
+					this.sessionId = null;
+					this.showLoginView();
+					this.showToast('Your router session has expired. Please log in again.', 'info');
+				}
+			} catch {
+				// Router unavailability is not proof that login expired.
+			} finally { clearTimeout(timer); }
+		})();
+		this._sessionCheck = {id:requestSession,promise};
+		try { await promise; }
+		finally { if (this._sessionCheck?.promise === promise) this._sessionCheck = null; }
+	}
+
 	async ubusCall(object, method, params = {}, { timeout = 10000, retries = 0 } = {}) {
 		let lastError;
 		for (let attempt = 0; attempt <= retries; attempt++) {
+			const requestSession = this.sessionId;
 			const controller = new AbortController();
 			const timer = setTimeout(() => controller.abort(), timeout);
 			try {
@@ -495,11 +532,14 @@ export class OpenWrtCore {
 						jsonrpc: '2.0',
 						id: Math.random(),
 						method: 'call',
-						params: [this.sessionId || '00000000000000000000000000000000', object, method, params]
+						params: [requestSession || '00000000000000000000000000000000', object, method, params]
 					})
 				});
 				clearTimeout(timer);
 				const data = await response.json();
+				if (object !== 'session' && (data.result?.[0] === 6 || data.error?.code === -32002)) {
+					await this.checkSessionAfterDenied(requestSession);
+				}
 				if (data.error) throw new Error(data.error.message || `${object}.${method} failed`);
 				return data.result;
 			} catch (err) {
@@ -521,23 +561,82 @@ export class OpenWrtCore {
 	}
 
 	uciSet(config, section, values) {
-		return this.ubusCall('uci', 'set', { config, section, values });
+		return this.uciWrite('set', { config, section, values });
 	}
 
 	uciAdd(config, type, name = null) {
 		const params = { config, type };
 		if (name) params.name = name;
-		return this.ubusCall('uci', 'add', params);
+		return this.uciWrite('add', params);
 	}
 
 	uciDelete(config, section, option = null) {
 		const params = { config, section };
 		if (option) params.option = option;
-		return this.ubusCall('uci', 'delete', params);
+		return this.uciWrite('delete', params);
 	}
 
 	uciCommit(config) {
-		return this.ubusCall('uci', 'commit', { config });
+		return this.uciWrite('commit', { config });
+	}
+
+	async uciWrite(method, params) {
+		if (this._uciApplyPending && !['apply', 'confirm', 'revert'].includes(method)) {
+			throw new Error('Finish confirming the pending network change before saving again');
+		}
+		const result = await this.ubusCall('uci', method, params);
+		if (!Array.isArray(result) || result[0] !== 0) {
+			throw new Error(`OpenWrt rejected uci.${method} (status ${result?.[0] ?? 'missing'})`);
+		}
+		return result;
+	}
+
+	async uciApplyConfig(config) {
+		if (!['network', 'firewall', 'wireless'].includes(config)) return this.uciCommit(config);
+		if (this._uciApplyPending) throw new Error('A network change is already awaiting confirmation');
+		this._uciApplyPending = true;
+		let applied = false;
+		try {
+			// rpcd applies all changes in this session. Do not include edits from another form.
+			const [status, data] = await this.ubusCall('uci', 'changes', {});
+			if (status !== 0 || !data?.changes) throw new Error('Cannot inspect pending configuration changes');
+			const pending = Object.entries(data.changes).filter(([, changes]) => changes.length);
+			if (pending.some(([name]) => name !== config)) {
+				throw new Error('Other configuration changes are pending. Review them before applying this form');
+			}
+			if (!pending.length) return;
+			// Never commit first: rpcd must snapshot the previous persistent configuration.
+			await this.uciWrite('apply', {rollback: true, timeout: 60});
+			applied = true;
+			const deadline = Date.now() + 50000;
+			this.showToast('Applying settings. Confirm connectivity within 60 seconds or OpenWrt will roll them back.', 'info');
+			await new Promise(resolve => setTimeout(resolve, 2500));
+			const [reachable] = await this.ubusCall('system', 'info', {}, {timeout: 5000});
+			if (reachable !== 0) throw new Error('Router connectivity could not be verified');
+			if (!window.confirm('The router answered after applying the change. Check that your connection works. Keep these settings?\n\nCancel, or leave this unanswered, to let OpenWrt restore the previous settings after 60 seconds.')) {
+				throw new Error('Settings left unconfirmed');
+			}
+			if (Date.now() >= deadline) throw new Error('Confirmation window expired');
+			await this.uciWrite('confirm', {});
+		} catch (error) {
+			let recovery = '';
+			if (applied) {
+				try {
+					// rpcd rollback restores both files and the pre-apply staging delta.
+					// Discard that delta too, so a later save cannot reapply a cancelled edit.
+					const [status] = await this.ubusCall('uci', 'rollback', {}, {timeout: 5000});
+					if (status !== 0 && status !== 4) throw new Error('Rollback was not acknowledged');
+					await this.uciWrite('revert', {config});
+					recovery = 'Previous settings restored and staged edits discarded.';
+				} catch {
+					recovery = 'Unconfirmed applied changes will time out. Reconnect and review staged edits before saving again.';
+				}
+			}
+			this.showToast(`${error.message}. ${recovery}`.trim(), 'error');
+			throw error;
+		} finally {
+			this._uciApplyPending = false;
+		}
 	}
 
 	serviceReload(service) {
@@ -1093,7 +1192,7 @@ export class OpenWrtCore {
 		for (const [elementId, uciKey] of Object.entries(fieldMap)) {
 			const el = document.getElementById(elementId);
 			if (!el) continue;
-			const formVal = el.type === 'checkbox' ? el.checked : el.value;
+			const formVal = el.type === 'checkbox' ? (el.checked ? '1' : '0') : el.value;
 			if (Array.isArray(uciKey)) {
 				for (const key of uciKey) values[key] = formVal;
 			} else {
@@ -1119,7 +1218,7 @@ export class OpenWrtCore {
 				val = data[uciKey];
 			}
 			if (el.type === 'checkbox') {
-				el.checked = !!val;
+				el.checked = val === true || val === 1 || val === '1';
 			} else {
 				el.value = Array.isArray(val) ? val.join(', ') : val || '';
 			}
@@ -1160,7 +1259,7 @@ export class OpenWrtCore {
 				if (!res?.section) throw new Error('Failed to create section');
 				await this.uciSet(config, res.section, values);
 			}
-			await this.uciCommit(config);
+			await this.uciApplyConfig(config);
 			this.closeModal(modalId);
 			this.showToast(successMsg || 'Saved', 'success');
 			if (reloadFn) await reloadFn();
@@ -1173,7 +1272,7 @@ export class OpenWrtCore {
 		if (!confirm(confirmMsg)) return;
 		try {
 			await this.uciDelete(config, id);
-			await this.uciCommit(config);
+			await this.uciApplyConfig(config);
 			this.showToast('Deleted', 'success');
 			if (reloadFn) await reloadFn();
 		} catch {

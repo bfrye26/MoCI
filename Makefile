@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=moci
-PKG_VERSION:=0.11.0
+PKG_VERSION:=0.11.1
 PKG_RELEASE:=5
 
 PKG_MAINTAINER:=HudsonGraeme
@@ -58,6 +58,7 @@ define Package/moci/install
 	$(INSTALL_DIR) $(1)/usr/libexec
 	$(INSTALL_BIN) ./files/moci-pkg-call $(1)/usr/libexec/moci-pkg-call
 	$(INSTALL_BIN) ./files/moci-service-inspect $(1)/usr/libexec/moci-service-inspect
+	$(INSTALL_BIN) ./files/moci-hardware-check $(1)/usr/libexec/moci-hardware-check
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_BIN) ./files/moci-wifi-scheduler $(1)/usr/sbin/moci-wifi-scheduler
 	$(INSTALL_DIR) $(1)/etc/init.d
