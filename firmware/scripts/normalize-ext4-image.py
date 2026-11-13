@@ -53,7 +53,13 @@ def check_filesystem(path):
     if not path.is_file() or path.is_symlink(): raise RuntimeError('Expected private regular filesystem image')
     before=filesystem_identity(path)
     logs=[]
-    for flags,allowed in ((['-f','-p'],(0,1)),(['-f','-n'],(0,))):
+    # make_ext4fs writes reserved resize-inode/GDT metadata that can pass fsck
+    # yet fail kernel reserve_backup_gdb. Remove that legacy feature OFFLINE.
+    # Modern ext4 grows via meta_bg without the reserved resize inode.
+    tune=subprocess.run(['tune2fs','-O','^resize_inode',str(path)],capture_output=True,text=True,timeout=60)
+    logs.append({'tool':'tune2fs','exit_code':tune.returncode,'stdout':tune.stdout,'stderr':tune.stderr})
+    if tune.returncode: raise RuntimeError('Could not prepare image resize metadata: '+json.dumps(logs))
+    for flags,allowed in ((['-f','-y'],(0,1)),(['-f','-n'],(0,))):
         result=subprocess.run(['e2fsck',*flags,str(path)],capture_output=True,text=True,timeout=600)
         logs.append({'flags':flags,'exit_code':result.returncode,'stdout':result.stdout[-12000:],'stderr':result.stderr[-3000:]})
         if result.returncode not in allowed: raise RuntimeError('Offline image filesystem check failed: '+json.dumps(logs))
@@ -68,7 +74,7 @@ def transfer(source,target,length=None,sparse=False):
         if not data:
             if remaining: raise RuntimeError('Truncated filesystem image')
             break
-        if sparse and not any(data): target.seek(len(data),1)
+        if sparse and not data.strip(b'\0'): target.seek(len(data),1)
         else: target.write(data)
         if remaining is not None: remaining-=len(data)
     if sparse: target.truncate(target.tell())
@@ -92,7 +98,7 @@ def normalize(image):
                 transfer(source,target)
             raw.flush();os.fsync(raw.fileno())
         os.replace(packed,image)
-    digest=hashlib.file_digest(image.open('rb'),'sha256').hexdigest()
+    with image.open('rb') as checked: digest=hashlib.file_digest(checked,'sha256').hexdigest()
     # Keep OpenWrt's exported metadata consistent with the processed image.
     sums=image.parent/'sha256sums'
     if sums.is_file():
