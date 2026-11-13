@@ -46,6 +46,12 @@ The script copies the built core/network/system JavaScript and index HTML, verif
 
 ## Required before release
 
+### Runtime fixes verified
+
+The live runtime report artifacts/runtime-fix-20261113T165508Z-1bbaefe5/runtime-report.json passed all seven checks: unconfigured UPS disable, persistent Docker WAN return policy, bridge gateway, established replies, default-container DNS, HTTP egress and preservation of existing containers/custom network IDs. One unconditional WAN-to-docker0 reject rule was removed after verifying its stateful replacement. Full Linux CI passed for source 8cd226c8b7b8689990a17ad953820a5d12b36750 (run 43467338639). The local candidate launcher is pinned to that source for 0.11.1-rc.4. A fresh image, upgrade and boot persistence still require validation; do not relabel the earlier rc.2 artifacts as fixed.
+
+The user reported a successful full rc.4 firmware/installer build at /home/bfrye26/Projects/MoCI-output/ship-8cd226c8b7b8-20261113T170016Z. Copy-MoCI-Candidate.ps1 now defaults to that exact WSL output and requires the complete expected source SHA. It verifies firmware and installer manifest entries, copies the firmware/metadata into the project candidate directory and retains the installer copy for fresh installs. Manifest verification and upgrade testing are still pending execution; build success alone is not release approval.
+
 ### LAN-client test runner
 
 Run on the Windows build PC against the lab VM:

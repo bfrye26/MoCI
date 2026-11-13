@@ -1,19 +1,20 @@
 #Requires -Version 5.1
 param(
-    [string]$Source = '\\wsl.localhost\Ubuntu-24.04\home\bfrye26\Projects\MoCI-output\ship-01c164c69030-20261113T044108Z'
+    [string]$Source = '\\wsl.localhost\Ubuntu-24.04\home\bfrye26\Projects\MoCI-output\ship-8cd226c8b7b8-20261113T170016Z'
 )
 $ErrorActionPreference = 'Stop'
-$expectedCommit = '01c164c69030db2c6f32d1af05ad30c220db12e9'
+$expectedCommit = '8cd226c8b7b8689990a17ad953820a5d12b36750'
 if (-not (Test-Path -LiteralPath $Source -PathType Container)) { throw "Build folder is not accessible: $Source" }
 $versions = Get-Content -LiteralPath (Join-Path $Source 'source-versions.txt') -Raw
-if ($versions -notmatch "(?m)^MOCI_COMMIT=$expectedCommit\r?$" ) { throw 'This is not the tested rc.2 source build.' }
+if ($versions -notmatch "(?m)^MOCI_COMMIT=$expectedCommit\r?$" ) { throw 'This is not the CI-validated rc.4 source build.' }
 $buildName = Split-Path -Leaf $Source.TrimEnd('\','/')
-if ($buildName -notmatch '^ship-01c164c69030-[0-9]{8}T[0-9]{6}Z$') { throw 'Unexpected build folder name.' }
+if ($buildName -notmatch '^ship-8cd226c8b7b8-[0-9]{8}T[0-9]{6}Z$') { throw 'Unexpected build folder name.' }
 $destination = Join-Path 'C:\moci-build' $buildName
 New-Item -ItemType Directory -Force -Path $destination | Out-Null
 foreach ($item in Get-ChildItem -LiteralPath $Source -Force) {
     Copy-Item -LiteralPath $item.FullName -Destination $destination -Recurse -Force
 }
+$verified = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
 foreach ($checksum in @('SHA256SUMS','installer\SHA256SUMS')) {
     $manifest = Join-Path $destination $checksum
     $folder = Split-Path -Parent $manifest
@@ -27,6 +28,7 @@ foreach ($checksum in @('SHA256SUMS','installer\SHA256SUMS')) {
         if (-not $file.StartsWith($folder.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase)) { throw 'Checksum path is outside its build directory.' }
         $actual = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
         if ($actual -ne $expected) { throw "Checksum mismatch: $file" }
+        $null = $verified.Add($file)
         Write-Host "Verified: $relative"
         $entries++
     }
@@ -34,9 +36,19 @@ foreach ($checksum in @('SHA256SUMS','installer\SHA256SUMS')) {
 }
 $iso = @(Get-ChildItem -LiteralPath (Join-Path $destination 'installer') -File -Filter '*.iso')
 if ($iso.Count -ne 1) { throw 'Expected exactly one installer ISO.' }
+$firmware = Join-Path $destination 'openwrt-x86-64-generic-ext4-combined-efi.img.gz'
+if (-not $verified.Contains([IO.Path]::GetFullPath($firmware)) -or -not $verified.Contains($iso[0].FullName)) { throw 'Firmware and ISO must both appear in verified checksum manifests.' }
+$projectCandidate = Join-Path (Split-Path -Parent $PSScriptRoot) ('artifacts\candidates\'+$buildName)
+New-Item -ItemType Directory -Force -Path $projectCandidate | Out-Null
+foreach ($name in @('openwrt-x86-64-generic-ext4-combined-efi.img.gz','SHA256SUMS','source-versions.txt')) {
+    Copy-Item -LiteralPath (Join-Path $destination $name) -Destination $projectCandidate -Force
+}
 $projectInstaller = Join-Path (Split-Path -Parent $PSScriptRoot) 'artifacts\installer'
 New-Item -ItemType Directory -Force -Path $projectInstaller | Out-Null
 Copy-Item -LiteralPath $iso[0].FullName -Destination $projectInstaller -Force
 Copy-Item -LiteralPath $iso[0].FullName -Destination 'C:\moci-build' -Force
 Write-Host "Verified build: $destination"
-Write-Host "Use this ISO for the disposable VM: $($iso[0].FullName)"
+Write-Host "Firmware for upgrade validation: $firmware"
+Write-Host "Project candidate copy: $projectCandidate"
+Write-Host "Installer ISO (fresh installs only): $($iso[0].FullName)"
+Write-Host 'No VM was changed. Do not use the installer ISO as a firmware upgrade payload.'
