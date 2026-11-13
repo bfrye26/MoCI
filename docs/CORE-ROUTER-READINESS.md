@@ -46,6 +46,20 @@ The script copies the built core/network/system JavaScript and index HTML, verif
 
 ## Required before release
 
+### LAN-client test runner
+
+Run on the Windows build PC against the lab VM:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\moci-build\MoCI\scripts\Test-MoCI-Client.ps1
+```
+
+This uploads scripts/router-client-check.py using normal SSH host verification. It creates a temporary namespace and veth on the existing LAN bridge, obtains a real DHCP lease, reacquires it with the same client, checks the advertised gateway and DNS, queries DNS from that client and sends five upstream probes through the router. It does not modify UCI, Windows routes or resolv.conf, install packages, reboot or flash firmware. The temporary network devices are removed on completion or handled interruption; cleanup failures prevent a pass. A forcibly killed process or router crash can interrupt cleanup. The client lease can remain in dnsmasq until expiry.
+
+Reports are saved under artifacts/client-check-TIMESTAMP/client-report.json. Missing namespace/veth support is reported as a failed precondition instead of substituting router-self probes. DHCP reacquisition is not a timed lease-renewal test. Namespace tests do not establish physical NIC performance. WAN isolation remains NOT_TESTED because VirtualBox per-VM NAT has no independent WAN peer in the current setup.
+
+Python compilation, five lease-validation regression cases and PowerShell syntax checks passed locally. Live client results are pending execution on the router; this runner does not set release_ready true.
+
 ### Follow-up live checks, 2026-11-13
 
 Browser control reconnected. A fresh dashboard load showed the corrected UTF-8 symbols, LAN 192.168.50.1, WAN 10.0.3.15 and updated system statistics. The diagnostics page returned five upstream pings with 0% loss and resolved openwrt.org through 127.0.0.1. This is router-originated evidence only.
@@ -55,6 +69,12 @@ Backup generation emitted Saving config files in the router log, but no new down
 A direct dashboard load exposed unbound quick-action buttons. They were registered only when SystemModule opened its page. DashboardModule now owns these handlers at construction, while SystemModule no longer adds duplicates. The new regression test covers direct dashboard initialization, cancellation, rejected commands and duplicate in-flight requests. Local tests and frontend build passed. This follow-up is prepared in source and built UI files; it still requires application to the lab VM. The attempted reboot did not execute, so reboot persistence remains unverified.
 
 The user subsequently applied this update. The live Reboot action opened its confirmation and returned the acknowledged Reboot requested message. Management then became unreachable while recovery was being checked. Do not mark persistence passed until fresh post-boot status and diagnostics are recorded. Full Linux CI passed for source 8316245becc890824c3ea7300606392bb219ddc5: https://github.com/bfrye26/MoCI/actions/runs/43424617648. The next firmware build is pinned to this tested source, including the dashboard fix.
+
+Post-reboot recovery was subsequently verified through the authenticated UI. Dashboard uptime reset to 0d 0h 0m, hostname remained moci-router, LAN remained 192.168.50.1 and WAN DHCP returned 10.0.3.15. Fresh diagnostics resolved openwrt.org through 127.0.0.1 and received all five upstream ping replies with 0% loss. The user reported the VM was back before these checks; any intervening manual recovery steps are unknown. This establishes post-boot router connectivity, not unattended reboot reliability, client forwarding or cold-boot persistence.
+
+The new boot log again exposed nut-server repeatedly exiting because no UPS is configured. Existing first-boot defaults do not guard this optional service. This remains a clean-install defect to address; do not disable configured UPS deployments. The IPv6 default-route warning and default docker interface DOWN state remain separate observations.
+
+The user clarified that VirtualBox did not complete the restart. Host VBox.log.1 records ACPI: Reset initiated by ACPI at elapsed 07:31:20, followed by RESETTING -> RUNNING and UEFI initialization. UEFI trace stops after loading PciHostBridgeDxe.efi at 07:31:23; no subsequent bootloader loads are logged before the GUI power-off at 07:34:03. A separate powered-on session then boots successfully. This points to a VirtualBox UEFI warm-reset stall before guest boot, rather than the dashboard failing to send a reboot. It does not establish the root cause or physical-hardware reboot behavior. Unattended reboot remains unverified/failing in this VM configuration.
 
 | Gate | Evidence required |
 | --- | --- |
