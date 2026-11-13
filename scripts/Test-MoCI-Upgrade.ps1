@@ -90,7 +90,11 @@ $state | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'upgrade-s
 Write-Host 'Flashing the verified rc.4 image on the disposable VM only. Keep MoCI3 off and do not interrupt the test VM.'
 & ssh -o ServerAliveInterval=10 -o ServerAliveCountMax=3 $remote "python3 '$stage/router-upgrade-check.py' --flash --expect-hardware-uuid '$hardwareId'"
 $flashExit=$LASTEXITCODE
-if ($flashExit -notin @(0,255)) { throw "Upgrade command returned $flashExit. Do not flash again; inspect the test VM and $output" }
+$state['flash_command_exit_code']=$flashExit
+$state['upgrade_verified']=$false
+$state | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'upgrade-state.json') -Encoding UTF8
+if ($flashExit -notin @(0,246,255)) { throw "Upgrade command returned $flashExit. Do not flash again; inspect the test VM and $output" }
+if ($flashExit -eq 246) { Write-Host 'ubus lost its connection during the upgrade handoff. This is ambiguous; do not retry the flash. Verify the installed version after boot.' }
 Write-Host 'The upgrade command disconnected or returned. Successful boot/version is not yet verified.'
 Write-Host 'Allow at least five minutes. If VirtualBox stalls in UEFI, inspect the console before taking any recovery action.'
 Write-Host 'When the router is back, run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\moci-build\MoCI\scripts\Test-MoCI-Upgrade.ps1 -VerifyOnly'

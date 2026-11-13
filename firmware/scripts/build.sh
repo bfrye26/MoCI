@@ -23,6 +23,7 @@ mkdir -p files
 cp -a "$WORK/files"/. files/
 chmod 0755 files/etc/uci-defaults/90-moci-setup files/etc/uci-defaults/91-moci-secure-admin
 chmod 0755 files/etc/uci-defaults/93-moci-runtime-defaults files/usr/libexec/moci-runtime-defaults
+chmod 0755 files/etc/uci-defaults/94-moci-grow-root files/usr/libexec/moci-grow-root
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 cat > .config <<'CONFIG'
@@ -48,6 +49,9 @@ CONFIG_PACKAGE_python3=y
 CONFIG_PACKAGE_samba4-server=y
 CONFIG_PACKAGE_block-mount=y
 CONFIG_PACKAGE_e2fsprogs=y
+CONFIG_PACKAGE_resize2fs=y
+CONFIG_PACKAGE_sfdisk=y
+CONFIG_PACKAGE_partx-utils=y
 CONFIG_PACKAGE_parted=y
 CONFIG_PACKAGE_lsblk=y
 CONFIG_PACKAGE_kmod-fs-ext4=y
@@ -96,7 +100,7 @@ CONFIG_PACKAGE_dnsmasq-full=y
 CONFIG_PACKAGE_dnsmasq=n
 CONFIG
 make defconfig
-for p in moci moci-app-docker docker-compose dockerd samba4-server uhttpd-mod-ubus luci-ssl wpad-mbedtls luci-app-statistics luci-app-nlbwmon luci-app-mwan3 luci-app-banip luci-app-acme miniupnpd-nftables kmod-igc intel-microcode kmod-hwmon-coretemp pciutils usbutils iw; do
+for p in moci moci-app-docker docker-compose dockerd samba4-server uhttpd-mod-ubus luci-ssl wpad-mbedtls luci-app-statistics luci-app-nlbwmon luci-app-mwan3 luci-app-banip luci-app-acme miniupnpd-nftables kmod-igc intel-microcode kmod-hwmon-coretemp pciutils usbutils iw resize2fs sfdisk partx-utils; do
   grep -q "^CONFIG_PACKAGE_${p}=y$" .config || { echo "Missing package after defconfig: $p" >&2; exit 1; }
 done
 make download -j"${JOBS:-2}"
