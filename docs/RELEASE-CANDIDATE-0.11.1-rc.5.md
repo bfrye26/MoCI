@@ -85,3 +85,24 @@ VMs, attaches an existing router disk to the new VM or marks installation passed
 Both launchers passed PowerShell syntax checks; their VirtualBox create/attach
 execution and the fresh rc.5 installation remain pending live validation. Installer
 ISO SHA256: 7893e733f0be365ad3ce77109513912d7aed1b92799312976d7695a2c1c485e6.
+
+The created VM is MoCI-Clean-Install-20261113-202520, UUID
+188a4a38-bab8-4a3f-99c6-22e238808b0b, with LAN MAC 080027439dd1 and WAN MAC
+08002787bf53. Its initial Debian live boot displayed RCU/timer, udev, ATA and
+vmwgfx warnings. The disk still had zero allocated data blocks at that inspection.
+The user then reported that installation progressed and the installed router was
+back online. No compatibility-profile change or forced restart was executed by
+the agent. The cause of the transient live-boot stall remains unknown.
+
+Test-MoCI-CleanInstall.ps1 validates this recorded VM with both preserved VMs off
+and installer media ejected. A separate per-VM SSH trust file/alias preserves the
+older VMs' keys. The first connection uses the normal SSH trust prompt. The guest
+helper checks identity before firmware/runtime checks, exact rc.5 helper sources,
+corrected ext4 metadata and a partition/filesystem filling the 64 GiB disk, recorded
+LAN/WAN adapter MAC mapping and LAN address, disabled unconfigured UPS, persistent
+Docker defaults, container DNS/HTTP and the existing router and namespace-client
+tests. The fresh private settings backup is downloaded and checksum verified.
+This verifier applies no firmware or runtime repairs and changes no UCI settings.
+Six identity/mapping/capacity safeguard tests, the nine upgrade safeguard tests,
+Python compilation and PowerShell syntax checks passed locally. Live fresh-install
+validation remains pending; online management alone is not a complete pass.

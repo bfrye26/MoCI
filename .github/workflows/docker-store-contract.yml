@@ -26,6 +26,9 @@ on:
       - 'scripts/router-upgrade-check.py'
       - 'tests/test_upgrade_check.py'
       - 'tests/test_storage_growth.py'
+      - 'tests/test_cleaninstall_check.py'
+      - 'scripts/router-cleaninstall-check.py'
+      - 'scripts/Test-MoCI-CleanInstall.ps1'
       - 'tests/test_ext4_image.py'
       - 'scripts/Apply-MoCI-Storage-Growth.ps1'
       - 'scripts/Apply-MoCI-Runtime-Fixes.ps1'
@@ -58,6 +61,7 @@ jobs:
           python -m py_compile scripts/router-client-check.py
           python -m py_compile scripts/router-restore-check.py
           python -m py_compile scripts/router-upgrade-check.py
+          python -m py_compile scripts/router-cleaninstall-check.py
           python -m py_compile firmware/files/usr/libexec/moci-runtime-defaults
           python -m py_compile firmware/files/usr/libexec/moci-grow-root
           python -m py_compile integrations/docker-manager/moci-app-docker/files/moci-docker-api
@@ -96,6 +100,7 @@ jobs:
           python tests/test_router_client_check.py
           python tests/test_router_restore_check.py
           python tests/test_upgrade_check.py
+          python tests/test_cleaninstall_check.py
           python tests/test_runtime_defaults.py
       - name: Test guarded GPT storage growth on a sparse disk image
         run: |
