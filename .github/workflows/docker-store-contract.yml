@@ -93,6 +93,7 @@ jobs:
         run: |
           node tests/service-controls.test.mjs
           node tests/dashboard-actions.test.mjs
+          node tests/text-encoding.test.mjs
       - name: Test expired sessions and relogin
         run: node tests/session-expiry.test.mjs
       - name: Test client lease validation
