@@ -12,6 +12,9 @@ $files = @{
     'core.js' = 'dist\moci\js\core.js'
     'network.js' = 'dist\moci\js\modules\network.js'
     'system.js' = 'dist\moci\js\modules\system.js'
+    'dashboard.js' = 'dist\moci\js\modules\dashboard.js'
+    'advanced.js' = 'dist\moci\js\modules\advanced.js'
+    'app.css' = 'dist\moci\app.css'
     'index.html' = 'dist\moci\index.html'
 }
 $checksums = @{}

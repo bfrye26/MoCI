@@ -14,6 +14,8 @@ on:
       - 'tests/session-expiry.test.mjs'
       - 'tests/router-config.test.mjs'
       - 'tests/firmware-upgrade.test.mjs'
+      - 'tests/text-encoding.test.mjs'
+      - 'scripts/build.js'
       - 'scripts/router-release-check.py'
       - 'scripts/Test-MoCI-Release.ps1'
       - 'scripts/apply-core-fixes.py'

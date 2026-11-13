@@ -20,7 +20,7 @@ deliberate choices, not accidents; revisit them when the constraints change.
 - **Cost:** apps whose upstream images assume root or writable root filesystems
   fail first install and need a reviewed profile before they work. This session
   that happened twice (CyberChef: Nginx scratch dirs; Homarr: root-owned nginx
-  config rewrite at startup). The alternative - permissive defaults - would
+  config rewrite at startup). The alternative — permissive defaults — would
   trade a class of silent exposures for a class of loud failures. Loud is
   preferred.
 
@@ -34,7 +34,7 @@ deliberate choices, not accidents; revisit them when the constraints change.
   listeners exist only on the LAN IP, and the only Docker-related forwarding in
   nftables is egress (`moci_docker -> wan`).
 - **Cost:** if the LAN IP changes (DHCP LAN, renumbering), bindings and rules
-  must be reconciled - the reconciler owns this, which is exactly why reboot
+  must be reconciled — the reconciler owns this, which is exactly why reboot
   and network-recreation tests are part of the acceptance set.
 
 ### Immutable digest pinning with a separate prepare step

@@ -2,7 +2,7 @@
   "id": "docker",
   "entry": "addon.js",
   "name": "Applications",
-  "version": "0.11.1-rc.2",
+  "version": "0.11.1-rc.3",
   "description": "Docker, Compose, automatic LAN firewall and reviewed application recipes",
   "author": {
     "name": "MoCI Docker contributors"

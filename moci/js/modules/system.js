@@ -390,7 +390,7 @@ export default class SystemModule {
 		table.replaceChildren();
 		const loading=document.createElement('tr');
 		const cell=document.createElement('td');
-		cell.colSpan=3;cell.textContent='Loading installed packages.';
+		cell.colSpan=3;cell.textContent='Loading installed packages…';
 		loading.appendChild(cell);table.appendChild(loading);
 		try{
 			const output=await this.packageCommand('list-all-installed');
@@ -501,7 +501,7 @@ export default class SystemModule {
 	}
 
 	serviceDisplay(name,running,pending,feedback){
-		if(pending)return {variant:'info',label:pending.action==='stop'?'STOPPING.':'STARTING.'};
+		if(pending)return {variant:'info',label:pending.action==='stop'?'STOPPING…':'STARTING…'};
 		if(running)return {variant:'success',label:'RUNNING'};
 		if(name==='urandom_seed')return feedback?.kind==='completed'
 			?{variant:'success',label:'COMPLETED'}
@@ -568,7 +568,7 @@ export default class SystemModule {
 					(!running && ['ddns','miniupnpd'].includes(name)?
 					`<small class="service-status-note">${this.core.escapeHtml(this.serviceHint(name))}</small>`:'');
 				const setupRequired=this.serviceNeedsSetup(name);
-				const operation=pending?(pending.action==='stop'?'STOPPING.':'STARTING.'):
+				const operation=pending?(pending.action==='stop'?'STOPPING…':'STARTING…'):
 				(name==='banip' && this.serviceContext?.BANIP_STATE==='active'?'STOP':running?'STOP':this.serviceIsOneShot(name)?'RUN':'START');
 				return `<tr>
 					<td>${this.core.escapeHtml(name)}</td>
@@ -601,7 +601,7 @@ export default class SystemModule {
 		const cell=document.createElement('td');cell.colSpan=4;
 		const title=document.createElement('strong');title.textContent='Diagnostics: '+name;
 		const output=document.createElement('pre');
-		output.textContent='Checking init status and recent logs.';
+		output.textContent='Checking init status and recent logs…';
 		cell.append(title,output);details.append(cell);
 		row.insertAdjacentElement('afterend',details);
 		try{

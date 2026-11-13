@@ -64,8 +64,13 @@ check('router-upstream-ping',ping)
 check('firewall-syntax',firewall)
 check('wan-default-policies',firewall_policy)
 check('backup-integrity',backup)
+try:
+    route6 = command(['ip','-6','route','show','default'])
+    ipv6 = {'status': 'UNKNOWN' if route6.returncode else ('DEFAULT_ROUTE_PRESENT' if route6.stdout.strip() else 'NO_DEFAULT_ROUTE')}
+except Exception:
+    ipv6 = {'status':'UNKNOWN'}
 report = {'schema':1,'generated_utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),
-          'checks':checks,'release_ready':False,
+          'checks':checks,'ipv6':ipv6,'release_ready':False,
           'remaining_gates':['independent LAN client forwarding and DHCP renewal','external WAN isolation',
                              'backup restore on disposable VM','upgrade and post-upgrade validation',
                              'reboot and cold boot persistence','physical P09B and Wi-Fi validation']}
@@ -73,3 +78,4 @@ report = {'schema':1,'generated_utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmt
 for item in checks:
     print(item['status']+': '+item['name']+' - '+item['detail'])
 print('Release status: candidate; remaining gates are listed in report.json.')
+print('IPv6 upstream: '+ipv6['status']+'; no route/RA settings were changed.')

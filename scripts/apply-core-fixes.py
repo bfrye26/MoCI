@@ -16,6 +16,9 @@ targets = {
     'core.js': pathlib.Path('/www/moci/js/core.js'),
     'network.js': pathlib.Path('/www/moci/js/modules/network.js'),
     'system.js': pathlib.Path('/www/moci/js/modules/system.js'),
+    'dashboard.js': pathlib.Path('/www/moci/js/modules/dashboard.js'),
+    'advanced.js': pathlib.Path('/www/moci/js/modules/advanced.js'),
+    'app.css': pathlib.Path('/www/moci/app.css'),
     'index.html': pathlib.Path('/www/moci/index.html'),
 }
 expected = json.loads((stage / 'checksums.json').read_text())

@@ -2210,3 +2210,4 @@ body {
 :root[data-theme="cloud"] #addon-docker-page .docker-primary-action{background:#385c8e;color:#fff}
 @media(max-width:850px){#addon-docker-page .docker-store-toolbar{grid-template-columns:1fr;gap:10px}#addon-docker-page .docker-app-grid{grid-template-columns:repeat(auto-fill,minmax(255px,1fr))}}
 @media(max-width:560px){#addon-docker-page .docker-app-grid{grid-template-columns:1fr}#addon-docker-page .docker-app-card{padding:15px}#addon-docker-page .docker-store-toolbar{padding:12px}}
+

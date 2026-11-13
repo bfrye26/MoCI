@@ -374,3 +374,4 @@ export default class DashboardModule {
 		this.drawSeries(upData, max, stepX, padding, height, 'rgba(109,136,174,0.07)', secondary);
 	}
 }
+
