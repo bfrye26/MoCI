@@ -10,6 +10,7 @@ export PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 : "${SOURCE_V07:?Set SOURCE_V07 to integrated Docker add-on source}"
 WORK=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$OPENWRT_SRC"
+for tool in e2fsck tune2fs; do command -v "$tool" >/dev/null || { echo "Missing host tool: $tool" >&2; exit 1; }; done
 [[ -f include/toplevel.mk ]] || { echo 'Invalid OpenWrt checkout' >&2; exit 1; }
 [[ -f "$MOCI_SRC/Makefile" && -f "$MOCI_SRC/dist/moci/index.html" ]] || { echo 'MoCI dist not built' >&2; exit 1; }
 [[ -f "$SOURCE_V07/moci-app-docker/Makefile" ]] || { echo 'Docker add-on source not imported' >&2; exit 1; }

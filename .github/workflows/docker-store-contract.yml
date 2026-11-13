@@ -122,6 +122,7 @@ jobs:
           bash -n firmware/installer/moci-install
           bash -n firmware/installer/build-live-iso.sh
           bash -n firmware/scripts/build.sh
+          bash -n scripts/moci-offline-root-repair.sh
       - name: Build frontend package
         run: |
           npm install --no-audit --no-fund

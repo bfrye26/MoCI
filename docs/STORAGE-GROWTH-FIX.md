@@ -48,3 +48,36 @@ install packages, retry resizing, run fsck or change filesystem features. Root
 capacity and automatic migration remain unverified; the rc.5 source must not be
 treated as release validated. Sparse-disk CI validated GPT manipulation only,
 not this firmware's mounted ext4 filesystem.
+
+The diagnostic report at 18:35 confirmed a 47,068,217,344-byte partition and
+partial filesystem growth to 10,547,974,144 usable bytes. Kernel messages show
+`reserve_backup_gdb: reserved block 512 not at offset 511`. A Linux CI reproduction
+using the exact pinned OpenWrt make_ext4fs source reproduced online resize failure
+even after e2fsck reported a clean image. Removing the legacy `resize_inode`
+feature on a private, unmounted image, repairing the resulting metadata offline,
+and then growing the mounted image passed CI (run 43485098571). This is an image
+metadata compatibility problem, not a reason to run fsck on mounted root.
+
+The build now normalizes the root filesystem in a private temporary regular
+file, preserving its UUID and block count, before recompressing the same combined
+image. Boot partitions and GPT bytes are copied unchanged; exported hashes are
+updated. Whole-image preservation tests and the full rc.5 VM upgrade still need
+to pass before release.
+
+For this exact disposable rc.4 VM only, Start-MoCI-Storage-Recovery.ps1 creates a
+copy of the checksum-verified installer ISO containing the offline repair helper,
+gracefully powers down the guest, takes a powered-off snapshot and boots that ISO.
+Choose Quit in the installer, never Install, then run:
+
+```
+sudo bash /run/live/medium/moci-offline-repair.sh
+```
+
+The helper requires the expected VM hardware UUID, root filesystem UUID, partition
+start and already-expanded partition size, and refuses mounted target partitions.
+It checks the existing filesystem before removing resize_inode, repairs that
+metadata offline, grows ext4 and verifies a clean filesystem and expected capacity.
+Only after PASS, power off the live session and run
+Complete-MoCI-Storage-Recovery.ps1 to eject recovery media and boot the router.
+No automatic repair or firmware installation occurs on ISO boot. This manual
+repair does not establish that an unassisted firmware upgrade preserves capacity.
