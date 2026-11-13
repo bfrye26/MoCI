@@ -34,7 +34,7 @@ $stage="/root/$name"
 if ($LASTEXITCODE -ne 0) { throw 'Could not prepare private staging. No repairs started.' }
 & scp -O (Join-Path $project 'firmware\files\usr\libexec\moci-runtime-defaults') "${remote}:$stage/"
 if ($LASTEXITCODE -ne 0) { throw 'Could not upload runtime repair helper.' }
-Write-Host 'Repairing only the disposable VM. Network settings are backed up under the private staging directory.'
+Write-Host 'Repairing only the disposable VM. Network and firewall settings are backed up under the private staging directory.'
 Write-Host 'The helper may restart an idle Docker daemon and pull the official BusyBox test image. It publishes no ports.'
 & ssh -o ServerAliveInterval=10 -o ServerAliveCountMax=3 $remote "python3 '$stage/moci-runtime-defaults' --apply --live --expect-hardware-uuid '$hardwareId' --output '$stage'"
 $repairExit=$LASTEXITCODE

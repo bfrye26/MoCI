@@ -23,6 +23,25 @@ def standard():
 
 
 class RuntimeDefaults(unittest.TestCase):
+    def test_missing_default_docker_wan_forwarding_is_added(self):
+        firewall={'wan':{'.type':'zone','name':'wan','input':'REJECT'},'docker':{'.type':'zone','name':'docker','network':'docker','input':'ACCEPT'}}
+        self.assertEqual(runtime.egress_plan(firewall),'ADD_FORWARDING')
+
+    def test_existing_egress_is_not_duplicated(self):
+        firewall={'wan':{'.type':'zone','name':'wan'},'docker':{'.type':'zone','name':'docker','network':'docker'},'rule':{'.type':'forwarding','src':'docker','dest':'wan'}}
+        self.assertEqual(runtime.egress_plan(firewall),'ALREADY_CONFIGURED')
+
+    def test_fresh_image_can_preseed_upstream_docker_zone(self):
+        self.assertEqual(runtime.egress_plan({'wan':{'.type':'zone','name':'wan'}}),'CREATE_ZONE_AND_FORWARDING')
+
+    def test_custom_or_shared_docker_zone_is_preserved(self):
+        for docker in ({'.type':'zone','name':'custom','network':'docker'},{'.type':'zone','name':'docker','network':['docker','lan']}):
+            self.assertEqual(runtime.egress_plan({'wan':{'.type':'zone','name':'wan'},'custom':docker}),'PRESERVE_CUSTOM')
+
+    def test_unrelated_owned_section_is_not_overwritten(self):
+        with self.assertRaisesRegex(RuntimeError,'already used'):
+            runtime.egress_plan({'wan':{'.type':'zone','name':'wan'},'moci_default_docker_wan':{'.type':'rule','src':'wan'}})
+
     def test_default_empty_bridge_is_retained(self):
         self.assertEqual(runtime.plan(standard(),{}, {})['docker'],'KEEP_DEFAULT_BRIDGE')
 

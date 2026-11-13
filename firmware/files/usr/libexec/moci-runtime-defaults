@@ -33,7 +33,7 @@ def config(name):
         if not separator or not key.startswith(name+'.'):
             raise RuntimeError('Unexpected UCI format')
         components = key.split('.')[1:]
-        if len(components) not in (1,2) or not all(re.fullmatch(r'[A-Za-z0-9_]+',part) for part in components):
+        if len(components) not in (1,2) or not all(re.fullmatch(r'[A-Za-z0-9_-]+',part) for part in components):
             raise RuntimeError('Unsupported UCI section/option name')
         tokens = shlex.split(value)
         sections.setdefault(components[0],{})[components[1] if len(components)==2 else '.type'] = tokens[0] if len(tokens)==1 else tokens
@@ -73,6 +73,26 @@ def default_gateway():
         raise RuntimeError('Docker default network does not use docker0')
     gateways = [entry.get('Gateway') for entry in data.get('IPAM',{}).get('Config',[]) if entry.get('Gateway')]
     return {str(ipaddress.ip_address(value)) for value in gateways if ipaddress.ip_address(value).version==4}
+
+
+def egress_plan(firewall):
+    def values(value):
+        return value if isinstance(value,list) else [value] if value else []
+    zones=[section for section in firewall.values() if section.get('.type')=='zone']
+    if not any(section.get('name')=='wan' for section in zones):
+        return 'PRESERVE_CUSTOM'
+    owners=[section for section in zones if 'docker' in values(section.get('network')) or 'docker0' in values(section.get('device'))]
+    if len(owners)>1 or (owners and owners[0].get('name')!='docker'):
+        return 'PRESERVE_CUSTOM'
+    if owners and (set(values(owners[0].get('network')))-{'docker'} or set(values(owners[0].get('device')))-{'docker0'}):
+        return 'PRESERVE_CUSTOM'
+    if any(section.get('.type')=='forwarding' and section.get('src')=='docker' and section.get('dest')=='wan' and section.get('family') in (None,'any','ipv4') for section in firewall.values()):
+        return 'ALREADY_CONFIGURED' if owners else 'PRESERVE_CUSTOM'
+    if 'moci_default_docker_wan' in firewall:
+        raise RuntimeError('Default Docker egress section is already used by another rule')
+    if not owners and ('docker' in firewall or any(section.get('name')=='docker' for section in zones)):
+        return 'PRESERVE_CUSTOM'
+    return 'ADD_FORWARDING' if owners else 'CREATE_ZONE_AND_FORWARDING'
 
 
 def bridge_ready():
@@ -137,10 +157,12 @@ def main():
         manual = Path('/etc/nut/ups.conf')
         manual_ups = manual.is_file() and bool(re.search(r'^\s*\[[^\]]+\]',manual.read_text(),re.M))
         selected=plan(config('network'),config('dockerd'),nut,manual_ups)
+        firewall_action=egress_plan(config('firewall')) if selected['docker']!='PRESERVE_CUSTOM' else 'PRESERVE_CUSTOM'
         report['plan']=selected
+        report['plan']['docker_wan_egress']=firewall_action
         if not args.apply:
             return 0
-        if run(['uci','changes']).stdout.strip():
+        if args.live and run(['uci','changes']).stdout.strip():
             raise RuntimeError('Pending UCI edits exist; no repair applied')
         if args.live and selected['docker'] in ('CREATE_DEFAULT_BRIDGE','KEEP_DEFAULT_BRIDGE','ALREADY_CONFIGURED'):
             if run(['docker','ps','-q']).stdout.strip():
@@ -152,6 +174,8 @@ def main():
         before=output/'before'; before.mkdir(mode=0o700)
         original=Path('/etc/config/network')
         if original.is_file(): shutil.copy2(original,before/'network')
+        firewall_path=Path('/etc/config/firewall')
+        if firewall_path.is_file(): shutil.copy2(firewall_path,before/'firewall')
         ups=Path('/etc/init.d/nut-server')
         if ups.is_file() and selected['ups']=='DISABLE_UNCONFIGURED':
             report['ups_previously_enabled']=run([str(ups),'enabled'],optional=True).returncode==0
@@ -182,6 +206,25 @@ def main():
                 run(['uci','revert','network'],optional=True)
                 raise
             report['checks'].append({'name':'persistent-default-bridge','status':'PASS'})
+        if firewall_action in ('ADD_FORWARDING','CREATE_ZONE_AND_FORWARDING'):
+            try:
+                if firewall_action=='CREATE_ZONE_AND_FORWARDING':
+                    run(['uci','set','firewall.docker=zone'])
+                    for key,value in (('name','docker'),('network','docker'),('input','ACCEPT'),('output','ACCEPT'),('forward','ACCEPT')):
+                        run(['uci','set',f'firewall.docker.{key}={value}'])
+                run(['uci','set','firewall.moci_default_docker_wan=forwarding'])
+                run(['uci','set','firewall.moci_default_docker_wan.src=docker'])
+                run(['uci','set','firewall.moci_default_docker_wan.dest=wan'])
+                run(['uci','commit','firewall'])
+                if args.live:
+                    run(['/sbin/fw4','check'],30)
+                    run(['/etc/init.d/firewall','reload'],30)
+            except Exception:
+                shutil.copy2(before/'firewall',firewall_path)
+                run(['uci','revert','firewall'],optional=True)
+                if args.live: run(['/etc/init.d/firewall','reload'],30,optional=True)
+                raise
+            report['checks'].append({'name':'default-docker-wan-egress','status':'PASS'})
         report['applied']=True
         if args.live and selected['docker'] in ('CREATE_DEFAULT_BRIDGE','KEEP_DEFAULT_BRIDGE','ALREADY_CONFIGURED'):
             # netifd must load the committed bridge-only settings before ifup.
