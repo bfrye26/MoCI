@@ -48,7 +48,9 @@ $sshOptions=@('-o',"UserKnownHostsFile=$knownHosts",'-o',"HostKeyAlias=moci-clea
 Write-Host 'Validating the fresh VM. The first SSH connection asks to trust its new host key; previous VM trust entries are preserved.'
 & ssh @sshOptions $remote "mkdir -m 700 '$stage'"
 if ($LASTEXITCODE -ne 0) { throw 'Could not connect to the new router. No validation started.' }
-$scripts=@('router-cleaninstall-check.py','router-upgrade-check.py','router-release-check.py','router-client-check.py') | ForEach-Object { Join-Path $PSScriptRoot $_ }
+# Legacy scp (-O) derives the remote basename by splitting on '/', so Windows
+# backslash source paths would be stored under their full path. Use forward slashes.
+$scripts=@('router-cleaninstall-check.py','router-upgrade-check.py','router-release-check.py','router-client-check.py') | ForEach-Object { (Join-Path $PSScriptRoot $_) -replace '\\','/' }
 & scp -O @sshOptions @scripts "${remote}:$stage/"
 if ($LASTEXITCODE -ne 0) { throw 'Could not upload validation scripts.' }
 Write-Host 'Checking installed defaults and fresh storage. Tests may pull BusyBox and create temporary container/LAN clients; they apply no repairs.'

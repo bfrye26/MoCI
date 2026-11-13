@@ -36,7 +36,7 @@ $remote="root@$RouterAddress"
 $stage='/root/'+$name
 & ssh -o ConnectTimeout=10 -o ConnectionAttempts=1 $remote "mkdir -m 700 '$stage'"
 if ($LASTEXITCODE -ne 0) { throw 'Could not prepare private staging. No storage changes started.' }
-& scp -O (Join-Path $PSScriptRoot 'router-restore-check.py') (Join-Path $project 'firmware\files\usr\libexec\moci-grow-root') "${remote}:$stage/"
+& scp -O ((Join-Path $PSScriptRoot 'router-restore-check.py') -replace '\\','/') ((Join-Path $project 'firmware\files\usr\libexec\moci-grow-root') -replace '\\','/') "${remote}:$stage/"
 if ($LASTEXITCODE -ne 0) { throw 'Could not upload storage helpers.' }
 & ssh $remote "python3 '$stage/router-restore-check.py' --verify-identity-only --expect-hardware-uuid '$hardwareId'"
 if ($LASTEXITCODE -ne 0) { throw 'Remote identity did not match the disposable VM. No storage changes started.' }

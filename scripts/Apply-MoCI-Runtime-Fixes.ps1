@@ -32,7 +32,7 @@ $remote="root@$RouterAddress"
 $stage="/root/$name"
 & ssh -o ConnectTimeout=10 -o ConnectionAttempts=1 $remote "mkdir -m 700 '$stage'"
 if ($LASTEXITCODE -ne 0) { throw 'Could not prepare private staging. No repairs started.' }
-& scp -O (Join-Path $project 'firmware\files\usr\libexec\moci-runtime-defaults') "${remote}:$stage/"
+& scp -O ((Join-Path $project 'firmware\files\usr\libexec\moci-runtime-defaults') -replace '\\','/') "${remote}:$stage/"
 if ($LASTEXITCODE -ne 0) { throw 'Could not upload runtime repair helper.' }
 $mode='--apply'
 if ($DiagnoseOnly) {

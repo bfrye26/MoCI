@@ -72,7 +72,8 @@ if ($LASTEXITCODE -ne 0) {
     if ($VerifyOnly) { throw 'Could not connect for verification. The previous flash remains unverified; no new flash was attempted.' }
     throw 'Could not prepare upgrade staging. No flash started.'
 }
-$scripts=@('router-upgrade-check.py','router-release-check.py','router-client-check.py') | ForEach-Object { Join-Path $PSScriptRoot $_ }
+# Legacy scp (-O) derives the remote basename by splitting on '/'; use forward slashes.
+$scripts=@('router-upgrade-check.py','router-release-check.py','router-client-check.py') | ForEach-Object { (Join-Path $PSScriptRoot $_) -replace '\\','/' }
 & scp -O @scripts "${remote}:$stage/"
 if ($LASTEXITCODE -ne 0) { throw 'Could not upload upgrade validation scripts.' }
 if ($VerifyOnly) {

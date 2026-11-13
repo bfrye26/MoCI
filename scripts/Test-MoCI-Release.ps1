@@ -10,7 +10,7 @@ $remote = "root@$RouterAddress"
 $stage = "/tmp/$name"
 & ssh $remote "mkdir -m 700 '$stage'"
 if ($LASTEXITCODE -ne 0) { throw 'Router SSH connection failed. No tests were started.' }
-& scp -O (Join-Path $PSScriptRoot 'router-release-check.py') "${remote}:$stage/"
+& scp -O ((Join-Path $PSScriptRoot 'router-release-check.py') -replace '\\','/') "${remote}:$stage/"
 if ($LASTEXITCODE -ne 0) { throw 'Could not stage router checks.' }
 & ssh $remote "python3 '$stage/router-release-check.py'"
 if ($LASTEXITCODE -ne 0) { throw 'Router checks did not complete. No release pass was recorded.' }

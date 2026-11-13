@@ -17,7 +17,8 @@ class FreshInstallChecks(unittest.TestCase):
     def mapping(self,folder,expected_lan=LAN,expected_wan=WAN,wan_device='eth1'):
         root=Path(folder)
         port=root/'br-lan/brif/eth0';port.mkdir(parents=True,exist_ok=True)
-        (port/'address').write_text('08:00:27:43:9d:d1')
+        member=root/'eth0';member.mkdir(exist_ok=True)
+        (member/'address').write_text('08:00:27:43:9d:d1')
         uplink=root/'eth1';uplink.mkdir(exist_ok=True)
         (uplink/'address').write_text('08:00:27:87:bf:53')
         def query(args):

@@ -35,7 +35,7 @@ $stage = "/root/$name"
 $remote = "root@$RouterAddress"
 & ssh -o ConnectTimeout=10 -o ConnectionAttempts=1 $remote "mkdir -m 700 '$stage'"
 if ($LASTEXITCODE -ne 0) { throw 'Could not create private test directory. No restore was attempted.' }
-& scp -O (Join-Path $PSScriptRoot 'router-restore-check.py') (Join-Path $PSScriptRoot 'router-release-check.py') (Join-Path $PSScriptRoot 'router-client-check.py') "${remote}:$stage/"
+& scp -O ((Join-Path $PSScriptRoot 'router-restore-check.py') -replace '\\','/') ((Join-Path $PSScriptRoot 'router-release-check.py') -replace '\\','/') ((Join-Path $PSScriptRoot 'router-client-check.py') -replace '\\','/') "${remote}:$stage/"
 if ($LASTEXITCODE -ne 0) { throw 'Could not stage test scripts.' }
 $null = Assert-TestVM
 Write-Host 'Testing fresh backup and restore on the disposable VM only.'

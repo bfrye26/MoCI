@@ -26,7 +26,9 @@ def check_mapping(expected_lan,expected_wan,query,netroot=Path('/sys/class/net')
     uplink=wan.get('l3_device','')
     if bridge!='br-lan' or not re.fullmatch('[A-Za-z0-9_.:-]+',uplink):
         raise RuntimeError('Unexpected LAN bridge or WAN device')
-    members={mac((port/'address').read_text().strip()) for port in (netroot/bridge/'brif').iterdir()}
+    # brif/<port> only lists bridge membership; the MAC lives on the interface
+    # itself at /sys/class/net/<port>/address, not inside the brif subdirectory.
+    members={mac((netroot/port.name/'address').read_text().strip()) for port in (netroot/bridge/'brif').iterdir()}
     if mac(expected_lan) not in members: raise RuntimeError('LAN does not contain the recorded host-only adapter MAC')
     if mac((netroot/uplink/'address').read_text().strip())!=mac(expected_wan):
         raise RuntimeError('WAN does not use the recorded NAT adapter MAC')

@@ -62,7 +62,7 @@ $remote="root@$RouterAddress"
 if (-not $Resume) {
 & ssh -o ConnectTimeout=10 -o ConnectionAttempts=1 $remote "mkdir -m 700 '$stage'"
 if ($LASTEXITCODE -ne 0) { throw 'Could not stage the cold-boot test. No shutdown started.' }
-& scp -O (Join-Path $PSScriptRoot 'router-restore-check.py') "${remote}:$stage/"
+& scp -O ((Join-Path $PSScriptRoot 'router-restore-check.py') -replace '\\','/') "${remote}:$stage/"
 if ($LASTEXITCODE -ne 0) { throw 'Could not upload identity check. No shutdown started.' }
 Write-Host 'Checking the disposable VM identity, recording its boot ID, then requesting a clean power-off.'
 & ssh $remote "python3 '$stage/router-restore-check.py' --verify-identity-only --expect-hardware-uuid '$cloneId' && cat /proc/sys/kernel/random/boot_id > '$stage/boot-id.before' && sync && poweroff"

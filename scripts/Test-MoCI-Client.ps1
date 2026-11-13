@@ -10,7 +10,7 @@ $remote = "root@$RouterAddress"
 $stage = "/tmp/$name"
 & ssh -o ConnectTimeout=10 -o ConnectionAttempts=1 $remote "mkdir -m 700 '$stage'"
 if ($LASTEXITCODE -ne 0) { throw 'Router SSH connection failed. Client tests were not started.' }
-& scp -O (Join-Path $PSScriptRoot 'router-client-check.py') "${remote}:$stage/"
+& scp -O ((Join-Path $PSScriptRoot 'router-client-check.py') -replace '\\','/') "${remote}:$stage/"
 if ($LASTEXITCODE -ne 0) { throw 'Could not upload client test.' }
 & ssh -o ServerAliveInterval=10 -o ServerAliveCountMax=3 $remote "python3 '$stage/router-client-check.py'"
 $testExit = $LASTEXITCODE
