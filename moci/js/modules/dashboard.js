@@ -7,8 +7,42 @@ export default class DashboardModule {
 		this.lastCpuStats = null;
 		this.bandwidthCanvas = null;
 		this.bandwidthCtx = null;
+		this.setupQuickActions();
 
 		this.core.registerRoute('/dashboard', () => this.load());
+	}
+
+	setupQuickActions() {
+		for (const [id, action] of Object.entries({
+			'reboot-btn': 'reboot',
+			'restart-network-btn': 'network',
+			'restart-firewall-btn': 'firewall'
+		})) {
+			const button = document.getElementById(id);
+			button?.addEventListener('click', () => this.runQuickAction(action, button));
+		}
+	}
+
+	async runQuickAction(action, button) {
+		if (button.disabled) return;
+		if (action === 'reboot' && !confirm('Reboot the system?')) return;
+		button.disabled = true;
+		try {
+			if (action === 'reboot') {
+				const [status] = await this.core.ubusCall('system', 'reboot', {});
+				if (status !== 0) throw new Error('Reboot request was rejected');
+				this.core.showToast('Reboot requested. Reconnect after the router starts.', 'success');
+				setTimeout(() => this.core.logout(), 2000);
+			} else {
+				const [status, result] = await this.core.serviceReload(action);
+				if (status !== 0 || result?.code !== 0) throw new Error('Service reload was not confirmed');
+				this.core.showToast(`${action === 'network' ? 'Network' : 'Firewall'} reloaded`, 'success');
+			}
+		} catch (err) {
+			this.core.showToast(`Could not confirm ${action}: ${err.message}. Check router connectivity before retrying.`, 'error');
+		} finally {
+			button.disabled = false;
+		}
 	}
 
 	async fetchSystemInfo() {

@@ -5,7 +5,7 @@ if (-not [System.Net.IPAddress]::TryParse($RouterAddress, [ref]$parsedAddress)) 
     throw 'RouterAddress must be an IP address.'
 }
 $project = Split-Path -Parent $PSScriptRoot
-$stageName = 'moci-core-fix-' + [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ')
+$stageName = 'moci-core-fix-' + [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ') + '-' + [guid]::NewGuid().ToString('N').Substring(0,8)
 $stage = Join-Path $project ('artifacts\' + $stageName)
 New-Item -ItemType Directory -Path $stage | Out-Null
 $files = @{
@@ -28,8 +28,19 @@ foreach ($name in $files.Keys) {
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'apply-core-fixes.py') -Destination $stage
 $remote = "root@$RouterAddress"
 $remoteStage = "/tmp/$stageName"
-& ssh $remote "mkdir -m 700 '$remoteStage'"
-if ($LASTEXITCODE -ne 0) { throw 'Could not create the router staging directory.' }
+# Keep the actual SSH diagnostic. Do not remove host keys or bypass host verification.
+$previousErrorPreference = $ErrorActionPreference
+try {
+    $ErrorActionPreference = 'Continue'
+    $stageOutput = @(& ssh -o ConnectTimeout=10 -o ConnectionAttempts=1 $remote "mkdir -m 700 '$remoteStage'" 2>&1)
+    $stageExitCode = $LASTEXITCODE
+} finally {
+    $ErrorActionPreference = $previousErrorPreference
+}
+if ($stageExitCode -ne 0) {
+    $detail = ($stageOutput | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
+    throw "Router staging failed through SSH (exit $stageExitCode). No router UI files were changed.$([Environment]::NewLine)$detail$([Environment]::NewLine)Check the connection directly with: ssh root@$RouterAddress"
+}
 foreach ($file in Get-ChildItem -LiteralPath $stage -File) {
     & scp -O $file.FullName "${remote}:$remoteStage/"
     if ($LASTEXITCODE -ne 0) { throw "Upload failed: $($file.Name). Installed firmware was not changed." }

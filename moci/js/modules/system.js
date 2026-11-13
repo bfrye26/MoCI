@@ -44,9 +44,6 @@ export default class SystemModule {
 			'change-password-btn': () => this.changePassword(),
 			'backup-btn': () => this.createBackup(),
 			'reset-btn': () => this.factoryReset(),
-			'reboot-btn': () => this.rebootSystem(),
-			'restart-network-btn': () => this.core.serviceReload('network'),
-			'restart-firewall-btn': () => this.core.serviceReload('firewall'),
 			'add-cron-btn': () => {
 				this.core.resetModal('cron-modal');
 				this.core.openModal('cron-modal');

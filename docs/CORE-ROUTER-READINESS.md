@@ -46,6 +46,14 @@ The script copies the built core/network/system JavaScript and index HTML, verif
 
 ## Required before release
 
+### Follow-up live checks, 2026-11-13
+
+Browser control reconnected. A fresh dashboard load showed the corrected UTF-8 symbols, LAN 192.168.50.1, WAN 10.0.3.15 and updated system statistics. The diagnostics page returned five upstream pings with 0% loss and resolved openwrt.org through 127.0.0.1. This is router-originated evidence only.
+
+Backup generation emitted Saving config files in the router log, but no new download was verified. The IPv6 no-default-route warning remains visible. Neither observation proves a failure of IPv4 routing.
+
+A direct dashboard load exposed unbound quick-action buttons. They were registered only when SystemModule opened its page. DashboardModule now owns these handlers at construction, while SystemModule no longer adds duplicates. The new regression test covers direct dashboard initialization, cancellation, rejected commands and duplicate in-flight requests. Local tests and frontend build passed. This follow-up is prepared in source and built UI files; it still requires application to the lab VM. The attempted reboot did not execute, so reboot persistence remains unverified.
+
 | Gate | Evidence required |
 | --- | --- |
 | Settings activation | Create/edit/delete DNS entries and DHCP reservations; independently query the router and renew the client lease |

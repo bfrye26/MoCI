@@ -5,6 +5,7 @@ on:
       - 'integrations/docker-manager/moci-app-docker/**'
       - 'moci/**'
       - 'tests/service-controls.test.mjs'
+      - 'tests/dashboard-actions.test.mjs'
       - 'tests/docker-store-contract.py'
       - 'tests/docker-firewall-reconcile.py'
       - 'tests/release-interface-contract.mjs'
@@ -66,7 +67,9 @@ jobs:
       - name: Check privileged read-only diagnostic helper syntax
         run: sh -n files/moci-service-inspect
       - name: Test real service status and start/stop failure handling
-        run: node tests/service-controls.test.mjs
+        run: |
+          node tests/service-controls.test.mjs
+          node tests/dashboard-actions.test.mjs
       - name: Test expired sessions and relogin
         run: node tests/session-expiry.test.mjs
       - name: Test router configuration and firmware upgrade safety
