@@ -116,3 +116,24 @@ paths and unverifiable state still fail, and identity/state checks remain strict
 Future completion retains an empty drive with `--medium emptydrive`. Regression
 checks for detached/attached/unknown media and snapshot isolation passed. No router
 validation ran during the failed host guard, and the VM was not restarted.
+
+## Fresh-VM boot timing investigation
+
+The fresh installed VM subsequently showed large kernel timestamp jumps and
+incomplete boot. Its VBox log uses the KVM paravirtualization provider under NEM
+and reports a rejected RealTSCOffset mode switch. The successfully tested older
+VM instead uses provider None, PAE enabled and x2APIC disabled. These differences
+suggest a compatibility experiment; they do not by themselves establish causation
+or prove a firmware filesystem fault. Fresh-install validation remains incomplete.
+
+Repair-MoCI-CleanInstallClock.ps1 verifies the fresh VM and both preserved VMs,
+saves host-side settings/logs and requires a successful recovery snapshot before
+requesting shutdown. Without -RecoverStalledBoot it stops if the guest fails to
+shut down. With that explicit switch it can power off only the snapshotted stalled
+fresh VM after an ACPI timeout, then select provider None, disable x2APIC and enable
+PAE while powered off, and start the same installed disk. No image is reflashed,
+disk formatted or host Hyper-V/WSL/security configuration changed. A forced stop,
+if needed, is recorded and is not a graceful-shutdown pass. The new-VM launcher
+now selects those clock/APIC settings for later lab creations as well. PowerShell
+parsing and mocked identity/state guard tests passed; the live clock experiment
+and a successful fresh-install validation are still pending.

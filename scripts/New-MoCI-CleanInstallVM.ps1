@@ -49,7 +49,7 @@ $state=[ordered]@{schema=1;uuid=$id;name=$name;folder=$folder;source_vm=$sourceI
 $state | ConvertTo-Json | Set-Content -LiteralPath $recordFile -Encoding UTF8
 # Only a new virtual disk is created. No existing disk is attached to this VM.
 Invoke-VBox @('createvm','--name',$name,'--uuid',$id,'--platform-architecture','x86','--ostype','Debian_64','--basefolder',$base,'--register')
-Invoke-VBox @('modifyvm',$id,'--firmware','efi','--memory','4096','--cpus','2','--ioapic','on','--graphicscontroller','vmsvga','--vram','32','--boot1','dvd','--boot2','disk','--nic1','hostonly','--host-only-adapter1',$hostOnly,'--nic2','nat','--nic-type1','82540EM','--nic-type2','82540EM','--cable-connected1','on','--cable-connected2','on')
+Invoke-VBox @('modifyvm',$id,'--firmware','efi','--memory','4096','--cpus','2','--ioapic','on','--paravirt-provider','none','--x86-x2apic','off','--x86-pae','on','--graphicscontroller','vmsvga','--vram','32','--boot1','dvd','--boot2','disk','--nic1','hostonly','--host-only-adapter1',$hostOnly,'--nic2','nat','--nic-type1','82540EM','--nic-type2','82540EM','--cable-connected1','on','--cable-connected2','on')
 $disk=Join-Path $folder 'blank-64GiB.vdi'
 Invoke-VBox @('createmedium','disk','--filename',$disk,'--size','65536','--format','VDI','--variant','Standard')
 Invoke-VBox @('storagectl',$id,'--name','SATA','--add','sata','--controller','IntelAHCI','--portcount','2','--bootable','on')
