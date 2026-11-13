@@ -2,6 +2,8 @@
 
 Status: source candidate prepared for a new build, not a production release.
 
+Build update: user reported successful firmware and installer compilation in `ship-01c164c69030-20261113T044108Z`. The installed-router runner also passed all seven checks, and the downloaded private backup checksum matched. New firmware/ISO checksum verification and boot/restore/upgrade acceptance remain outstanding.
+
 Pinned firmware source: `01c164c69030db2c6f32d1af05ad30c220db12e9`.
 Full Linux CI passed: https://github.com/bfrye26/MoCI/actions/runs/43365889236.
 
@@ -36,7 +38,13 @@ This performs bounded router checks and downloads a checksum-verified private co
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\moci-build\MoCI\scripts\Start-MoCI-Ship-Build.ps1 -Mode All -Jobs 20
 ```
 
-The launcher is pinned to the CI-passing source commit above. The full firmware and ISO remain unbuilt until the command completes. A live UI update does not replace a full firmware image.
+The launcher is pinned to the CI-passing source commit above. A successful build has now been reported; verify its artifacts before VM use. A live UI update does not replace a full firmware image.
+
+Copy and verify the reported build from Windows PowerShell:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\moci-build\MoCI\scripts\Copy-MoCI-Candidate.ps1
+```
 
 ## Remaining release gates
 
