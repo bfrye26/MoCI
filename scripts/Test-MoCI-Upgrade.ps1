@@ -6,10 +6,10 @@ $ErrorActionPreference='Stop'
 $address=$null
 if (-not [System.Net.IPAddress]::TryParse($RouterAddress,[ref]$address)) { throw 'RouterAddress must be an IP address.' }
 $project=Split-Path -Parent $PSScriptRoot
-$build='C:\moci-build\ship-8cd226c8b7b8-20261113T170016Z'
+$build='C:\moci-build\ship-77ac51bf9c72-20261113T185130Z'
 $image=Join-Path $build 'openwrt-x86-64-generic-ext4-combined-efi.img.gz'
-$imageHash='730e8bce878515b248de90a304d2668019a09fe909b7e4921b538f7fdb6be305'
-$sourceCommit='8cd226c8b7b8689990a17ad953820a5d12b36750'
+$imageHash='d68a89a508f9c5441ab0cbce9d1c840ef59525062bfa550348e32835606e3de0'
+$sourceCommit='77ac51bf9c725b89233b441926a4115095e97a96'
 if ((Get-Content -LiteralPath (Join-Path $build 'source-versions.txt') -Raw) -notmatch "(?m)^MOCI_COMMIT=$sourceCommit\r?$" -or (Get-FileHash -LiteralPath $image -Algorithm SHA256).Hash.ToLowerInvariant() -ne $imageHash) { throw 'Candidate source or firmware checksum mismatch.' }
 $vbox='C:\Program Files\Oracle\VirtualBox\VBoxManage.exe'
 $recordFile=Get-ChildItem -LiteralPath (Join-Path $project 'artifacts\validation-vm') -File -Filter 'MoCI-Release-Test-*.json' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -66,7 +66,7 @@ if ($VerifyOnly) {
         & scp -O "${remote}:$stage/$file" (Join-Path $output $file)
         if ($LASTEXITCODE -ne 0) { throw "Could not retrieve $file" }
     }
-    Write-Host "Upgrade to rc.4, retained router settings and post-upgrade connectivity passed. Results: $output"
+    Write-Host "Upgrade to rc.5, retained router settings and post-upgrade connectivity passed. Results: $output"
     Write-Host 'This does not validate physical hardware, external WAN isolation or app-data migration.'
     return
 }
@@ -80,14 +80,14 @@ $preflight=Get-Content -LiteralPath (Join-Path $output 'upgrade-preflight.json')
 if ($prepareExit -ne 0 -or -not $preflight.success) { throw "Upgrade preflight failed. No flash started. Read $output\upgrade-preflight.json" }
 & scp -O "${remote}:$stage/configuration-backup.tar.gz" (Join-Path $output 'configuration-backup.tar.gz')
 if ($LASTEXITCODE -ne 0 -or (Get-FileHash -LiteralPath (Join-Path $output 'configuration-backup.tar.gz') -Algorithm SHA256).Hash.ToLowerInvariant() -ne $preflight.backup_sha256) { throw 'Backup download/checksum failed. No flash started.' }
-$snapshot='before-rc4-upgrade-'+[DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ')
+$snapshot='before-rc5-upgrade-'+[DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ')
 Write-Host 'Creating a recovery snapshot of the test VM. This can take several minutes.'
-& $vbox snapshot $cloneId take $snapshot --description 'Before checksum-validated MoCI rc.4 upgrade; original MoCI3 remains off'
+& $vbox snapshot $cloneId take $snapshot --description 'Before checksum-validated MoCI rc.5 upgrade; original MoCI3 remains off'
 if ($LASTEXITCODE -ne 0) { throw 'Snapshot failed. No flash started.' }
 $null=Assert-TestVM
 $state=[ordered]@{test_vm=$cloneId; hardware_uuid=$hardwareId; image_sha256=$imageHash; source_commit=$sourceCommit; recovery_snapshot=$snapshot; release_ready=$false; flash_requested=$true}
 $state | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'upgrade-state.json') -Encoding UTF8
-Write-Host 'Flashing the verified rc.4 image on the disposable VM only. Keep MoCI3 off and do not interrupt the test VM.'
+Write-Host 'Flashing the verified rc.5 image on the disposable VM only. Keep MoCI3 off and do not interrupt the test VM.'
 & ssh -o ServerAliveInterval=10 -o ServerAliveCountMax=3 $remote "python3 '$stage/router-upgrade-check.py' --flash --expect-hardware-uuid '$hardwareId'"
 $flashExit=$LASTEXITCODE
 $state['flash_command_exit_code']=$flashExit

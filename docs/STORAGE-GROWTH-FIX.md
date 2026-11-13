@@ -104,3 +104,21 @@ false. This is a manually repaired rc.4 result and must not replace the original
 capacity-failure history. Next build the pinned rc.5 source and validate an upgrade
 with automatic storage growth and no subsequent repair. External WAN isolation,
 app-data migration and physical hardware qualification remain open.
+
+## rc.5 candidate prepared for upgrade validation
+
+Build ship-77ac51bf9c72-20261113T185130Z completed and its firmware and installer
+checksum manifests passed Windows staging verification. Firmware SHA256 is
+`d68a89a508f9c5441ab0cbce9d1c840ef59525062bfa550348e32835606e3de0`.
+Source is 77ac51bf9c725b89233b441926a4115095e97a96 on pinned OpenWrt
+64900e756efa667774214f9c6b17c113222e01f7. Direct inspection of the copied gzip
+image's ext4 superblock confirmed that resize_inode is absent.
+
+The upgrade harness now pins this build and rc.5. Read-only post-boot checks
+require the exact installed storage helper hash, the recognised fully expanded
+partition layout, absence of resize_inode and retained usable filesystem capacity.
+The verifier does not run growth or repair commands. Nine upgrade safeguard tests
+and PowerShell parsing passed locally. A fresh backup and recovery snapshot remain
+mandatory before the disposable-VM flash. Actual rc.5 flash and unassisted
+first-boot growth remain pending; do not reuse the manually repaired rc.4 result
+as evidence for this candidate.

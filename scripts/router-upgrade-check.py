@@ -7,13 +7,15 @@ import os
 from pathlib import Path
 import runpy
 import subprocess
+import struct
 import sys
 import tarfile
 import uuid
 
-VERSION='0.11.1-rc.4'
-IMAGE_SHA='730e8bce878515b248de90a304d2668019a09fe909b7e4921b538f7fdb6be305'
+VERSION='0.11.1-rc.5'
+IMAGE_SHA='d68a89a508f9c5441ab0cbce9d1c840ef59525062bfa550348e32835606e3de0'
 RUNTIME_SHA='13e3117daaeb2b4755d8f66b35375feb486adf9387a08e5adf48e44bbf485f19'
+GROW_SHA='d293c8e93fdffc51e138de88f5c938239b7b8b95c1bdc1ca9f314c31318b3947'
 CORE=tuple('/etc/config/'+name for name in ('system','network','dhcp','firewall','dockerd'))
 
 
@@ -48,8 +50,27 @@ def empty_app_state():
 
 def validate_image(image):
     if not image.name.endswith('.img.gz') or digest(image)!=IMAGE_SHA:
-        raise RuntimeError('Image does not match the pinned rc.4 firmware checksum')
+        raise RuntimeError('Image does not match the pinned rc.5 firmware checksum')
     command(['/sbin/sysupgrade','-T',str(image)],120)
+
+
+def verify_storage_image():
+    helper='/usr/libexec/moci-grow-root'
+    if digest(helper)!=GROW_SHA:
+        raise RuntimeError('Installed storage helper does not match rc.5')
+    storage=runpy.run_path(helper)
+    disk,root,disk_bytes=storage['root_device']()
+    table=json.loads(command(['sfdisk','--json',disk]))['partitiontable']
+    plan=storage['growth_plan'](table,disk_bytes,root)
+    if plan['grow_partition']:
+        raise RuntimeError('Automatic first-boot partition growth did not complete')
+    with open(root,'rb') as source:
+        source.seek(1024);superblock=source.read(1024)
+    if len(superblock)!=1024 or superblock[56:58]!=b'\x53\xef':
+        raise RuntimeError('Expected ext4 root superblock')
+    if struct.unpack_from('<I',superblock,92)[0]&0x10:
+        raise RuntimeError('Legacy resize_inode metadata remains in the installed image')
+    return {'helper_sha256':GROW_SHA,'resize_inode':False,'partition_bytes':plan['before_sectors']*512}
 
 
 def main():
@@ -79,6 +100,8 @@ def main():
             if digest('/usr/libexec/moci-runtime-defaults')!=RUNTIME_SHA:
                 raise RuntimeError('Installed runtime defaults do not match the pinned candidate')
             report['checks'].append({'name':'installed-version-and-runtime-source','status':'PASS'})
+            report['storage_image']=verify_storage_image()
+            report['checks'].append({'name':'installed-storage-source-and-automatic-growth','status':'PASS'})
             if set(before['core_sha256'])!=set(CORE):
                 raise RuntimeError('Unexpected configuration baseline file list')
             for path,expected in before['core_sha256'].items():
@@ -122,7 +145,7 @@ def main():
                 if set(before['core_sha256'])!=set(CORE) or any(digest(path)!=value for path,value in before['core_sha256'].items()):
                     raise RuntimeError('Settings changed after preflight; refusing to flash')
                 identify(args.expect_hardware_uuid)
-                print('Validated rc.4 image; starting sysupgrade on the disposable VM. SSH will disconnect.',flush=True)
+                print('Validated rc.5 image; starting sysupgrade on the disposable VM. SSH will disconnect.',flush=True)
                 os.execv('/sbin/sysupgrade',['/sbin/sysupgrade',str(image)])
             archive=root/'configuration-backup.tar.gz'
             command(['/sbin/sysupgrade','--create-backup',str(archive)],60)
