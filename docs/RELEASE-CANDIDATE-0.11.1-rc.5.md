@@ -137,3 +137,15 @@ if needed, is recorded and is not a graceful-shutdown pass. The new-VM launcher
 now selects those clock/APIC settings for later lab creations as well. PowerShell
 parsing and mocked identity/state guard tests passed; the live clock experiment
 and a successful fresh-install validation are still pending.
+
+The initial compatibility command hit another VirtualBox session-lock wording
+(`locked for a session`, rather than `locked by a session`). A later attempt
+created snapshot before-clock-compatibility-20261113T205911Z but startup failed
+because CPU APIC was disabled in the saved current VM settings. This was a harness
+configuration error. The command now explicitly enables CPU APIC and I/O APIC,
+and verifies current CPU XML before startup. Session-lock retries accept both
+observed wording variants and continue to recheck identity and power-off state.
+The -Resume option requires the matching pending record and verifies that its
+existing snapshot is accessible before proceeding, avoiding another snapshot or
+shutdown. APIC, lock-retry and identity/state regression checks passed. Successful
+boot with the corrected profile remains pending live validation.

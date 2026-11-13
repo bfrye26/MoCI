@@ -33,7 +33,7 @@ function Start-TestVM {
         } finally { $ErrorActionPreference=$previousPreference }
         if ($startExit -eq 0) { return }
         $detail=$startOutput -join [Environment]::NewLine
-        if ($detail -notmatch 'already locked by a session|being locked or unlocked') { throw "Could not cold-start the test VM: $detail" }
+        if ($detail -notmatch 'already locked (?:by|for) a session|being (?:locked or )?unlocked') { throw "Could not cold-start the test VM: $detail" }
         if ([DateTime]::UtcNow -ge $unlockDeadline) { throw 'VirtualBox did not release its session lock within 60 seconds. Leave the VM off and retry this script with -Resume.' }
         Write-Host 'VirtualBox is releasing the previous GUI session; waiting before starting the powered-off test VM.'
         Start-Sleep -Seconds 3

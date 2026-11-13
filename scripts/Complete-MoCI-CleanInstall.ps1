@@ -33,7 +33,7 @@ do {
     $previousPreference=$ErrorActionPreference
     try { $ErrorActionPreference='Continue';$detail=@(& $vbox startvm $id --type gui 2>&1);$startExit=$LASTEXITCODE } finally { $ErrorActionPreference=$previousPreference }
     if ($startExit -eq 0) { break }
-    if (($detail -join ' ') -notmatch 'already locked by a session|being locked or unlocked') { throw ('VM start failed: '+($detail -join ' ')) }
+    if (($detail -join ' ') -notmatch 'already locked (?:by|for) a session|being (?:locked or )?unlocked') { throw ('VM start failed: '+($detail -join ' ')) }
     if ([DateTime]::UtcNow -ge $deadline) { throw 'VirtualBox session is still locked. Leave the VM off and retry this completion script.' }
     Start-Sleep -Seconds 3
 } while ($true)

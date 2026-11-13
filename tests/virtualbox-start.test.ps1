@@ -23,11 +23,13 @@ function Reset-Fakes {
     $script:calls=0;$script:guards=0;$script:refuseGuard=$false
     $script:replies=New-Object 'System.Collections.Generic.Queue[object]'
 }
-Reset-Fakes
-$script:replies.Enqueue(@{code=1;message='Machine is already locked by a session (or being locked or unlocked)'})
-$script:replies.Enqueue(@{code=0;message='VM started'})
-Start-TestVM
-if ($script:calls -ne 2 -or $script:guards -ne 2) { throw 'Lock retry did not recheck VM identity/state.' }
+foreach ($lockMessage in @('Machine is already locked by a session (or being locked or unlocked)','Machine is already locked for a session (or being unlocked)')) {
+    Reset-Fakes
+    $script:replies.Enqueue(@{code=1;message=$lockMessage})
+    $script:replies.Enqueue(@{code=0;message='VM started'})
+    Start-TestVM
+    if ($script:calls -ne 2 -or $script:guards -ne 2) { throw 'Lock retry did not recheck VM identity/state.' }
+}
 Reset-Fakes
 $script:replies.Enqueue(@{code=1;message='Disk image is inaccessible'})
 $caught=$false

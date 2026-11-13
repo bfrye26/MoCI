@@ -1,6 +1,6 @@
 #Requires -Version 5.1
 [CmdletBinding()]
-param([switch]$RecoverStalledBoot)
+param([switch]$RecoverStalledBoot,[switch]$Resume)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $vbox='C:\Program Files\Oracle\VirtualBox\VBoxManage.exe'
@@ -29,7 +29,7 @@ function Invoke-UnlockedVBox([string[]]$Arguments) {
         $previousPreference=$ErrorActionPreference
         try { $ErrorActionPreference='Continue';$detail=@(& $vbox @Arguments 2>&1);$code=$LASTEXITCODE } finally { $ErrorActionPreference=$previousPreference }
         if ($code -eq 0) { return }
-        if (($detail -join ' ') -notmatch 'already locked by a session|being locked or unlocked') { throw ('VirtualBox clock recovery failed: '+($detail -join ' ')) }
+        if (($detail -join ' ') -notmatch 'already locked (?:by|for) a session|being (?:locked or )?unlocked') { throw ('VirtualBox clock recovery failed: '+($detail -join ' ')) }
         if ([DateTime]::UtcNow -ge $deadline) { throw 'VirtualBox session did not unlock. VM is off; preserve the recovery snapshot and inspect before retrying.' }
         Start-Sleep -Seconds 3
     } while ($true)
@@ -37,6 +37,22 @@ function Invoke-UnlockedVBox([string[]]$Arguments) {
 $fresh=Get-VMInfo $id
 if ($fresh['VMState'] -notin @('running','poweroff')) { throw "Unsupported recovery state: $($fresh['VMState'])." }
 Assert-Target $fresh['VMState']
+if ($Resume) {
+    Assert-Target 'poweroff'
+    $pending=Get-ChildItem -LiteralPath (Join-Path $project 'artifacts') -Directory -Filter 'clock-recovery-*' | Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'recovery-state.json') } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if (-not $pending) { throw 'No saved clock recovery exists.' }
+    $saved=Get-Content -LiteralPath (Join-Path $pending.FullName 'recovery-state.json') -Raw | ConvertFrom-Json
+    if ($saved.vm -ne $id -or -not $saved.snapshot_confirmed -or $saved.restart_requested -or $saved.snapshot -notmatch '^before-clock-compatibility-[0-9]{8}T[0-9]{6}Z$') { throw 'No matching unfinished recovery record exists.' }
+    & $vbox snapshot $id showvminfo $saved.snapshot | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot confirm the existing recovery snapshot. No settings changed.' }
+    $output=$pending.FullName
+    $snapshot=$saved.snapshot
+    $result=[ordered]@{}
+    foreach ($property in $saved.PSObject.Properties) { $result[$property.Name]=$property.Value }
+    $result['resumed']=$true
+    Copy-Item -LiteralPath $fresh['CfgFile'] -Destination (Join-Path $output 'vm-settings.before-resume.vbox') -Force
+    Write-Host "Resuming the powered-off test VM using existing recovery snapshot: $snapshot"
+} else {
 if ((Get-PSDrive C).Free -lt 12GB) { throw 'At least 12 GB free on C: is required for a recovery snapshot.' }
 $output=Join-Path $project ('artifacts\clock-recovery-'+[DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ')+'-'+[guid]::NewGuid().ToString('N').Substring(0,8))
 New-Item -ItemType Directory -Path $output | Out-Null
@@ -49,6 +65,7 @@ Write-Host 'Creating a recovery snapshot before changing the fresh test VM. Exis
 if ($LASTEXITCODE -ne 0) { throw 'Recovery snapshot failed. No shutdown or clock changes attempted.' }
 $result=[ordered]@{schema=1;vm=$id;snapshot=$snapshot;snapshot_confirmed=$true;forced_poweroff=$false;restart_requested=$false;release_ready=$false}
 $result | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'recovery-state.json') -Encoding UTF8
+}
 if ($fresh['VMState'] -eq 'running') {
     Assert-Target 'running'
     Write-Host 'Requesting ACPI shutdown of the fresh test VM.'
@@ -73,7 +90,16 @@ if ($fresh['VMState'] -eq 'running') {
 Assert-Target 'poweroff'
 # Match the tested router's provider and APIC/PAE settings. Disk contents and
 # Windows Hyper-V/WSL/security settings are not modified by this command.
-Invoke-UnlockedVBox @('modifyvm',$id,'--paravirt-provider','none','--x86-x2apic','off','--x86-pae','on')
+Invoke-UnlockedVBox @('modifyvm',$id,'--paravirt-provider','none','--x86-x2apic','off','--apic','on','--ioapic','on','--x86-pae','on')
+function Assert-CPUAPIC([string]$SettingsFile) {
+    [xml]$configuration=[IO.File]::ReadAllText($SettingsFile)
+    $cpu=$configuration.SelectSingleNode('/*[local-name()="VirtualBox"]/*[local-name()="Machine"]/*[local-name()="Hardware"]/*[local-name()="CPU"]')
+    if (-not $cpu) { throw 'Cannot verify current CPU settings. VM remains off.' }
+    $apic=$cpu.SelectSingleNode('./*[local-name()="APIC"]')
+    if ($apic -and $apic.GetAttribute('enabled') -ne 'true') { throw 'CPU APIC is disabled; refusing to start the 64-bit VM.' }
+}
+$checked=Get-VMInfo $id
+Assert-CPUAPIC $checked['CfgFile']
 $state | Add-Member -NotePropertyName clock_compatibility -NotePropertyValue 'paravirt-none-x2apic-off-pae-on' -Force
 $state | ConvertTo-Json | Set-Content -LiteralPath $recordFile.FullName -Encoding UTF8
 Invoke-UnlockedVBox @('startvm',$id,'--type','gui')
