@@ -2,6 +2,9 @@
 
 Status: source candidate prepared for a new build, not a production release.
 
+Pinned firmware source: `01c164c69030db2c6f32d1af05ad30c220db12e9`.
+Full Linux CI passed: https://github.com/bfrye26/MoCI/actions/runs/43365889236.
+
 ## Core changes
 
 - Reject failed UCI writes rather than displaying success.
@@ -17,7 +20,7 @@ Status: source candidate prepared for a new build, not a production release.
 
 Live VM: LAN/WAN interfaces up, router-local DNS, five upstream pings, DNS record create/edit/delete with fresh service queries, reservation save/removal, and clean route configuration after the follow-up unconfirmed test. These do not establish external-client forwarding or kernel-level rollback after management connection loss.
 
-Source: router configuration, session expiry, service control, firmware upgrade and release-interface JavaScript tests; frontend production build. The updated full Linux CI must pass before selecting the source for a firmware build.
+Source: router configuration, session expiry, service control, firmware upgrade and release-interface JavaScript tests; frontend production build. Full Linux CI also passed 29 Store contracts, nine firewall tests, 41 Docker integration tests, shell checks and five local source-selection scenarios. Two recovery-test mocks were updated to accept and check the reviewed startup timeout argument; the recovery assertions remain enabled.
 
 ## Run installed-router checks on the Windows PC
 
@@ -33,7 +36,7 @@ This performs bounded router checks and downloads a checksum-verified private co
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\moci-build\MoCI\scripts\Start-MoCI-Ship-Build.ps1 -Mode All -Jobs 20
 ```
 
-The launcher must be pinned to the CI-passing source commit for this candidate. The full firmware and ISO remain unbuilt until the command completes. A live UI update does not replace a full firmware image.
+The launcher is pinned to the CI-passing source commit above. The full firmware and ISO remain unbuilt until the command completes. A live UI update does not replace a full firmware image.
 
 ## Remaining release gates
 

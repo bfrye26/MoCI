@@ -41,7 +41,7 @@ mode=${1:-firmware}
 jobs=${2:-20}
 case "$mode" in firmware|all|check) ;; *) echo 'Mode must be firmware, all or check' >&2; exit 2;; esac
 [[ "$jobs" =~ ^[0-9]+$ ]] && ((jobs>=1 && jobs<=64)) || exit 2
-commit='4b69f69b281f30566be005ea6ce3c6d5cfcd2120'
+commit='01c164c69030db2c6f32d1af05ad30c220db12e9'
 branch='fix/docker-firewall-release-20261112'
 project_root="$HOME/Projects"
 original="$project_root/MoCI"
