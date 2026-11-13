@@ -122,3 +122,11 @@ and PowerShell parsing passed locally. A fresh backup and recovery snapshot rema
 mandatory before the disposable-VM flash. Actual rc.5 flash and unassisted
 first-boot growth remain pending; do not reuse the manually repaired rc.4 result
 as evidence for this candidate.
+
+The rc.5 flash request at 19:50 UTC passed preflight and took snapshot
+before-rc5-upgrade-20261113T195037Z. The ubus handoff disconnected with exit 246;
+verification immediately afterward found SSH unavailable. The VM log read at
+19:52 UTC had not yet recorded a reset. This does not establish flash failure or
+success. Preserve the VM and inspect its console if management does not return;
+never automatically repeat the flash. Verification now waits for port 22 and
+describes a failed connection without implying that the earlier flash never ran.

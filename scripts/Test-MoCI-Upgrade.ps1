@@ -48,8 +48,30 @@ if ($VerifyOnly) {
     New-Item -ItemType Directory -Path $output | Out-Null
     $stage='/tmp/'+$name
 }
+if ($VerifyOnly) {
+    Write-Host 'Waiting up to three minutes for the router SSH port. No flash or repair is performed in verification mode.'
+    $ready=$false
+    $deadline=[DateTime]::UtcNow.AddSeconds(180)
+    do {
+        $connection=New-Object System.Net.Sockets.TcpClient
+        try {
+            $attempt=$connection.ConnectAsync($RouterAddress,22)
+            if ($attempt.Wait(2000) -and $connection.Connected) { $ready=$true }
+        } catch {
+            # A refused port is expected while the router is writing/rebooting.
+        } finally {
+            $connection.Dispose()
+        }
+        if ($ready) { break }
+        if ([DateTime]::UtcNow -lt $deadline) { Start-Sleep -Seconds 2 }
+    } while ([DateTime]::UtcNow -lt $deadline)
+    if (-not $ready) { throw "Router SSH is still unavailable. The previous flash remains unverified. Do not flash again; inspect the test VM console. Results: $output" }
+}
 & ssh -o ConnectTimeout=10 -o ConnectionAttempts=1 $remote "mkdir -p -m 700 '$stage'"
-if ($LASTEXITCODE -ne 0) { throw 'Could not prepare upgrade staging. No flash started.' }
+if ($LASTEXITCODE -ne 0) {
+    if ($VerifyOnly) { throw 'Could not connect for verification. The previous flash remains unverified; no new flash was attempted.' }
+    throw 'Could not prepare upgrade staging. No flash started.'
+}
 $scripts=@('router-upgrade-check.py','router-release-check.py','router-client-check.py') | ForEach-Object { Join-Path $PSScriptRoot $_ }
 & scp -O @scripts "${remote}:$stage/"
 if ($LASTEXITCODE -ne 0) { throw 'Could not upload upgrade validation scripts.' }
