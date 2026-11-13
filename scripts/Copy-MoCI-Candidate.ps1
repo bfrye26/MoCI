@@ -1,14 +1,14 @@
 #Requires -Version 5.1
 param(
-    [string]$Source = '\\wsl.localhost\Ubuntu-24.04\home\bfrye26\Projects\MoCI-output\ship-8cd226c8b7b8-20261113T170016Z'
+    [string]$Source = '\\wsl.localhost\Ubuntu-24.04\home\bfrye26\Projects\MoCI-output\ship-77ac51bf9c72-20261113T185130Z'
 )
 $ErrorActionPreference = 'Stop'
-$expectedCommit = '8cd226c8b7b8689990a17ad953820a5d12b36750'
+$expectedCommit = '77ac51bf9c725b89233b441926a4115095e97a96'
 if (-not (Test-Path -LiteralPath $Source -PathType Container)) { throw "Build folder is not accessible: $Source" }
 $versions = Get-Content -LiteralPath (Join-Path $Source 'source-versions.txt') -Raw
-if ($versions -notmatch "(?m)^MOCI_COMMIT=$expectedCommit\r?$" ) { throw 'This is not the CI-validated rc.4 source build.' }
+if ($versions -notmatch "(?m)^MOCI_COMMIT=$expectedCommit\r?$" ) { throw 'This is not the CI-validated rc.5 source build.' }
 $buildName = Split-Path -Leaf $Source.TrimEnd('\','/')
-if ($buildName -notmatch '^ship-8cd226c8b7b8-[0-9]{8}T[0-9]{6}Z$') { throw 'Unexpected build folder name.' }
+if ($buildName -notmatch '^ship-77ac51bf9c72-[0-9]{8}T[0-9]{6}Z$') { throw 'Unexpected build folder name.' }
 $destination = Join-Path 'C:\moci-build' $buildName
 New-Item -ItemType Directory -Force -Path $destination | Out-Null
 foreach ($item in Get-ChildItem -LiteralPath $Source -Force) {
@@ -49,6 +49,7 @@ Copy-Item -LiteralPath $iso[0].FullName -Destination $projectInstaller -Force
 Copy-Item -LiteralPath $iso[0].FullName -Destination 'C:\moci-build' -Force
 Write-Host "Verified build: $destination"
 Write-Host "Firmware for upgrade validation: $firmware"
+Write-Host ('Firmware SHA256: '+(Get-FileHash -LiteralPath $firmware -Algorithm SHA256).Hash.ToLowerInvariant())
 Write-Host "Project candidate copy: $projectCandidate"
 Write-Host "Installer ISO (fresh installs only): $($iso[0].FullName)"
 Write-Host 'No VM was changed. Do not use the installer ISO as a firmware upgrade payload.'
