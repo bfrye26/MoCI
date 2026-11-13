@@ -95,6 +95,55 @@ def egress_plan(firewall):
     return 'ADD_FORWARDING' if owners else 'CREATE_ZONE_AND_FORWARDING'
 
 
+RETURN_GUARD='--match conntrack ! --ctstate RELATED,ESTABLISHED'
+
+
+def return_policy_plan(dockerd):
+    section=dockerd.get('firewall',{})
+    blocked=section.get('blocked_interfaces',[])
+    if isinstance(blocked,str): blocked=[blocked]
+    if section.get('.type')!='firewall' or section.get('device')!='docker0' or blocked!=['wan']:
+        return 'PRESERVE_CUSTOM'
+    if set(section)-{'.type','device','blocked_interfaces','extra_iptables_args'}:
+        return 'PRESERVE_CUSTOM'
+    extra=section.get('extra_iptables_args','')
+    if not extra: return 'ADD_RETURN_GUARD'
+    return 'ALREADY_CONFIGURED' if extra==RETURN_GUARD else 'PRESERVE_CUSTOM'
+
+
+def legacy_reject(rule, inbound):
+    tokens=shlex.split(rule)
+    base=['-A','DOCKER-USER','-i',inbound,'-o','docker0','-j','REJECT']
+    return tokens==base or tokens==base+['--reject-with','icmp-port-unreachable']
+
+
+def repair_return_rules(report):
+    wan=json.loads(run(['ubus','call','network.interface.wan','status']).stdout)
+    inbound=wan.get('l3_device','')
+    if not wan.get('up') or not re.fullmatch(r'[A-Za-z0-9_.:-]{1,15}',inbound):
+        raise RuntimeError('Could not identify the active WAN device for the return-path rule')
+    base=['iptables','--wait','5','-t','filter']
+    rules=run(base+['-S','DOCKER-USER']).stdout.splitlines()
+    old=[line for line in rules if legacy_reject(line,inbound)]
+    if len(old)>32:
+        raise RuntimeError('Too many legacy reject rules; refusing automatic cleanup')
+    guarded=['DOCKER-USER','-i',inbound,'-o','docker0','-m','conntrack','!',
+             '--ctstate','RELATED,ESTABLISHED','-j','REJECT']
+    if run(base+['-C']+guarded,optional=True).returncode:
+        run(base+['-I']+guarded)
+    # Verify unsolicited WAN traffic is still rejected BEFORE removing only
+    # the exact old stock rule which also rejected established replies.
+    run(base+['-C']+guarded)
+    for rule in old:
+        run(base+['-D']+shlex.split(rule)[1:])
+    remaining=run(base+['-S','DOCKER-USER']).stdout.splitlines()
+    if any(legacy_reject(line,inbound) for line in remaining):
+        raise RuntimeError('Legacy unconditional return-path block remains')
+    run(base+['-C']+guarded)
+    report['wan_return_policy']={'legacy_unconditional_rules_removed':len(old),'unsolicited_wan_reject_verified':True}
+    report['checks'].append({'name':'docker-wan-established-replies','status':'PASS'})
+
+
 def bridge_ready():
     if not Path('/sys/class/net/docker0/bridge').is_dir():
         return False
@@ -215,10 +264,13 @@ def main():
         nut = config('nut_server')
         manual = Path('/etc/nut/ups.conf')
         manual_ups = manual.is_file() and bool(re.search(r'^\s*\[[^\]]+\]',manual.read_text(),re.M))
-        selected=plan(config('network'),config('dockerd'),nut,manual_ups)
+        dockerd_config=config('dockerd')
+        selected=plan(config('network'),dockerd_config,nut,manual_ups)
         firewall_action=egress_plan(config('firewall')) if selected['docker']!='PRESERVE_CUSTOM' else 'PRESERVE_CUSTOM'
+        return_action=return_policy_plan(dockerd_config) if selected['docker']!='PRESERVE_CUSTOM' else 'PRESERVE_CUSTOM'
         report['plan']=selected
         report['plan']['docker_wan_egress']=firewall_action
+        report['plan']['docker_wan_return']=return_action
         if not args.apply:
             return 0
         if args.live and run(['uci','changes']).stdout.strip():
@@ -235,6 +287,8 @@ def main():
         if original.is_file(): shutil.copy2(original,before/'network')
         firewall_path=Path('/etc/config/firewall')
         if firewall_path.is_file(): shutil.copy2(firewall_path,before/'firewall')
+        dockerd_path=Path('/etc/config/dockerd')
+        if dockerd_path.is_file(): shutil.copy2(dockerd_path,before/'dockerd')
         ups=Path('/etc/init.d/nut-server')
         if ups.is_file() and selected['ups']=='DISABLE_UNCONFIGURED':
             report['ups_previously_enabled']=run([str(ups),'enabled'],optional=True).returncode==0
@@ -284,6 +338,15 @@ def main():
                 if args.live: run(['/etc/init.d/firewall','reload'],30,optional=True)
                 raise
             report['checks'].append({'name':'default-docker-wan-egress','status':'PASS'})
+        if return_action=='ADD_RETURN_GUARD':
+            try:
+                run(['uci','set','dockerd.firewall.extra_iptables_args='+RETURN_GUARD])
+                run(['uci','commit','dockerd'])
+            except Exception:
+                shutil.copy2(before/'dockerd',dockerd_path)
+                run(['uci','revert','dockerd'],optional=True)
+                raise
+            report['checks'].append({'name':'persistent-wan-return-guard','status':'PASS'})
         report['applied']=True
         if args.live and selected['docker'] in ('CREATE_DEFAULT_BRIDGE','KEEP_DEFAULT_BRIDGE','ALREADY_CONFIGURED'):
             # netifd must load the committed bridge-only settings before ifup.
@@ -291,7 +354,7 @@ def main():
                 run(['ubus','call','network','reload'])
                 run(['/sbin/ifup','docker'])
                 time.sleep(2)
-            if not bridge_ready():
+            if return_action=='ADD_RETURN_GUARD' or not bridge_ready():
                 # No running containers were allowed above. Never remove networks,
                 # volumes or Docker's persistent metadata to repair a bridge.
                 if run(['docker','ps','-q']).stdout.strip():
@@ -306,6 +369,8 @@ def main():
                 else:
                     raise RuntimeError('Default bridge gateway was not restored')
             report['checks'].append({'name':'default-bridge-gateway-present','status':'PASS'})
+            if return_action in ('ADD_RETURN_GUARD','ALREADY_CONFIGURED'):
+                repair_return_rules(report)
             info=json.loads(run(['docker','info','--format','{{json .}}']).stdout)
             report['docker_environment']={key:info.get(key) for key in ('ServerVersion','Driver','CgroupDriver','CgroupVersion','SecurityOptions')}
             # Official small test image; no published ports or host mounts.

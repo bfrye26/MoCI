@@ -23,6 +23,38 @@ def standard():
 
 
 class RuntimeDefaults(unittest.TestCase):
+    def test_stock_wan_block_requires_established_reply_guard(self):
+        configuration={'firewall':{'.type':'firewall','device':'docker0','blocked_interfaces':'wan'}}
+        self.assertEqual(runtime.return_policy_plan(configuration),'ADD_RETURN_GUARD')
+        configuration['firewall']['extra_iptables_args']=runtime.RETURN_GUARD
+        self.assertEqual(runtime.return_policy_plan(configuration),'ALREADY_CONFIGURED')
+
+    def test_custom_wan_filter_is_preserved(self):
+        self.assertEqual(runtime.return_policy_plan({'firewall':{'.type':'firewall','device':'docker0','blocked_interfaces':'wan','extra_iptables_args':'--source 192.0.2.0/24'}}),'PRESERVE_CUSTOM')
+
+    def test_cleanup_matches_only_exact_legacy_stock_rule(self):
+        exact='-A DOCKER-USER -i eth1 -o docker0 -j REJECT'
+        self.assertTrue(runtime.legacy_reject(exact,'eth1'))
+        self.assertTrue(runtime.legacy_reject(exact+' --reject-with icmp-port-unreachable','eth1'))
+        self.assertFalse(runtime.legacy_reject(exact,'eth2'))
+        self.assertFalse(runtime.legacy_reject(exact+' -s 192.0.2.0/24','eth1'))
+        self.assertFalse(runtime.legacy_reject('-A DOCKER-USER -i eth1 -o docker0 -m conntrack ! --ctstate RELATED,ESTABLISHED -j REJECT','eth1'))
+
+    def test_return_repair_verifies_guard_before_deleting_legacy_rule(self):
+        calls=[]; old='-A DOCKER-USER -i eth1 -o docker0 -j REJECT\n'; reads=0
+        def command(args,*unused,**kwargs):
+            nonlocal reads
+            calls.append(args)
+            if args[0]=='ubus': return SimpleNamespace(stdout='{"up":true,"l3_device":"eth1"}',returncode=0)
+            if '-S' in args:
+                reads+=1
+                return SimpleNamespace(stdout=old if reads==1 else '',returncode=0)
+            return SimpleNamespace(stdout='',returncode=0)
+        report={'checks':[]}
+        with patch.object(runtime,'run',side_effect=command): runtime.repair_return_rules(report)
+        deletion=next(i for i,args in enumerate(calls) if '-D' in args)
+        self.assertTrue(any('-C' in args and 'RELATED,ESTABLISHED' in args for args in calls[:deletion]))
+        self.assertEqual(report['wan_return_policy']['legacy_unconditional_rules_removed'],1)
     def test_diagnostics_do_not_enter_configuration_repair(self):
         identity='97b3d07b-5b50-4662-9d1e-86f3fa22a857'
         with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as directory:
