@@ -61,8 +61,8 @@ class StorageGrowth(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as directory:
             disk=str((Path(directory)/'disk.img').resolve())
             with open(disk,'wb') as target: target.truncate(64*1024**2)
-            specification=f'label: gpt\nunit: sectors\n\n{disk}1 : start=512, size=32768, type={grow.LINUX}\n{disk}2 : start=33280, size=65536, type={grow.LINUX}\n{disk}128 : start=34, size=478, type={grow.BIOS}\n'
-            subprocess.run(['sfdisk',disk],input=specification,text=True,capture_output=True,check=True)
+            specification=f'label: gpt\nunit: sectors\nfirst-lba: 34\n\n{disk}1 : start=512, size=32768, type={grow.LINUX}\n{disk}2 : start=33280, size=65536, type={grow.LINUX}\n{disk}128 : start=34, size=478, type={grow.BIOS}\n'
+            grow.command(['sfdisk',disk],input=specification)
             with open(disk,'r+b') as target: target.truncate(128*1024**2)
             before=json.loads(grow.command(['sfdisk','--json',disk]))['partitiontable']
             plan=grow.growth_plan(before,128*1024**2,disk+'2')
