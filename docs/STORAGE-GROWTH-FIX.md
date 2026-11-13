@@ -91,3 +91,16 @@ The recovery launcher and offline helper passed PowerShell parsing and Bash synt
 checks respectively; booting the remastered recovery ISO and repairing this VM
 remain pending live execution. No full firmware rebuild or hardware qualification
 is claimed by these CI tests.
+
+## Live offline recovery result
+
+The disposable VM returned from offline recovery and rc.4 verification passed
+all nine checks in artifacts/upgrade-check-20261113T174638Z-6ec1d229/upgrade-post.json.
+Usable root capacity is now 46,194,810,880 bytes, compared with the original
+46,167,982,080-byte baseline. Installed version/helper identity, five retained core
+configuration files, disabled unconfigured UPS, Docker bridge/return policy,
+container DNS/HTTP and router/client connectivity passed. release_ready remains
+false. This is a manually repaired rc.4 result and must not replace the original
+capacity-failure history. Next build the pinned rc.5 source and validate an upgrade
+with automatic storage growth and no subsequent repair. External WAN isolation,
+app-data migration and physical hardware qualification remain open.
