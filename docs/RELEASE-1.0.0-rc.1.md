@@ -54,9 +54,13 @@ store and native app integrations.
 
 ## Installing
 
-**Fresh install (recommended):** write the installer ISO to a USB stick, boot the
-target (UEFI), and follow the guided installer. The ISO is **fresh-install only** —
-it is never a sysupgrade payload. Requires a ≥16 GiB disk and two wired NICs.
+> This release ships the **signed firmware image**. The guided UEFI installer ISO
+> is a follow-up (it needs a privileged build); the image below is installable now.
+
+**Fresh install:** write the firmware image to the target disk (≥16 GiB, UEFI), e.g.
+`gunzip -c openwrt-x86-64-generic-ext4-combined-efi.img.gz | dd of=/dev/sdX bs=4M conv=fsync`,
+then boot. (The guided ISO installer, when available, is **fresh-install only** —
+never a sysupgrade payload — and requires two wired NICs.)
 
 **Upgrade an existing Haven lab VM:** upload the firmware image (`.img.gz`) and its
 `.sig` signature on System → Firmware Upgrade. Haven verifies the signature, then
