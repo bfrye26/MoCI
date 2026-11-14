@@ -7,8 +7,16 @@ traffic tests, and external WAN-client isolation still require physical hardware
 `release_ready` remains `false` for production use. Treat this as a candidate for
 lab/VM and guided bring-up, not a production-hardened firmware.
 
-Built from MoCI commit `0cea9fda4869c5f26f21b1cdb6de923fcc0a278a` on OpenWrt
+Built from MoCI commit `6e55e2c6af1b26e35f6422aedc74f6bcb9bb5526` on OpenWrt
 **v25.12.6** (`64900e756efa`).
+
+**Firmware image SHA-256:**
+`a4f75fe488fb1b8da1ba4b03042ff9ffe212353ddabbc310dbbaca7a16a20be8`
+(`openwrt-x86-64-generic-ext4-combined-efi.img.gz`)
+
+Validated on a lab VM: clean boot into 1.0.0-rc.1, RFC 2136 DNS publishing
+end-to-end (opt-in → UPDATE → dnsmasq), signature verify-before-install
+(valid/tampered/unsigned), and all new UI pages render.
 
 ## What's new in 1.0.0-rc.1
 
