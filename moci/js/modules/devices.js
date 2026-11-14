@@ -5,45 +5,12 @@ const MAC=/^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i;
 const IPV4=/^(\d{1,3}\.){3}\d{1,3}$/;
 const validIP=v=>IPV4.test(v)&&v.split('.').every(n=>Number(n)<=255);
 const normMac=v=>String(v||'').trim().toLowerCase();
-// Compact OUI (MAC prefix) table for recognising common home/office device makers.
-// Not exhaustive — unknown prefixes fall back to "Unknown vendor".
-const OUI={
-'00:1a:11':'Google','3c:5a:b4':'Google','f4:f5:d8':'Google','54:60:09':'Google','a4:77:33':'Google',
-'00:17:c4':'Quanta','00:26:bb':'Apple','00:1c:b3':'Apple','00:23:12':'Apple','00:25:00':'Apple','3c:07:54':'Apple',
-'40:6c:8f':'Apple','58:55:ca':'Apple','70:56:81':'Apple','7c:6d:62':'Apple','88:66:a5':'Apple','a4:5e:60':'Apple',
-'ac:bc:32':'Apple','b8:e8:56':'Apple','d0:23:db':'Apple','f0:18:98':'Apple','14:98:77':'Apple','28:cf:e9':'Apple',
-'34:36:3b':'Apple','48:60:bc':'Apple','60:03:08':'Apple','78:31:c1':'Apple','98:01:a7':'Apple','c8:69:cd':'Apple',
-'00:1d:25':'Samsung','00:21:19':'Samsung','08:08:c2':'Samsung','10:1d:c0':'Samsung','18:67:b0':'Samsung',
-'24:4b:81':'Samsung','30:cd:a7':'Samsung','5c:0a:5b':'Samsung','84:25:db':'Samsung','a0:0b:ba':'Samsung',
-'cc:07:ab':'Samsung','e8:50:8b':'Samsung','f0:25:b7':'Samsung','04:18:0f':'Samsung','5c:49:7d':'Samsung',
-'00:1b:21':'Intel','00:1e:64':'Intel','00:24:d7':'Intel','3c:97:0e':'Intel','5c:51:4f':'Intel','80:86:f2':'Intel',
-'8c:ec:4b':'Intel','a0:36:9f':'Intel','b4:96:91':'Intel','f8:63:3f':'Intel','00:23:ae':'Intel','9c:b6:d0':'Intel',
-'00:14:22':'Dell','00:1e:c9':'Dell','00:21:9b':'Dell','00:26:b9':'Dell','18:03:73':'Dell','24:b6:fd':'Dell',
-'34:17:eb':'Dell','5c:f9:dd':'Dell','b0:83:fe':'Dell','d4:be:d9':'Dell','f8:db:88':'Dell',
-'00:1a:4b':'HP','00:21:5a':'HP','00:26:55':'HP','10:60:4b':'HP','3c:d9:2b':'HP','64:51:06':'HP','9c:b6:54':'HP',
-'00:16:35':'HP','00:1f:29':'HP','00:23:7d':'HP','00:0c:29':'VMware','00:50:56':'VMware','00:05:69':'VMware',
-'00:1c:42':'Parallels','08:00:27':'VirtualBox','52:54:00':'QEMU/KVM',
-'00:15:5d':'Microsoft','00:12:5a':'Microsoft','00:1d:d8':'Microsoft','7c:1e:52':'Microsoft','dc:b4:c4':'Microsoft',
-'00:0d:3a':'Microsoft','28:18:78':'Microsoft','60:45:bd':'Microsoft','98:5f:d3':'Microsoft',
-'00:1e:c2':'Amazon','0c:47:c9':'Amazon','18:74:2e':'Amazon','34:d2:70':'Amazon','40:b4:cd':'Amazon',
-'44:65:0d':'Amazon','50:dc:e7':'Amazon','68:37:e9':'Amazon','74:75:48':'Amazon','84:d6:d0':'Amazon',
-'a0:02:dc':'Amazon','ac:63:be':'Amazon','f0:27:2d':'Amazon','fc:65:de':'Amazon',
-'00:1a:2b':'Xiaomi','28:6c:07':'Xiaomi','34:ce:00':'Xiaomi','50:8f:4c':'Xiaomi','64:09:80':'Xiaomi',
-'74:23:44':'Xiaomi','7c:1d:d9':'Xiaomi','98:fa:e3':'Xiaomi','f8:a4:5f':'Xiaomi','04:cf:8c':'Xiaomi',
-'00:1e:10':'Huawei','00:25:9e':'Huawei','04:02:1f':'Huawei','20:08:ed':'Huawei','48:46:fb':'Huawei',
-'5c:4c:a9':'Huawei','70:72:3c':'Huawei','88:28:b3':'Huawei','ac:e2:15':'Huawei','d4:6e:5c':'Huawei',
-'00:1f:3f':'TP-Link','14:cc:20':'TP-Link','50:c7:bf':'TP-Link','60:e3:27':'TP-Link','90:f6:52':'TP-Link',
-'b0:be:76':'TP-Link','c0:25:e9':'TP-Link','f4:f2:6d':'TP-Link',
-'00:14:6c':'Netgear','00:1e:2a':'Netgear','00:26:f2':'Netgear','20:4e:7f':'Netgear','30:46:9a':'Netgear',
-'84:1b:5e':'Netgear','a0:40:a0':'Netgear','c4:04:15':'Netgear',
-'00:1d:60':'Asus','04:d4:c4':'Asus','10:bf:48':'Asus','2c:56:dc':'Asus','38:2c:4a':'Asus','54:04:a6':'Asus',
-'ac:22:0b':'Asus','d8:50:e6':'Asus','f4:6d:04':'Asus',
-'b8:27:eb':'Raspberry Pi','dc:a6:32':'Raspberry Pi','e4:5f:01':'Raspberry Pi','28:cd:c1':'Raspberry Pi',
-'24:0a:c4':'Espressif','30:ae:a4':'Espressif','5c:cf:7f':'Espressif','84:0d:8e':'Espressif','a4:cf:12':'Espressif',
-'cc:50:e3':'Espressif','ec:fa:bc':'Espressif','00:17:88':'Philips Hue','00:21:2e':'Sony','fc:f1:52':'Sony',
-'00:04:20':'Logitech','00:1f:20':'Logitech','44:73:d6':'Logitech','c4:7c:8d':'Logitech'
-};
-const vendorForMac=mac=>{const p=normMac(mac).split(':').slice(0,3).join(':');return OUI[p]||'Unknown vendor';};
+// Vendor identity uses the full IEEE MA-L OUI registry (oui-data.js, lazy-loaded in show()).
+// A few well-known virtualization prefixes are locally administered but not random, so they
+// are recognised before the randomized-MAC check.
+const LOCAL_OUI={'52:54:00':'QEMU/KVM','00:0c:29':'VMware','00:50:56':'VMware','00:05:69':'VMware','08:00:27':'VirtualBox','00:1c:42':'Parallels','00:15:5d':'Microsoft Hyper-V','00:16:3e':'Xen','00:1c:14':'VMware'};
+// Locally-administered bit (bit 1 of the first octet) marks private/randomized MACs.
+const isRandomMac=mac=>{const o=parseInt(normMac(mac).split(":")[0],16);return Number.isFinite(o)&&(o&0x02)!==0;};
 export default class DevicesModule{
 	constructor(core){
 		this.core=core;this.busy=false;
@@ -59,13 +26,15 @@ export default class DevicesModule{
 		if(!this.root)return;
 		this.root.replaceChildren(this.el('p','Discovering devices on your network…','page-loading'));
 		try{
-			const [leases,dhcp,network,firewall,arp]=await Promise.all([
+			const [leases,dhcp,network,firewall,arp,oui]=await Promise.all([
 				this.rpc('moci','getDHCPLeases').catch(()=>({dhcp_leases:[]})),
 				this.uci('get',{config:'dhcp'}),
 				this.uci('get',{config:'network'}).catch(()=>({values:{}})),
 				this.uci('get',{config:'firewall'}).catch(()=>({values:{}})),
-				this.rpc('file','read',{path:'/proc/net/arp'}).catch(()=>({data:''}))
+				this.rpc('file','read',{path:'/proc/net/arp'}).catch(()=>({data:''})),
+				import('./oui-data.js?v=1.0.0r4').then(m=>m.default).catch(()=>({}))
 			]);
+			this.oui=oui||{};
 			this.leases=Array.isArray(leases.dhcp_leases)?leases.dhcp_leases:[];
 			this.dhcp=dhcp.values||{};
 			this.network=network.values||{};
@@ -76,6 +45,12 @@ export default class DevicesModule{
 		}catch(e){this.root.replaceChildren(this.el('p','Unable to read devices: '+e.message,'page-error'));}
 	}
 	resForMac(mac){return this.reservations.find(([,v])=>normMac(v.mac)===normMac(mac));}
+	vendorForMac(mac){
+		const p=normMac(mac).split(':').slice(0,3).join(':');
+		if(LOCAL_OUI[p])return LOCAL_OUI[p];
+		if(isRandomMac(mac))return 'Private / randomized MAC';
+		return this.oui[p]||'Unknown vendor';
+	}
 	// Every device seen on the LAN (ARP table), not just ones this router gave a
 	// DHCP lease to — other DHCP servers (e.g. a mesh system) may serve clients.
 	buildConnected(arpData){
@@ -155,7 +130,7 @@ export default class DevicesModule{
 			const res=resByMac.get(normMac(dev.macaddr));
 			const nameCell=this.el('td');nameCell.append(this.el('span',name,'dev-name'),this.el('span',dev.macaddr,'dev-mono dev-res-meta'));
 			const profile=this.profileForIp(dev.ipaddr);
-			tr.append(nameCell,this.el('td',vendorForMac(dev.macaddr)),this.el('td',dev.ipaddr,'dev-mono'),
+			tr.append(nameCell,this.el('td',this.vendorForMac(dev.macaddr)),this.el('td',dev.ipaddr,'dev-mono'),
 				this.el('td',profile),this.el('td',dev.expires>0?this.fmtLease(dev.expires):'—'));
 			const typeCell=this.el('td');
 			const typeLabel=dev.isStatic?'Static':(dev.hasLease?'DHCP':'Other');

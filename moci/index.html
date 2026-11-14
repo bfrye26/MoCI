@@ -14,7 +14,7 @@
 		<meta name="apple-mobile-web-app-capable" content="yes" />
 		<meta name="apple-mobile-web-app-status-bar-style" content="black" />
 		<link rel="apple-touch-icon" href="icons/icon-192.png" />
-		<link rel="stylesheet" href="app.css?v=1.0.0r3" />
+		<link rel="stylesheet" href="app.css?v=1.0.0r4" />
 	</head>
 	<body>
 		<div id="app">
@@ -65,12 +65,16 @@
 							<a class="nav-item" href="#/devices"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span><span class="nav-label">Devices</span></a>
 								<a class="nav-item" href="#/network/firewall"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></span><span class="nav-label">Firewall</span></a>
 							<a class="nav-item" href="#/qos"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 14l4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg></span><span class="nav-label">Traffic &amp; QoS</span></a>
+							<a class="nav-item" href="#/bandwidth" data-feature="bandwidth"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-8M2 20h20"/></svg></span><span class="nav-label">Bandwidth</span></a>
+							<a class="nav-item" href="#/multiwan" data-feature="multiwan"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v6a6 6 0 0 0 6 6 6 6 0 0 0 6-6V3"/><path d="M12 15v6"/></svg></span><span class="nav-label">Multi-WAN</span></a>
 								<a class="nav-item" href="#/schedules"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></span><span class="nav-label">Wi-Fi Schedules</span></a>
 							</div>
 							<div class="nav-group">
 								<span class="nav-group-label">Security Profiles</span>
 								<a class="nav-item" href="#/profiles"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/><path d="M9 12l2 2 4-4"/></svg></span><span class="nav-label">Profiles</span></a>
 							<a class="nav-item" href="#/networks"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M6 9v3a3 3 0 0 0 3 3h6"/><path d="M18 15v-3a3 3 0 0 0-3-3H9"/></svg></span><span class="nav-label">Guest &amp; IoT Networks</span></a>
+							<a class="nav-item" href="#/adblock" data-feature="adblock"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/><path d="M8 12h8"/></svg></span><span class="nav-label">Ad Blocking</span></a>
+							<a class="nav-item" href="#/tailscale" data-feature="tailscale"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M6.5 7.5L11 16M17.5 7.5L13 16M7 6h10"/></svg></span><span class="nav-label">Tailscale VPN</span></a>
 							</div>
 							<div class="nav-group">
 								<span class="nav-group-label">Points of entry</span>
@@ -86,6 +90,10 @@
 							<div class="nav-group">
 								<span class="nav-group-label">System</span>
 								<a class="nav-item" href="#/system"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/><path d="M1 14h6M9 8h6M17 16h6"/></svg></span><span class="nav-label">System</span></a>
+								<a class="nav-item" href="#/features"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="10" rx="5"/><circle cx="16" cy="12" r="3"/></svg></span><span class="nav-label">Features</span></a>
+								<a class="nav-item" href="#/terminal" data-feature="terminal"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 9l3 3-3 3M12 15h6"/></svg></span><span class="nav-label">Web Terminal</span></a>
+								<a class="nav-item" href="#/statistics" data-feature="statistics"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg></span><span class="nav-label">Statistics</span></a>
+								<a class="nav-item" href="#/nas" data-feature="nas"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="13" width="20" height="7" rx="2"/><path d="M4 13l2-8h12l2 8"/><path d="M6 16.5h.01M10 16.5h.01"/></svg></span><span class="nav-label">NAS / Sharing</span></a>
 							<a class="nav-item" href="#/tls"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/><circle cx="12" cy="16" r="1"/></svg></span><span class="nav-label">HTTPS / Certificate</span></a>
 								<a class="nav-item" href="#/advanced"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6-6-6"/><path d="M12 19h8"/></svg></span><span class="nav-label">Advanced Config</span></a>
 							</div>
@@ -160,6 +168,46 @@
 						<div id="networks-page" class="page hidden">
 							<h2>Guest &amp; IoT Networks</h2>
 							<div id="networks-content"></div>
+						</div>
+
+						<div id="features-page" class="page hidden">
+							<h2>Features &amp; Add-ons</h2>
+							<div id="features-content"></div>
+						</div>
+
+						<div id="bandwidth-page" class="page hidden">
+							<h2>Bandwidth Monitor</h2>
+							<div id="bandwidth-content"></div>
+						</div>
+
+						<div id="multiwan-page" class="page hidden">
+							<h2>Multi-WAN &amp; Failover</h2>
+							<div id="multiwan-content"></div>
+						</div>
+
+						<div id="adblock-page" class="page hidden">
+							<h2>Ad Blocking</h2>
+							<div id="adblock-content"></div>
+						</div>
+
+						<div id="tailscale-page" class="page hidden">
+							<h2>Tailscale VPN</h2>
+							<div id="tailscale-content"></div>
+						</div>
+
+						<div id="terminal-page" class="page hidden">
+							<h2>Web Terminal</h2>
+							<div id="terminal-content"></div>
+						</div>
+
+						<div id="statistics-page" class="page hidden">
+							<h2>Statistics</h2>
+							<div id="statistics-content"></div>
+						</div>
+
+						<div id="nas-page" class="page hidden">
+							<h2>NAS &amp; File Sharing</h2>
+							<div id="nas-content"></div>
 						</div>
 
 						<div id="dashboard-page" class="page">
@@ -2648,7 +2696,7 @@
 		</div>
 
 		<script type="module">
-			import { OpenWrtCore } from './js/core.js?v=1.0.0r3';
+			import { OpenWrtCore } from './js/core.js?v=1.0.0r4';
 			window.app = new OpenWrtCore();
 			window.app.init();
 		</script>

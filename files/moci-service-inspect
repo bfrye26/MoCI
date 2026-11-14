@@ -26,6 +26,17 @@ case "${1-}" in
             printf '%s\n' "$name"
         done
         ;;
+    present)
+        # Names of every installed (executable) init script, regardless of boot
+        # state. Lets the UI tell "not installed" apart from "installed but off".
+        [ "$#" -eq 1 ] || exit 2
+        for script in /etc/init.d/*; do
+            [ -f "$script" ] && [ -x "$script" ] || continue
+            name=${script##*/}
+            valid_service "$name" || continue
+            printf '%s\n' "$name"
+        done
+        ;;
     summary)
         [ "$#" -eq 1 ] || exit 2
         enabled="$(uci -q get banip.global.ban_enabled 2>/dev/null || :)"
@@ -91,7 +102,7 @@ case "${1-}" in
         fi
         ;;
     *)
-        echo 'usage: moci-service-inspect list | summary | inspect <service>' >&2
+        echo 'usage: moci-service-inspect list | present | summary | inspect <service>' >&2
         exit 2
         ;;
 esac

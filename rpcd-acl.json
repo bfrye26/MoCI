@@ -87,10 +87,46 @@
         "/usr/libexec/moci-service-inspect list": [
           "exec"
         ],
+        "/usr/libexec/moci-service-inspect present": [
+          "exec"
+        ],
         "/usr/libexec/moci-service-inspect inspect *": [
           "exec"
         ],
         "/usr/libexec/moci-service-inspect summary": [
+          "exec"
+        ],
+        "/usr/libexec/nlbwmon-action periods": [
+          "exec"
+        ],
+        "/usr/libexec/nlbwmon-action download *": [
+          "exec"
+        ],
+        "/usr/share/nlbwmon/protocols": [
+          "read"
+        ],
+        "/usr/sbin/mwan3 status": [
+          "exec"
+        ],
+        "/usr/bin/find /tmp/rrd *": [
+          "exec"
+        ],
+        "/usr/bin/rrdtool fetch *": [
+          "exec"
+        ],
+        "/sbin/block info": [
+          "exec"
+        ],
+        "/proc/mounts": [
+          "read"
+        ],
+        "/etc/init.d/adblock status": [
+          "exec"
+        ],
+        "/usr/sbin/tailscale status --json": [
+          "exec"
+        ],
+        "/usr/sbin/tailscale ip *": [
           "exec"
         ]
       },
@@ -156,7 +192,10 @@
         "openvpn",
         "unbound",
         "https-dns-proxy",
-        "upnpd"
+        "upnpd",
+        "adblock",
+        "tailscale",
+        "ttyd"
       ]
     },
     "write": {
@@ -219,6 +258,12 @@
         "/etc/init.d/* stop": [
           "exec"
         ],
+        "/etc/init.d/* enable": [
+          "exec"
+        ],
+        "/etc/init.d/* disable": [
+          "exec"
+        ],
         "/sbin/sysupgrade --create-backup /tmp/backup.tar.gz": [
           "exec"
         ],
@@ -262,6 +307,24 @@
           "exec"
         ],
         "/etc/init.d/acme renew": [
+          "exec"
+        ],
+        "/usr/sbin/tailscale up *": [
+          "exec"
+        ],
+        "/usr/sbin/tailscale down": [
+          "exec"
+        ],
+        "/usr/sbin/tailscale logout": [
+          "exec"
+        ],
+        "/sbin/block mount": [
+          "exec"
+        ],
+        "/sbin/block umount": [
+          "exec"
+        ],
+        "/usr/libexec/nlbwmon-action commit": [
           "exec"
         ]
       },
@@ -327,7 +390,10 @@
         "openvpn",
         "unbound",
         "https-dns-proxy",
-        "upnpd"
+        "upnpd",
+        "adblock",
+        "tailscale",
+        "ttyd"
       ]
     }
   }

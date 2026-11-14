@@ -1270,8 +1270,30 @@ export default class SystemModule {
 		const links = el('div', undefined, 'dev-modal-actions');
 		const rel = el('a', 'LATEST RELEASES', 'action-btn'); rel.href = 'https://github.com/bfrye26/MoCI/releases'; rel.target = '_blank'; rel.rel = 'noopener';
 		const asu = el('a', 'ONLINE UPDATE (LuCI)', 'action-btn'); asu.href = '/cgi-bin/luci/admin/system/attendedsysupgrade'; asu.target = '_blank'; asu.rel = 'noopener';
-		links.append(rel, asu);
+		const check = el('button', 'CHECK FOR UPDATES', 'action-btn'); check.type = 'button';
+		links.append(check, rel, asu);
 		root.append(links);
+		const result = el('div', undefined, 'page-note');
+		root.append(result);
+		check.addEventListener('click', async () => {
+			check.disabled = true; result.textContent = 'Checking for a newer Haven release…';
+			try {
+				const resp = await fetch('https://api.github.com/repos/bfrye26/MoCI/releases/latest', { headers: { 'Accept': 'application/vnd.github+json' } });
+				if (!resp.ok) throw new Error('release check returned ' + resp.status);
+				const data = await resp.json();
+				const latest = String(data.tag_name || '').replace(/^v/, '');
+				result.replaceChildren();
+				if (latest && latest !== version) {
+					result.append(el('strong', 'Update available: Haven ' + latest + ' (installed ' + version + '). ', 'dev-name'));
+					const a = el('a', 'View release', 'action-btn'); a.href = data.html_url || 'https://github.com/bfrye26/MoCI/releases'; a.target = '_blank'; a.rel = 'noopener';
+					result.append(a);
+				} else {
+					result.textContent = 'You are running the latest release (' + version + ').';
+				}
+			} catch (e) {
+				result.textContent = 'Could not check for updates: ' + e.message + '. Use “Latest releases” to browse manually.';
+			} finally { check.disabled = false; }
+		});
 	}
 }
 

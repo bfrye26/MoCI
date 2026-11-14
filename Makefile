@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=moci
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_MAINTAINER:=HudsonGraeme
 PKG_LICENSE:=MIT
@@ -65,6 +65,10 @@ define Package/moci/install
 	$(INSTALL_BIN) ./files/init-moci-wifi-scheduler $(1)/etc/init.d/moci-wifi-scheduler
 	$(INSTALL_BIN) ./files/init-moci-dns-publish $(1)/etc/init.d/moci-dns-publish
 	$(INSTALL_DIR) $(1)/etc/moci-dns-publish
+
+	# Add-ons ship off: stop/disable their services on first boot unless enabled.
+	$(INSTALL_DIR) $(1)/etc/uci-defaults
+	$(INSTALL_BIN) ./files/moci-addon-defaults $(1)/etc/uci-defaults/99-moci-addon-defaults
 
 	$(INSTALL_DIR) $(1)/usr/libexec/rpcd
 	$(INSTALL_BIN) ./files/rpcd-moci $(1)/usr/libexec/rpcd/moci

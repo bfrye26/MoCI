@@ -98,7 +98,7 @@ export default class NetworkModule {
 
 	async loadUpnp(){
 		if(!this.upnp){
-			const {default: UpnpModule}=await import('./upnp.js?v=1.0.0r3');
+			const {default: UpnpModule}=await import('./upnp.js?v=1.0.0r4');
 			this.upnp=new UpnpModule(this.core);
 		}
 		await this.upnp.load(document.getElementById('tab-upnp'));

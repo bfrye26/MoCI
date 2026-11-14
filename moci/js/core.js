@@ -1,6 +1,6 @@
 // Bump on every frontend release so browsers fetch fresh modules instead of a
 // stale cached bundle. Kept in sync with the query strings in index.html.
-const ASSET_VER = '1.0.0r3';
+const ASSET_VER = '1.0.0r4';
 
 export class OpenWrtCore {
 	constructor() {
@@ -79,7 +79,15 @@ export class OpenWrtCore {
 			'wifi-profiles': 'wifi-profiles',
 			'ethernet-profiles': 'ethernet-profiles',
 			'vpn-policies': 'vpn-policies',
-			addons: 'addons'
+			addons: 'addons',
+			features: 'features',
+			bandwidth: 'bandwidth',
+			multiwan: 'multiwan',
+			adblock: 'adblock',
+			tailscale: 'tailscale',
+			terminal: 'terminal',
+			statistics: 'statistics',
+			nas: 'nas'
 		};
 		if (routeModuleMap[basePath]) return routeModuleMap[basePath];
 		const addonId = this.addonRouteMap.get(basePath);
@@ -156,7 +164,13 @@ export class OpenWrtCore {
 	applyFeatureFlags() {
 		document.querySelectorAll('[data-feature]').forEach(element => {
 			const feature = element.getAttribute('data-feature');
-			if (!this.isFeatureEnabled(feature)) {
+			const enabled = this.isFeatureEnabled(feature);
+			// Nav entries toggle both ways so a feature switch shows/hides them live.
+			// Tab panels and pages keep their routing/sub-tab visibility: only hide
+			// them when disabled, never force-show (that would reveal inactive tabs).
+			if (element.classList.contains('nav-item')) {
+				element.classList.toggle('hidden', !enabled);
+			} else if (!enabled) {
 				element.classList.add('hidden');
 			}
 		});
@@ -219,7 +233,15 @@ export class OpenWrtCore {
 			storage: '1',
 			leds: '1',
 			firmware: '1',
-			addons: '1'
+			addons: '1',
+			sqm: '0',
+			bandwidth: '0',
+			multiwan: '0',
+			adblock: '0',
+			tailscale: '0',
+			terminal: '0',
+			statistics: '0',
+			nas: '0'
 		};
 	}
 
@@ -246,7 +268,15 @@ export class OpenWrtCore {
 			'wifi-profiles': './modules/wifi-profiles.js',
 			'ethernet-profiles': './modules/ethernet-profiles.js',
 			'vpn-policies': './modules/vpn-policies.js',
-			addons: './modules/addons.js'
+			addons: './modules/addons.js',
+			features: './modules/features.js',
+			bandwidth: './modules/bandwidth.js',
+			multiwan: './modules/multiwan.js',
+			adblock: './modules/adblock.js',
+			tailscale: './modules/tailscale.js',
+			terminal: './modules/terminal.js',
+			statistics: './modules/statistics.js',
+			nas: './modules/nas.js'
 		};
 	}
 
@@ -302,7 +332,15 @@ export class OpenWrtCore {
 			'wifi-profiles': ['wireless'],
 			'ethernet-profiles': ['network'],
 			'vpn-policies': ['wireguard'],
-			addons: ['addons']
+			addons: ['addons'],
+			features: ['system'],
+			bandwidth: ['bandwidth'],
+			multiwan: ['multiwan'],
+			adblock: ['adblock'],
+			tailscale: ['tailscale'],
+			terminal: ['terminal'],
+			statistics: ['statistics'],
+			nas: ['nas']
 		};
 
 		const features = moduleFeatures[moduleName] || [];

@@ -16,13 +16,16 @@ export default class QosModule{
 		if(!this.root)return;
 		this.root.replaceChildren(this.el('p','Reading traffic and queue settings…','page-loading'));
 		try{
-			const [sqm,net]=await Promise.all([
+			const [sqm,net,svc]=await Promise.all([
 				this.uci('get',{config:'sqm'}).catch(()=>({values:{}})),
-				this.uci('get',{config:'network'}).catch(()=>({values:{}}))
+				this.uci('get',{config:'network'}).catch(()=>({values:{}})),
+				this.core.ubusCall('service','list',{verbose:true},{timeout:8000}).catch(()=>[1,{}])
 			]);
 			this.sqm=sqm.values||{};
 			this.wanDevice=(net.values?.wan||{}).device||'eth1';
 			this.queue=Object.entries(this.sqm).find(([,v])=>v?.['.type']==='queue')||null;
+			const inst=(svc[0]===0&&svc[1]?.sqm?.instances)?Object.values(svc[1].sqm.instances):[];
+			this.sqmRunning=inst.some(i=>i?.running===true);
 			this.render();
 			this.startTraffic();
 		}catch(e){this.root.replaceChildren(this.el('p','Unable to read QoS: '+e.message,'page-error'));}
@@ -89,7 +92,10 @@ export default class QosModule{
 
 		// QoS / SQM
 		root.append(this.el('h3','Smart Queue Management (QoS)'));
-		root.append(this.el('p','SQM keeps latency low under load by managing the queue ahead of your modem — it prevents the “bufferbloat” lag that hits games and video calls when someone downloads or streams. Set the limits slightly below your real line speed.','page-note'));
+		const status=this.el('div',undefined,'page-toolbar');
+		status.innerHTML=this.core.renderBadge(this.sqmRunning?'success':'info',this.sqmRunning?'SQM SERVICE RUNNING':'SQM SERVICE STOPPED');
+		root.append(status);
+		root.append(this.el('p','SQM keeps latency low under load by managing the queue ahead of your modem — it prevents the “bufferbloat” lag that hits games and video calls when someone downloads or streams. Set the limits slightly below your real line speed. The SQM service can also be turned on/off from Features.','page-note'));
 		const q=this.queue?this.queue[1]:null;
 		const form=this.el('form',undefined,'qos-form stat-card');
 		const enabled=this.el('input');enabled.type='checkbox';enabled.checked=q?q.enabled==='1':false;

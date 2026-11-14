@@ -115,6 +115,13 @@ CONFIG_PACKAGE_luci-app-snmpd=y
 CONFIG_PACKAGE_luci-app-watchcat=y
 CONFIG_PACKAGE_luci-app-vnstat2=y
 CONFIG_PACKAGE_luci-app-smartdns=y
+# Native add-on dashboards (Haven Features page): ad blocking, Tailscale VPN, web
+# terminal. Installed but OFF by default; the Features toggle enables each one.
+CONFIG_PACKAGE_adblock=y
+CONFIG_PACKAGE_luci-app-adblock=y
+CONFIG_PACKAGE_tailscale=y
+CONFIG_PACKAGE_ttyd=y
+CONFIG_PACKAGE_luci-app-ttyd=y
 CONFIG_PACKAGE_ethtool=y
 CONFIG_PACKAGE_irqbalance=y
 CONFIG_PACKAGE_uhttpd-mod-ubus=y
@@ -122,7 +129,7 @@ CONFIG_PACKAGE_dnsmasq-full=y
 CONFIG_PACKAGE_dnsmasq=n
 CONFIG
 make defconfig
-for p in moci moci-app-docker docker-compose dockerd samba4-server uhttpd-mod-ubus luci-ssl wpad-mbedtls luci-app-statistics luci-app-nlbwmon luci-app-mwan3 luci-app-banip luci-app-acme miniupnpd-nftables kmod-igc intel-microcode kmod-hwmon-coretemp pciutils usbutils iw resize2fs sfdisk partx-utils kmod-mac80211 kmod-rt2800-usb iwinfo wireless-regdb; do
+for p in moci moci-app-docker docker-compose dockerd samba4-server uhttpd-mod-ubus luci-ssl wpad-mbedtls luci-app-statistics luci-app-nlbwmon luci-app-mwan3 luci-app-banip luci-app-acme miniupnpd-nftables kmod-igc intel-microcode kmod-hwmon-coretemp pciutils usbutils iw resize2fs sfdisk partx-utils kmod-mac80211 kmod-rt2800-usb iwinfo wireless-regdb adblock luci-app-adblock tailscale ttyd luci-app-ttyd; do
   grep -q "^CONFIG_PACKAGE_${p}=y$" .config || { echo "Missing package after defconfig: $p" >&2; exit 1; }
 done
 make download -j"${JOBS:-2}"

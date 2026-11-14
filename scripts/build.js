@@ -29,7 +29,15 @@ async function buildJS() {
 		'moci/js/modules/wifi-schedules.js',
 		'moci/js/modules/wifi-profiles.js',
 		'moci/js/modules/vpn-policies.js',
-		'moci/js/modules/ethernet-profiles.js'
+		'moci/js/modules/ethernet-profiles.js',
+		'moci/js/modules/features.js',
+		'moci/js/modules/bandwidth.js',
+		'moci/js/modules/multiwan.js',
+		'moci/js/modules/adblock.js',
+		'moci/js/modules/tailscale.js',
+		'moci/js/modules/terminal.js',
+		'moci/js/modules/statistics.js',
+		'moci/js/modules/nas.js'
 	];
 
 	await mkdir(join(distDir, 'js/modules'), { recursive: true });
@@ -75,6 +83,11 @@ async function copyAssets() {
 	await writeFile(join(distDir, 'index.html'), html);
 
 	await copyFile('moci/manifest.json', join(distDir, 'manifest.json'));
+
+	// OUI vendor registry is a large pre-generated data module; copy it as-is
+	// (skip terser) and let the Devices page lazy-load it.
+	await mkdir(join(distDir, 'js/modules'), { recursive: true });
+	await copyFile('moci/js/modules/oui-data.js', join(distDir, 'js/modules/oui-data.js'));
 
 	await mkdir(join(distDir, 'icons'), { recursive: true });
 	const icons = await readdir('moci/icons');
