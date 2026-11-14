@@ -43,26 +43,30 @@ body {
 }
 
 ::-webkit-scrollbar {
-	width: 8px;
-	height: 8px;
+	width: 10px;
+	height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-	background: #000;
+	background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-	background: #1a1a1a;
-	border-radius: 4px;
+	background: var(--theme-scrollbar);
+	border-radius: 8px;
+	border: 2px solid transparent;
+	background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-	background: #2a2a2a;
+	background: var(--theme-outline);
+	border: 2px solid transparent;
+	background-clip: content-box;
 }
 
 * {
 	scrollbar-width: thin;
-	scrollbar-color: #1a1a1a #000;
+	scrollbar-color: var(--theme-scrollbar) transparent;
 }
 
 .hidden {
@@ -1784,8 +1788,10 @@ body {
 :root[data-theme="cloud"] .diag-input,
 :root[data-theme="cloud"] .docker-compose input,
 :root[data-theme="cloud"] .docker-compose textarea {background:var(--theme-input);color:var(--starship-steel)}
-:root[data-theme="cloud"] ::-webkit-scrollbar-track {background:#e8edf4}
-:root[data-theme="cloud"] ::-webkit-scrollbar-thumb {background:#b4c1d1}
+:root[data-theme="cloud"] ::-webkit-scrollbar-track {background:transparent}
+:root[data-theme="cloud"] ::-webkit-scrollbar-thumb {background:#b4c1d1;border:2px solid transparent;background-clip:content-box}
+:root[data-theme="cloud"] ::-webkit-scrollbar-thumb:hover {background:#8fa5c0;border:2px solid transparent;background-clip:content-box}
+:root[data-theme="cloud"] * {scrollbar-color:#b4c1d1 transparent}
 @media(max-width:900px){.theme-picker{margin-left:0}.theme-picker span{display:none}.theme-picker select{max-width:122px}}
 @media(prefers-reduced-motion:reduce){:root[data-theme] *, :root[data-theme] *::before,:root[data-theme] *::after {transition-duration:.01ms!important}}
 
@@ -2402,6 +2408,7 @@ body { font-family: var(--font-ui); }
 .wan-type.selected strong { color: var(--sidebar-active-text); }
 .wan-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 20px; }
 .wan-field { display: flex; flex-direction: column; gap: 6px; }
+.wan-field .form-input { height: 44px; }
 .wan-field-label { font-size: 13px; font-weight: 600; color: var(--starship-steel); }
 .wan-field-hint { font-size: 12px; color: var(--steel-muted); line-height: 1.4; }
 .wan-dhcp-note { grid-column: 1 / -1; color: var(--steel-muted); font-size: 13.5px; line-height: 1.6; padding: 14px; background: var(--theme-input); border-radius: var(--ui-radius-s); border: 1px solid var(--glass-border); }
@@ -2450,7 +2457,7 @@ body { font-family: var(--font-ui); }
 .dev-res-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .dev-res-meta { overflow-wrap: anywhere; }
 .dev-res-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.dev-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; align-items: end; padding: 20px; }
+.dev-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; align-items: start; padding: 20px; }
 .dev-form .action-btn { grid-column: 1 / -1; justify-self: start; min-width: 200px; }
 @media (max-width: 640px) { .dev-res-card { flex-direction: column; align-items: stretch; } .dev-res-actions { justify-content: flex-start; } }
 
@@ -2466,7 +2473,7 @@ body { font-family: var(--font-ui); }
 .wifi-net-card { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 16px 18px; flex-wrap: wrap; }
 .wifi-net-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .wifi-net-meta { overflow-wrap: anywhere; }
-.wifi-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; align-items: end; padding: 20px; }
+.wifi-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; align-items: start; padding: 20px; }
 .wifi-form .profiles-check { grid-column: 1 / -1; }
 .wifi-form .action-btn { grid-column: 1 / -1; justify-self: start; min-width: 200px; }
 .wifi-edit-holder { margin-top: 8px; }
@@ -2483,7 +2490,7 @@ body { font-family: var(--font-ui); }
 .qos-arrow.down { color: var(--success-green); }
 .qos-arrow.up { color: var(--primary-accent); }
 .qos-rate-v { font-family: var(--font-mono); font-size: 18px; font-weight: 700; color: var(--starship-steel); }
-.qos-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; align-items: end; padding: 20px; }
+.qos-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; align-items: start; padding: 20px; }
 .qos-form .profiles-check { grid-column: 1 / -1; }
 .qos-form .action-btn { grid-column: 1 / -1; justify-self: start; min-width: 220px; }
 
