@@ -7,16 +7,21 @@ traffic tests, and external WAN-client isolation still require physical hardware
 `release_ready` remains `false` for production use. Treat this as a candidate for
 lab/VM and guided bring-up, not a production-hardened firmware.
 
-Built from MoCI commit `6e55e2c6af1b26e35f6422aedc74f6bcb9bb5526` on OpenWrt
+Built from MoCI commit `fab6135be0b5ab292094d38d9839db087b3c675c` on OpenWrt
 **v25.12.6** (`64900e756efa`).
 
 **Firmware image SHA-256:**
-`a4f75fe488fb1b8da1ba4b03042ff9ffe212353ddabbc310dbbaca7a16a20be8`
+`9f194ed4e76a9883bc422e6282f5850b10d09f4797aff5e7b9ef783916f21115`
 (`openwrt-x86-64-generic-ext4-combined-efi.img.gz`)
+
+**Installer ISO SHA-256:**
+`68057bc51ca5bb5502eb4ad1acec676ec60e811b7ae1c33604b856033b48a90a`
+(`MoCI-x86-64-UEFI-Installer.iso`)
 
 Validated on a lab VM: clean boot into 1.0.0-rc.1, RFC 2136 DNS publishing
 end-to-end (opt-in → UPDATE → dnsmasq), signature verify-before-install
-(valid/tampered/unsigned), and all new UI pages render.
+(valid/tampered/unsigned), and all new UI pages render. App integrations refresh
+in the sidebar automatically when apps are installed/started/stopped/removed.
 
 ## What's new in 1.0.0-rc.1
 
@@ -54,13 +59,16 @@ store and native app integrations.
 
 ## Installing
 
-> This release ships the **signed firmware image**. The guided UEFI installer ISO
-> is a follow-up (it needs a privileged build); the image below is installable now.
+This release ships both the **signed firmware image** and the **guided UEFI
+installer ISO** (`MoCI-x86-64-UEFI-Installer.iso`).
 
-**Fresh install:** write the firmware image to the target disk (≥16 GiB, UEFI), e.g.
-`gunzip -c openwrt-x86-64-generic-ext4-combined-efi.img.gz | dd of=/dev/sdX bs=4M conv=fsync`,
-then boot. (The guided ISO installer, when available, is **fresh-install only** —
-never a sysupgrade payload — and requires two wired NICs.)
+**Fresh install (recommended):** write the installer ISO to a USB stick, boot the
+target (UEFI), and follow the guided installer. The ISO is **fresh-install only** —
+it is never a sysupgrade payload. Requires a ≥16 GiB disk and two wired NICs.
+
+**Direct image write:** alternatively write the firmware image to the target disk,
+e.g. `gunzip -c openwrt-x86-64-generic-ext4-combined-efi.img.gz | dd of=/dev/sdX bs=4M conv=fsync`,
+then boot.
 
 **Upgrade an existing Haven lab VM:** upload the firmware image (`.img.gz`) and its
 `.sig` signature on System → Firmware Upgrade. Haven verifies the signature, then
