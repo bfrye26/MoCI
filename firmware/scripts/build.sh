@@ -42,6 +42,26 @@ CONFIG_PACKAGE_openssl-util=y
 CONFIG_PACKAGE_luci-app-uhttpd=y
 CONFIG_PACKAGE_wpad-basic-mbedtls=n
 CONFIG_PACKAGE_wpad-mbedtls=y
+# Wi-Fi stack + drivers so USB/PCIe wireless cards are detected out of the box.
+# rt2800-usb covers the Ralink RT3070/RT5370 (13d3:3273) shipped in the P09B;
+# the mt76/rtl8xxxu/ath9k-htc set covers other common USB Wi-Fi adapters.
+CONFIG_PACKAGE_kmod-cfg80211=y
+CONFIG_PACKAGE_kmod-mac80211=y
+CONFIG_PACKAGE_kmod-rt2800-usb=y
+CONFIG_PACKAGE_rt2800-usb-firmware=y
+CONFIG_PACKAGE_kmod-mt7601u=y
+CONFIG_PACKAGE_kmod-mt76x0u=y
+CONFIG_PACKAGE_kmod-mt76x2u=y
+CONFIG_PACKAGE_kmod-rtl8xxxu=y
+CONFIG_PACKAGE_kmod-ath9k-htc=y
+CONFIG_PACKAGE_ath9k-htc-firmware=y
+CONFIG_PACKAGE_iwinfo=y
+CONFIG_PACKAGE_wireless-regdb=y
+# Common x86 Ethernet drivers so every port is detected on varied hardware.
+CONFIG_PACKAGE_kmod-igb=y
+CONFIG_PACKAGE_kmod-e1000e=y
+CONFIG_PACKAGE_kmod-r8169=y
+CONFIG_PACKAGE_kmod-ixgbe=y
 CONFIG_PACKAGE_moci=y
 CONFIG_PACKAGE_moci-app-docker=y
 CONFIG_PACKAGE_dockerd=y
@@ -102,7 +122,7 @@ CONFIG_PACKAGE_dnsmasq-full=y
 CONFIG_PACKAGE_dnsmasq=n
 CONFIG
 make defconfig
-for p in moci moci-app-docker docker-compose dockerd samba4-server uhttpd-mod-ubus luci-ssl wpad-mbedtls luci-app-statistics luci-app-nlbwmon luci-app-mwan3 luci-app-banip luci-app-acme miniupnpd-nftables kmod-igc intel-microcode kmod-hwmon-coretemp pciutils usbutils iw resize2fs sfdisk partx-utils; do
+for p in moci moci-app-docker docker-compose dockerd samba4-server uhttpd-mod-ubus luci-ssl wpad-mbedtls luci-app-statistics luci-app-nlbwmon luci-app-mwan3 luci-app-banip luci-app-acme miniupnpd-nftables kmod-igc intel-microcode kmod-hwmon-coretemp pciutils usbutils iw resize2fs sfdisk partx-utils kmod-mac80211 kmod-rt2800-usb iwinfo wireless-regdb; do
   grep -q "^CONFIG_PACKAGE_${p}=y$" .config || { echo "Missing package after defconfig: $p" >&2; exit 1; }
 done
 make download -j"${JOBS:-2}"
