@@ -7,21 +7,31 @@ traffic tests, and external WAN-client isolation still require physical hardware
 `release_ready` remains `false` for production use. Treat this as a candidate for
 lab/VM and guided bring-up, not a production-hardened firmware.
 
-Built from MoCI commit `fab6135be0b5ab292094d38d9839db087b3c675c` on OpenWrt
-**v25.12.6** (`64900e756efa`).
+Built from MoCI commit `f8538a6` on OpenWrt **v25.12.6** (`64900e756efa`).
 
 **Firmware image SHA-256:**
-`9f194ed4e76a9883bc422e6282f5850b10d09f4797aff5e7b9ef783916f21115`
+`f4842332ad523e24f43110e3375088a21f8214b6495ab89a1b6e3973e822fbf1`
 (`openwrt-x86-64-generic-ext4-combined-efi.img.gz`)
 
-**Installer ISO SHA-256:**
-`68057bc51ca5bb5502eb4ad1acec676ec60e811b7ae1c33604b856033b48a90a`
-(`MoCI-x86-64-UEFI-Installer.iso`)
+**Installer ISO SHA-256 (dual-boot BIOS + UEFI):**
+`d98f9a80572396c8d4f465ab6da68a6de776b7776ec243f134638f71cb5e7060`
+(`MoCI-x86-64-Installer.iso`)
 
 Validated on a lab VM: clean boot into 1.0.0-rc.1, RFC 2136 DNS publishing
 end-to-end (opt-in → UPDATE → dnsmasq), signature verify-before-install
 (valid/tampered/unsigned), and all new UI pages render. App integrations refresh
 in the sidebar automatically when apps are installed/started/stopped/removed.
+
+### Fixes since the first rc.1 build
+- **All UI pages now ship in the image.** The package Makefile previously
+  installed a stale module list, so WAN, Devices, QoS, Published Ports,
+  Wi-Fi, Guest/IoT Networks, HTTPS and the app integrations were missing from the
+  firmware and loaded as blank pages on a fresh install. The image now installs
+  every built module and the self-hosted font (verified: 19 modules present).
+- **Installer ISO is now dual-boot (BIOS + UEFI).** The earlier UEFI-only ISO
+  dropped to `grub rescue> … i386-pc/normal.mod not found` on hardware booting in
+  BIOS/CSM mode. The ISO now carries a Syslinux BIOS bootloader alongside GRUB
+  EFI (verified: `isolinux.bin` + isohybrid MBR + EFI boot image).
 
 ## What's new in 1.0.0-rc.1
 
@@ -59,11 +69,12 @@ store and native app integrations.
 
 ## Installing
 
-This release ships both the **signed firmware image** and the **guided UEFI
-installer ISO** (`MoCI-x86-64-UEFI-Installer.iso`).
+This release ships both the **signed firmware image** and the **guided dual-boot
+installer ISO** (`MoCI-x86-64-Installer.iso`, boots on both BIOS/CSM and UEFI).
 
-**Fresh install (recommended):** write the installer ISO to a USB stick, boot the
-target (UEFI), and follow the guided installer. The ISO is **fresh-install only** —
+**Fresh install (recommended):** write the installer ISO to a USB stick (e.g.
+`dd if=MoCI-x86-64-Installer.iso of=/dev/sdX bs=4M conv=fsync` or Rufus/balenaEtcher),
+boot the target, and follow the guided installer. The ISO is **fresh-install only** —
 it is never a sysupgrade payload. Requires a ≥16 GiB disk and two wired NICs.
 
 **Direct image write:** alternatively write the firmware image to the target disk,
@@ -100,4 +111,4 @@ usign -V -p moci-image.pub -m openwrt-x86-64-generic-ext4-combined-efi.img.gz \
 - Not physical-hardware-qualified (see status above).
 - VPN chaining supports static IPv4 endpoints only; dynamic-endpoint chaining and
   strict per-profile DNS-through-tunnel enforcement are documented follow-ups.
-- The installer ISO is UEFI-only and fresh-install only.
+- The installer ISO is fresh-install only (it boots on both BIOS/CSM and UEFI).
