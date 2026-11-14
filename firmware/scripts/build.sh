@@ -113,7 +113,9 @@ done
 # Sign the release artifacts with usign. The public key ships inside the image
 # (/etc/moci/moci-image.pub); the secret key stays on the build host only.
 USIGN="$(command -v usign || true)"
-[ -n "$USIGN" ] || [ ! -x staging_dir/host/bin/usign ] || USIGN="staging_dir/host/bin/usign"
+if [ -z "$USIGN" ] && [ -x "$PWD/staging_dir/host/bin/usign" ]; then
+  USIGN="$PWD/staging_dir/host/bin/usign"
+fi
 IMAGE_KEY="${MOCI_IMAGE_KEY:-$HOME/.usign/moci-image.sec}"
 if [ -n "$USIGN" ] && [ -f "$IMAGE_KEY" ]; then
   ( cd bin/targets/x86/64 && "$USIGN" -S -m sha256sums -s "$IMAGE_KEY" -x sha256sums.sig )
