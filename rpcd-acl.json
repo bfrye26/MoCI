@@ -183,6 +183,13 @@
         "/etc/dropbear/authorized_keys": [
           "write"
         ],
+        "/etc/uhttpd.crt": [
+          "write",
+          "read"
+        ],
+        "/etc/uhttpd.key": [
+          "write"
+        ],
         "/tmp/firmware.bin": [
           "write"
         ],
@@ -223,6 +230,21 @@
           "exec"
         ],
         "/etc/init.d/miniupnpd restart": [
+          "exec"
+        ],
+        "/etc/init.d/sqm restart": [
+          "exec"
+        ],
+        "/etc/init.d/sqm reload": [
+          "exec"
+        ],
+        "/usr/bin/openssl x509 *": [
+          "exec"
+        ],
+        "/etc/init.d/uhttpd restart": [
+          "exec"
+        ],
+        "/etc/init.d/acme renew": [
           "exec"
         ]
       },

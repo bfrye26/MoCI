@@ -57,7 +57,9 @@ def prepare_app(name):
     template=load('app-templates.json').get('templates',{}).get(name)
     risk_ok=bool(app and (app.get('risk') in ('review',None) or
                  (app.get('risk')=='sensitive-data' and isinstance(template,dict)
-                  and template.get('reviewed_risk')=='sensitive-data')))
+                  and template.get('reviewed_risk')=='sensitive-data') or
+                 (app.get('risk')=='router-critical' and isinstance(template,dict)
+                  and template.get('reviewed_risk')=='router-critical')))
     if not app or not isinstance(template,dict) or not risk_ok or app.get('template_available') is not True:
         fatal('app lacks a reviewed deployment template')
     repo=template.get('repository')
@@ -68,7 +70,7 @@ def prepare_app(name):
         fatal('invalid reviewed Docker image tag')
     # Explicitly approved source is in root-owned installer data, not client input.
     pull=subprocess.run(['/usr/bin/docker','pull',tag],
-        stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,timeout=115,check=False)
+        stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,timeout=300,check=False)
     if pull.returncode!=0:
         fatal('Docker image pull failed; inspect Docker connectivity and registry access')
     inspect=subprocess.run(['/usr/bin/docker','image','inspect','--format','{{json .RepoDigests}}',tag],

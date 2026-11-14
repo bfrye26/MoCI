@@ -12,6 +12,14 @@ async function buildJS() {
 	const files = [
 		'moci/js/core.js',
 		'moci/js/modules/dashboard.js',
+		'moci/js/modules/wan.js',
+		'moci/js/modules/published-ports.js',
+		'moci/js/modules/devices.js',
+		'moci/js/modules/wifi.js',
+		'moci/js/modules/qos.js',
+		'moci/js/modules/tls.js',
+		'moci/js/modules/networks.js',
+		'moci/js/modules/app-integrations.js',
 		'moci/js/modules/network.js',
 		'moci/js/modules/upnp.js',
 		'moci/js/modules/system.js',
@@ -72,6 +80,12 @@ async function copyAssets() {
 	const icons = await readdir('moci/icons');
 	for (const icon of icons) {
 		await copyFile(join('moci/icons', icon), join(distDir, 'icons', icon));
+	}
+
+	await mkdir(join(distDir, 'fonts'), { recursive: true });
+	const fonts = await readdir('moci/fonts');
+	for (const font of fonts) {
+		await copyFile(join('moci/fonts', font), join(distDir, 'fonts', font));
 	}
 }
 

@@ -56,6 +56,39 @@
         "SETUID"
       ]
     },
+    "pihole": {
+      "image": "pihole/pihole:latest",
+      "repository": "pihole/pihole",
+      "ports": [
+        "8053:80"
+      ],
+      "volumes": [
+        "pihole-data:/etc/pihole",
+        "pihole-dnsmasq:/etc/dnsmasq.d"
+      ],
+      "description": "Network-wide DNS ad-blocking. One-click install runs Pi-hole with a generated admin password; the web admin is on LAN port 8053. Router-critical: installing it does not change your DNS — use the Pi-hole integration to opt in to network DNS, and keep a fallback in mind.",
+      "path": "http://ROUTER_IP:8053/",
+      "needs_write_access": true,
+      "run_as_user": "0:0",
+      "cap_add": [
+        "CHOWN",
+        "DAC_OVERRIDE",
+        "FOWNER",
+        "SETGID",
+        "SETUID",
+        "NET_BIND_SERVICE",
+        "NET_RAW",
+        "SYS_NICE",
+        "KILL"
+      ],
+      "initial_password_env": "FTLCONF_webserver_api_password",
+      "mem_limit": "512m",
+      "reviewed_risk": "router-critical",
+      "environment": {
+        "TZ": "UTC",
+        "DNSMASQ_USER": "root"
+      }
+    },
     "cyberchef": {
       "image": "mpepping/cyberchef:latest",
       "repository": "mpepping/cyberchef",

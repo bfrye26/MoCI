@@ -338,11 +338,29 @@ export default class DashboardModule {
 		if (!canvas) return;
 		this.bandwidthCanvas = canvas;
 		this.bandwidthCtx = canvas.getContext('2d');
-		const dpr=Math.min(window.devicePixelRatio||1,2);
-		const width=Math.max(canvas.offsetWidth,320);
-		canvas.width=Math.round(width*dpr);
-		canvas.height=Math.round(200*dpr);
-		this.bandwidthCtx.setTransform(dpr,0,0,dpr,0,0);
+		this.sizeBandwidthCanvas();
+		// Re-fit when the content width changes (sidebar collapse, window resize).
+		const refit = () => this.sizeBandwidthCanvas();
+		if (typeof ResizeObserver !== 'undefined' && canvas.parentElement) {
+			this._graphResizeObserver = new ResizeObserver(refit);
+			this._graphResizeObserver.observe(canvas.parentElement);
+		}
+		window.addEventListener('resize', refit);
+	}
+
+	sizeBandwidthCanvas() {
+		const canvas = this.bandwidthCanvas;
+		if (!canvas || !this.bandwidthCtx) return;
+		const dpr = Math.min(window.devicePixelRatio || 1, 2);
+		const width = Math.max(canvas.offsetWidth, 280);
+		const targetW = Math.round(width * dpr);
+		const targetH = Math.round(200 * dpr);
+		if (canvas.width !== targetW || canvas.height !== targetH) {
+			canvas.width = targetW;
+			canvas.height = targetH;
+		}
+		this.bandwidthCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+		this.updateBandwidthGraph();
 	}
 
 	drawSeries(data, max, stepX, padding, height, fillColor, strokeColor) {

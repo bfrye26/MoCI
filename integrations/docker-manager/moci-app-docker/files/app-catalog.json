@@ -589,11 +589,11 @@
       "name": "Pi-hole",
       "category": "Networking",
       "repository": "pihole/pihole",
-      "description": "LAN DNS filtering; port 53 conflict possible",
+      "description": "Network-wide DNS ad-blocking with a one-click install and a native in-UI panel",
       "profile": "both",
-      "complexity": "advanced",
+      "complexity": "medium",
       "risk": "router-critical",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "plane",

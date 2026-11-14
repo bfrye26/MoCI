@@ -50,13 +50,15 @@ class DockerStoreContract(unittest.TestCase):
 
     def test_reviewed_templates_match_listings_and_repositories(self):
         catalog_by_id={a['id']:a for a in CATALOG}
-        self.assertEqual(len(TEMPLATES),24)
+        self.assertEqual(len(TEMPLATES),25)
         for name,template in TEMPLATES.items():
             self.assertIn(name,catalog_by_id)
             self.assertTrue(catalog_by_id[name]['template_available'])
             self.assertTrue(catalog_by_id[name]['risk']=='review' or (
                 catalog_by_id[name]['risk']=='sensitive-data' and
-                template.get('reviewed_risk')=='sensitive-data'))
+                template.get('reviewed_risk')=='sensitive-data') or (
+                catalog_by_id[name]['risk']=='router-critical' and
+                template.get('reviewed_risk')=='router-critical'))
             self.assertEqual(template['repository'],catalog_by_id[name]['repository'])
             self.assertTrue(template['image'].startswith(template['repository']+':'))
             self.assertLessEqual(len(template.get('ports',[])),8)
@@ -78,8 +80,8 @@ class DockerStoreContract(unittest.TestCase):
         with patch.dict(API['catalog'].__globals__,{'writes_enabled':lambda:True}):
             apps=API['catalog']()['catalog']
         reviewed=[a for a in apps if a['can_prepare']]
-        self.assertEqual(len(reviewed),24)
-        self.assertEqual(len([a for a in apps if a['setup_state']=='manual']),49)
+        self.assertEqual(len(reviewed),25)
+        self.assertEqual(len([a for a in apps if a['setup_state']=='manual']),48)
         self.assertTrue(all(a['reviewed_template'] for a in reviewed))
         self.assertTrue(all(not a['ready'] for a in apps))
 
@@ -263,10 +265,10 @@ class DockerStoreContract(unittest.TestCase):
         self.assertEqual(TEMPLATES['memos']['run_as_user'],'10001:10001')
         self.assertEqual(TEMPLATES['grafana']['run_as_user'],'472:472')
 
-    def test_twenty_four_candidate_templates_have_unique_host_ports_and_volume_owners(self):
+    def test_candidate_templates_have_unique_host_ports_and_volume_owners(self):
         host_ports=set()
         catalog={app['id']:app for app in CATALOG}
-        self.assertEqual(len(TEMPLATES),24)
+        self.assertEqual(len(TEMPLATES),25)
         for name,template in TEMPLATES.items():
             self.assertTrue(catalog[name]['template_available'])
             self.assertEqual(catalog[name]['repository'],template['repository'])
@@ -506,10 +508,15 @@ class DockerStoreContract(unittest.TestCase):
     def test_sensitive_apps_are_never_auto_promoted_to_one_click(self):
         with patch.dict(API['catalog'].__globals__,{'writes_enabled':lambda:True}):
             apps=API['catalog']()['catalog']
+        templates=TEMPLATES
         for app in apps:
             if app['risk'] in {'router-critical','security-critical','privileged','docker-socket'}:
-                self.assertFalse(app['reviewed_template'],app['id'])
-                self.assertFalse(app['ready'],app['id'])
+                # A sensitive app may only become one-click through an explicit,
+                # audited reviewed_risk marker matching its risk (e.g. Pi-hole).
+                template=templates.get(app['id']) or {}
+                if template.get('reviewed_risk')!=app['risk']:
+                    self.assertFalse(app['reviewed_template'],app['id'])
+                    self.assertFalse(app['ready'],app['id'])
 
 
 if __name__=='__main__':

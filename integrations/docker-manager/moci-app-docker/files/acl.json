@@ -15,7 +15,10 @@
           "catalog",
           "managed_stacks",
           "diagnostics",
-          "container_stats"
+          "container_stats",
+          "app_fetch",
+          "app_info",
+          "pihole_blocking"
         ]
       }
     }

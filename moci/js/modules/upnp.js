@@ -39,8 +39,9 @@ export default class UpnpModule {
     return rows;
   }
   async load(target) {
-    const root=target?.querySelector('#upnp-workspace');
+    const root=target?.querySelector('#upnp-workspace')||target?.querySelector('.upnp-workspace')||target;
     if(!root)return;
+    this._loadTarget=target;
     root.replaceChildren(this.el('p','Loading UPnP settings and active mappings…'));
     try{
       // An absent package is a feature availability state, not a login error.
@@ -202,7 +203,7 @@ export default class UpnpModule {
         }else{
           this.core.showToast(enabled.checked?'UPnP settings saved. Verify a test port mapping.':'Automatic port mapping disabled','success');
         }
-        await this.load(root.parentElement);
+        await this.load(this._loadTarget);
       }catch(error){this.core.showToast('UPnP save failed: '+error.message,'error');}
       finally{this.busy=false;save.disabled=false;}
     });
@@ -225,7 +226,7 @@ export default class UpnpModule {
     }
     table.append(tbody);root.append(table);
     const refresh=this.el('button','REFRESH ACTIVE MAPPINGS','action-btn');refresh.type='button';
-    refresh.addEventListener('click',()=>this.load(root.parentElement));root.append(refresh);
+    refresh.addEventListener('click',()=>this.load(this._loadTarget));root.append(refresh);
     root.append(this.el('p','Mapping descriptions are untrusted client input and are displayed as text only. For granular permission-rule editing, use OpenWrt Tools > UPnP configuration until a dedicated rule editor is validated.','profiles-description'));
   }
 }

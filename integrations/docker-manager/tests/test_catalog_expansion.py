@@ -32,7 +32,10 @@ class CatalogueExpansionTests(unittest.TestCase):
         for app in self.apps:
             self.assertEqual(app["template_available"], app["id"] in templates, app["id"])
             if app["risk"] in {"router-critical", "security-critical", "privileged", "docker-socket"}:
-                self.assertNotIn(app["id"], templates, app["id"])
+                template = templates.get(app["id"])
+                explicitly_reviewed = isinstance(template, dict) and template.get("reviewed_risk") == app["risk"]
+                if not explicitly_reviewed:
+                    self.assertNotIn(app["id"], templates, app["id"])
 
     def test_risky_apps_marked(self):
         by_id = {a["id"]: a for a in self.apps}
