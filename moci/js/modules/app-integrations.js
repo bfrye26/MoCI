@@ -13,17 +13,30 @@ export default class AppIntegrationsModule{
 		this.core=core;this.active=[];
 	}
 	async init(){
+		// Refresh whenever the Docker addon changes the set of managed apps, so
+		// newly installed integrations appear in the sidebar without a reload.
+		window.addEventListener('moci:stacks-changed',()=>this.refresh());
+		await this.refresh();
+	}
+	async refresh(){
 		try{
 			const [s,r]=await this.core.ubusCall('moci-docker','managed_stacks',{});
 			if(s!==0)return;
-			for(const stack of (r.managed_stacks||[])){
-				if(INTEGRATIONS[stack.name]&&stack.running){
-					this.active.push(stack.name);
-					this.injectNav(stack.name);
-					this.createPage(stack.name);
-					this.core.registerRoute('/app-'+stack.name,()=>this.show(stack.name));
+			const running=new Set((r.managed_stacks||[]).filter(x=>x.running).map(x=>x.name));
+			for(const name of Object.keys(INTEGRATIONS)){
+				if(running.has(name)){
+					if(!this.active.includes(name))this.active.push(name);
+					this.injectNav(name);
+					this.createPage(name);
+					this.core.registerRoute('/app-'+name,()=>this.show(name));
+				}else{
+					// App stopped/removed: drop its sidebar entry (page stays hidden).
+					document.querySelector('a[data-integration="'+name+'"]')?.remove();
+					this.active=this.active.filter(x=>x!==name);
 				}
 			}
+			const group=document.getElementById('integrations-nav-group');
+			if(group&&!group.querySelector('a.nav-item'))group.remove();
 		}catch(e){/* Docker unavailable — integrations simply stay hidden */}
 	}
 	injectNav(app){

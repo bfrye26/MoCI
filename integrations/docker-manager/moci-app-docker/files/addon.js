@@ -12,6 +12,11 @@ export default class ApplicationsAddon {
     const write = ['deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action','set_deployments','stack_config'].includes(method);
     const [status, data] = await this.core.ubusCall('moci-docker', method, args, {timeout:write?330000:25000});
     if (status !== 0 || !data || data.error) throw new Error(data?.error || 'The requested operation failed');
+    // Let native integrations refresh their sidebar entries as soon as the set
+    // of running managed apps changes (install/start/stop/remove/deploy).
+    if (['install_catalog','stack_action','deploy','container_action'].includes(method)) {
+      window.dispatchEvent(new CustomEvent('moci:stacks-changed'));
+    }
     return data;
   }
   esc(x) { return this.core.escapeHtml(String(x ?? '')); }
