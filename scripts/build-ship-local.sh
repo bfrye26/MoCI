@@ -47,7 +47,7 @@ commit="${MOCI_SHIP_COMMIT:-77ac51bf9c725b89233b441926a4115095e97a96}"
 branch="${MOCI_SHIP_BRANCH:-fix/docker-firewall-release-20261112}"
 project_root="$HOME/Projects"
 original="${MOCI_SHIP_ORIGINAL:-$project_root/MoCI}"
-openwrt="$project_root/openwrt"
+openwrt="${MOCI_SHIP_OPENWRT:-$project_root/openwrt}"
 checkout="$project_root/MoCI-ship-${commit:0:12}"
 die() { printf '[MoCI] %s\n' "$*" >&2; exit 1; }
 [[ $(id -u) != 0 ]] || die 'Run as your regular Ubuntu user, not root.'
