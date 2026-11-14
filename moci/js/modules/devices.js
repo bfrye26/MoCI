@@ -5,6 +5,45 @@ const MAC=/^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i;
 const IPV4=/^(\d{1,3}\.){3}\d{1,3}$/;
 const validIP=v=>IPV4.test(v)&&v.split('.').every(n=>Number(n)<=255);
 const normMac=v=>String(v||'').trim().toLowerCase();
+// Compact OUI (MAC prefix) table for recognising common home/office device makers.
+// Not exhaustive — unknown prefixes fall back to "Unknown vendor".
+const OUI={
+'00:1a:11':'Google','3c:5a:b4':'Google','f4:f5:d8':'Google','54:60:09':'Google','a4:77:33':'Google',
+'00:17:c4':'Quanta','00:26:bb':'Apple','00:1c:b3':'Apple','00:23:12':'Apple','00:25:00':'Apple','3c:07:54':'Apple',
+'40:6c:8f':'Apple','58:55:ca':'Apple','70:56:81':'Apple','7c:6d:62':'Apple','88:66:a5':'Apple','a4:5e:60':'Apple',
+'ac:bc:32':'Apple','b8:e8:56':'Apple','d0:23:db':'Apple','f0:18:98':'Apple','14:98:77':'Apple','28:cf:e9':'Apple',
+'34:36:3b':'Apple','48:60:bc':'Apple','60:03:08':'Apple','78:31:c1':'Apple','98:01:a7':'Apple','c8:69:cd':'Apple',
+'00:1d:25':'Samsung','00:21:19':'Samsung','08:08:c2':'Samsung','10:1d:c0':'Samsung','18:67:b0':'Samsung',
+'24:4b:81':'Samsung','30:cd:a7':'Samsung','5c:0a:5b':'Samsung','84:25:db':'Samsung','a0:0b:ba':'Samsung',
+'cc:07:ab':'Samsung','e8:50:8b':'Samsung','f0:25:b7':'Samsung','04:18:0f':'Samsung','5c:49:7d':'Samsung',
+'00:1b:21':'Intel','00:1e:64':'Intel','00:24:d7':'Intel','3c:97:0e':'Intel','5c:51:4f':'Intel','80:86:f2':'Intel',
+'8c:ec:4b':'Intel','a0:36:9f':'Intel','b4:96:91':'Intel','f8:63:3f':'Intel','00:23:ae':'Intel','9c:b6:d0':'Intel',
+'00:14:22':'Dell','00:1e:c9':'Dell','00:21:9b':'Dell','00:26:b9':'Dell','18:03:73':'Dell','24:b6:fd':'Dell',
+'34:17:eb':'Dell','5c:f9:dd':'Dell','b0:83:fe':'Dell','d4:be:d9':'Dell','f8:db:88':'Dell',
+'00:1a:4b':'HP','00:21:5a':'HP','00:26:55':'HP','10:60:4b':'HP','3c:d9:2b':'HP','64:51:06':'HP','9c:b6:54':'HP',
+'00:16:35':'HP','00:1f:29':'HP','00:23:7d':'HP','00:0c:29':'VMware','00:50:56':'VMware','00:05:69':'VMware',
+'00:1c:42':'Parallels','08:00:27':'VirtualBox','52:54:00':'QEMU/KVM',
+'00:15:5d':'Microsoft','00:12:5a':'Microsoft','00:1d:d8':'Microsoft','7c:1e:52':'Microsoft','dc:b4:c4':'Microsoft',
+'00:0d:3a':'Microsoft','28:18:78':'Microsoft','60:45:bd':'Microsoft','98:5f:d3':'Microsoft',
+'00:1e:c2':'Amazon','0c:47:c9':'Amazon','18:74:2e':'Amazon','34:d2:70':'Amazon','40:b4:cd':'Amazon',
+'44:65:0d':'Amazon','50:dc:e7':'Amazon','68:37:e9':'Amazon','74:75:48':'Amazon','84:d6:d0':'Amazon',
+'a0:02:dc':'Amazon','ac:63:be':'Amazon','f0:27:2d':'Amazon','fc:65:de':'Amazon',
+'00:1a:2b':'Xiaomi','28:6c:07':'Xiaomi','34:ce:00':'Xiaomi','50:8f:4c':'Xiaomi','64:09:80':'Xiaomi',
+'74:23:44':'Xiaomi','7c:1d:d9':'Xiaomi','98:fa:e3':'Xiaomi','f8:a4:5f':'Xiaomi','04:cf:8c':'Xiaomi',
+'00:1e:10':'Huawei','00:25:9e':'Huawei','04:02:1f':'Huawei','20:08:ed':'Huawei','48:46:fb':'Huawei',
+'5c:4c:a9':'Huawei','70:72:3c':'Huawei','88:28:b3':'Huawei','ac:e2:15':'Huawei','d4:6e:5c':'Huawei',
+'00:1f:3f':'TP-Link','14:cc:20':'TP-Link','50:c7:bf':'TP-Link','60:e3:27':'TP-Link','90:f6:52':'TP-Link',
+'b0:be:76':'TP-Link','c0:25:e9':'TP-Link','f4:f2:6d':'TP-Link',
+'00:14:6c':'Netgear','00:1e:2a':'Netgear','00:26:f2':'Netgear','20:4e:7f':'Netgear','30:46:9a':'Netgear',
+'84:1b:5e':'Netgear','a0:40:a0':'Netgear','c4:04:15':'Netgear',
+'00:1d:60':'Asus','04:d4:c4':'Asus','10:bf:48':'Asus','2c:56:dc':'Asus','38:2c:4a':'Asus','54:04:a6':'Asus',
+'ac:22:0b':'Asus','d8:50:e6':'Asus','f4:6d:04':'Asus',
+'b8:27:eb':'Raspberry Pi','dc:a6:32':'Raspberry Pi','e4:5f:01':'Raspberry Pi','28:cd:c1':'Raspberry Pi',
+'24:0a:c4':'Espressif','30:ae:a4':'Espressif','5c:cf:7f':'Espressif','84:0d:8e':'Espressif','a4:cf:12':'Espressif',
+'cc:50:e3':'Espressif','ec:fa:bc':'Espressif','00:17:88':'Philips Hue','00:21:2e':'Sony','fc:f1:52':'Sony',
+'00:04:20':'Logitech','00:1f:20':'Logitech','44:73:d6':'Logitech','c4:7c:8d':'Logitech'
+};
+const vendorForMac=mac=>{const p=normMac(mac).split(':').slice(0,3).join(':');return OUI[p]||'Unknown vendor';};
 export default class DevicesModule{
 	constructor(core){
 		this.core=core;this.busy=false;
@@ -20,17 +59,41 @@ export default class DevicesModule{
 		if(!this.root)return;
 		this.root.replaceChildren(this.el('p','Discovering devices on your network…','page-loading'));
 		try{
-			const [leases,dhcp]=await Promise.all([
+			const [leases,dhcp,network,firewall]=await Promise.all([
 				this.rpc('moci','getDHCPLeases').catch(()=>({dhcp_leases:[]})),
-				this.uci('get',{config:'dhcp'})
+				this.uci('get',{config:'dhcp'}),
+				this.uci('get',{config:'network'}).catch(()=>({values:{}})),
+				this.uci('get',{config:'firewall'}).catch(()=>({values:{}}))
 			]);
 			this.leases=Array.isArray(leases.dhcp_leases)?leases.dhcp_leases:[];
 			this.dhcp=dhcp.values||{};
+			this.network=network.values||{};
+			this.firewall=firewall.values||{};
 			this.reservations=Object.entries(this.dhcp).filter(([,v])=>v?.['.type']==='host');
 			this.render();
 		}catch(e){this.root.replaceChildren(this.el('p','Unable to read devices: '+e.message,'page-error'));}
 	}
 	resForMac(mac){return this.reservations.find(([,v])=>normMac(v.mac)===normMac(mac));}
+	profileForIp(ip){
+		if(!validIP(ip))return '—';
+		const octets=ip.split('.').map(Number);
+		for(const [name,v] of Object.entries(this.network)){
+			if(v?.['.type']!=='interface'||!v.ipaddr)continue;
+			const net=String(v.ipaddr).split('.').map(Number);
+			const mask=String(v.netmask||'255.255.255.0').split('.').map(Number);
+			if(net.length!==4||mask.length!==4)continue;
+			const inSubnet=octets.every((o,i)=>(o&mask[i])===(net[i]&mask[i]));
+			if(!inSubnet)continue;
+			if(['lan','wan','wan6','loopback'].includes(name))return name==='lan'?'Main LAN':name.toUpperCase();
+			for(const z of Object.values(this.firewall)){
+				if(z?.['.type']!=='zone')continue;
+				const nets=Array.isArray(z.network)?z.network:String(z.network||'').split(/\s+/);
+				if(nets.includes(name)&&String(z.name||'').startsWith('moci_'))return z.name.replace(/^moci_/,'');
+			}
+			return name;
+		}
+		return '—';
+	}
 	async commitReload(){
 		await this.uci('commit',{config:'dhcp'});
 		try{await this.rpc('file','exec',{command:'/etc/init.d/dnsmasq',params:['reload']});}
@@ -51,19 +114,20 @@ export default class DevicesModule{
 		root.append(this.el('p','Devices currently holding a DHCP lease. Make a device’s address static so it never changes — useful for servers, printers and port forwarding.','page-note'));
 		const table=this.el('table',undefined,'data-table dev-table');
 		const thead=this.el('thead');const hr=this.el('tr');
-		for(const h of ['Device','IP address','MAC address','Lease','Address type',''])hr.append(this.el('th',h));
+		for(const h of ['Device','Vendor','IP address','Profile','Lease','Type',''])hr.append(this.el('th',h));
 		thead.append(hr);table.append(thead);
 		const tbody=this.el('tbody');
 		if(!this.leases.length){
-			const tr=this.el('tr');const td=this.el('td','No devices are currently connected.','page-note');td.colSpan=6;tr.append(td);tbody.append(tr);
+			const tr=this.el('tr');const td=this.el('td','No devices are currently connected.','page-note');td.colSpan=7;tr.append(td);tbody.append(tr);
 		}
 		for(const lease of this.leases){
 			const tr=this.el('tr');
 			const name=lease.hostname||'Unknown device';
 			const res=resByMac.get(normMac(lease.macaddr));
-			const nameCell=this.el('td');nameCell.append(this.el('span',name,'dev-name'));
-			tr.append(nameCell,this.el('td',lease.ipaddr,'dev-mono'),this.el('td',lease.macaddr,'dev-mono'),
-				this.el('td',lease.expires>0?this.fmtLease(lease.expires):'—'));
+			const nameCell=this.el('td');nameCell.append(this.el('span',name,'dev-name'),this.el('span',lease.macaddr,'dev-mono dev-res-meta'));
+			const profile=this.profileForIp(lease.ipaddr);
+			tr.append(nameCell,this.el('td',vendorForMac(lease.macaddr)),this.el('td',lease.ipaddr,'dev-mono'),
+				this.el('td',profile),this.el('td',lease.expires>0?this.fmtLease(lease.expires):'—'));
 			const typeCell=this.el('td');
 			typeCell.append(this.el('span',res?'Static':'Dynamic','dev-badge '+(res?'static':'dynamic')));
 			tr.append(typeCell);
@@ -75,6 +139,9 @@ export default class DevicesModule{
 				b.addEventListener('click',()=>this.makeStatic(lease));
 				act.append(b);
 			}
+			const perm=this.el('button','Permissions','dev-action');perm.type='button';
+			perm.addEventListener('click',()=>this.showPermissions(lease,profile));
+			act.append(perm);
 			tr.append(act);tbody.append(tr);
 		}
 		table.append(tbody);root.append(table);
@@ -123,6 +190,30 @@ export default class DevicesModule{
 		if(sec>=3600)return Math.floor(sec/3600)+'h '+Math.floor((sec%3600)/60)+'m';
 		if(sec>=60)return Math.floor(sec/60)+'m';
 		return sec+'s';
+	}
+	showPermissions(lease,profile){
+		document.querySelector('.dev-modal-overlay')?.remove();
+		const overlay=this.el('div',undefined,'dev-modal-overlay');
+		const card=this.el('div',undefined,'dev-modal stat-card');
+		const head=this.el('div',undefined,'dev-modal-head');
+		head.append(this.el('h3',lease.hostname||'Device permissions'));
+		const close=this.el('button','CLOSE','dev-action');close.type='button';
+		close.addEventListener('click',()=>overlay.remove());
+		head.append(close);
+		const meta=this.el('p',vendorForMac(lease.macaddr)+'  ·  '+lease.ipaddr+'  ·  profile: '+profile,'page-note');
+		const note=this.el('p','Permissions are opt-in and off by default. Delegate an inbound port to this device, or publish a DNS name for it. Profile-wide internet, DNS and LAN access are managed on the Security Profiles page.','page-note');
+		const actions=this.el('div',undefined,'dev-modal-actions');
+		const port=this.el('button','Delegate a port','action-btn');port.type='button';
+		port.addEventListener('click',()=>{overlay.remove();this.core.navigate('/published-ports');});
+		const dns=this.el('button','Publish a DNS name','action-btn');dns.type='button';
+		dns.addEventListener('click',()=>{overlay.remove();this.core.navigate('/network/dns');});
+		const prof=this.el('button','Manage profile access','action-btn');prof.type='button';
+		prof.addEventListener('click',()=>{overlay.remove();this.core.navigate('/profiles');});
+		actions.append(port,dns,prof);
+		card.append(head,meta,note,actions);
+		overlay.append(card);
+		overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove();});
+		document.body.append(overlay);
 	}
 	input(id,ph,type){const i=this.el('input');i.id=id;i.type=type;i.placeholder=ph;i.className='form-input';i.autocomplete='off';return i;}
 	field(label,input){const w=this.el('label',undefined,'wan-field');w.append(this.el('span',label,'wan-field-label'),input);return w;}

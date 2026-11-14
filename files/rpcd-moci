@@ -9,7 +9,7 @@ clean_token() {
 
 case "$1" in
 	list)
-		printf '{ "setPassword": { "username": "str", "password": "str" }, "getDHCPLeases": { }, "getPorts": { }, "getBridges": { }, "wgGenKey": { } }\n'
+		printf '{ "setPassword": { "username": "str", "password": "str" }, "getDHCPLeases": { }, "getPorts": { }, "getBridges": { }, "wgGenKey": { }, "wgStatus": { }, "dnsPublishList": { }, "dnsPublishPermission": { "ip": "str", "enable": "bool" }, "dnsPublishRemove": { "name": "str" } }\n'
 		;;
 	call)
 		case "$2" in
@@ -27,6 +27,54 @@ case "$1" in
 					*[!A-Za-z0-9+/=]*|'') printf '{ "error": "key generation failed" }\n'; exit 0 ;;
 				esac
 				printf '{ "private_key": "%s", "public_key": "%s" }\n' "$priv" "$pub"
+				;;
+			wgStatus)
+				if [ ! -x /usr/bin/wg ]; then
+					printf '{ "interfaces": {} }\n'
+					exit 0
+				fi
+				# wg show all dump: 5-field interface lines, 9-field peer lines.
+				# Aggregate the freshest handshake and total transfer per interface.
+				/usr/bin/wg show all dump 2>/dev/null | awk '
+					NF==5 { i=$1; pub[i]=$3; port[i]=$4+0; peers[i]=0; hs[i]=0; rx[i]=0; tx[i]=0; seen[i]=1 }
+					NF==9 { i=$1; peers[i]++; if($6+0>hs[i])hs[i]=$6+0; rx[i]+=$7+0; tx[i]+=$8+0 }
+					END {
+						printf "{ \"interfaces\": {";
+						first=1;
+						for(i in seen){
+							if(!first)printf ",";
+							first=0;
+							printf " \"%s\": { \"public_key\": \"%s\", \"listen_port\": %d, \"peers\": %d, \"latest_handshake\": %d, \"rx\": %.0f, \"tx\": %.0f }", i, pub[i], port[i], peers[i], hs[i], rx[i], tx[i];
+						}
+						printf " } }\n";
+					}'
+				;;
+			dnsPublishList)
+				if [ -f /usr/sbin/moci-dns-publish ]; then
+					/usr/bin/python3 /usr/sbin/moci-dns-publish list
+				else
+					printf '{ "allowed": [], "records": [], "port": 53530, "domain": "lan" }\n'
+				fi
+				;;
+			dnsPublishPermission)
+				input=$(cat)
+				ip=$(clean_token "$(printf '%s' "$input" | jsonfilter -e '@.ip')")
+				enable=$(printf '%s' "$input" | jsonfilter -e '@.enable')
+				case "$enable" in true|1) en=1 ;; *) en=0 ;; esac
+				if [ -z "$ip" ]; then
+					printf '{ "error": "invalid IP address" }\n'
+					exit 0
+				fi
+				/usr/bin/python3 /usr/sbin/moci-dns-publish permit "$ip" "$en"
+				;;
+			dnsPublishRemove)
+				input=$(cat)
+				name=$(clean_token "$(printf '%s' "$input" | jsonfilter -e '@.name')")
+				if [ -z "$name" ]; then
+					printf '{ "error": "invalid record name" }\n'
+					exit 0
+				fi
+				/usr/bin/python3 /usr/sbin/moci-dns-publish remove "$name"
 				;;
 			getBridges)
 				out=''

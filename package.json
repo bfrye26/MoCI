@@ -1,6 +1,6 @@
 {
 	"name": "moci",
-	"version": "0.2.0",
+	"version": "1.0.0-rc.1",
 	"type": "module",
 	"description": "Modern management interface for OpenWrt routers",
 	"keywords": [

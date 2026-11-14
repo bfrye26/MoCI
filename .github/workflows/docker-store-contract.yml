@@ -39,6 +39,13 @@ on:
       - 'scripts/apply-core-fixes.py'
       - 'firmware/**'
       - 'files/moci-hardware-check'
+      - 'files/moci-dns-publish'
+      - 'files/moci-verify-image'
+      - 'files/rpcd-moci'
+      - 'files/ubus-acl-moci.json'
+      - 'tests/test_dns_publish.py'
+      - 'tests/startwrt-features.test.mjs'
+      - 'scripts/sync-version.py'
       - 'Makefile'
       - 'rpcd-acl.json'
       - '.github/workflows/docker-store-contract.yml'
@@ -67,11 +74,15 @@ jobs:
           python -m py_compile integrations/docker-manager/moci-app-docker/files/moci-docker-api
           python -m py_compile integrations/docker-manager/moci-app-docker/files/moci-docker-policy
           python -m py_compile integrations/docker-manager/moci-app-docker/files/moci-docker-firewall
+          python -m py_compile files/moci-dns-publish
           python -m py_compile tests/docker-store-contract.py
+          python -m py_compile tests/test_dns_publish.py
       - name: Check all catalogue entries and install-security contracts
         run: python tests/docker-store-contract.py
       - name: Test firewall drift, ownership, rollback and locking
         run: python tests/docker-firewall-reconcile.py
+      - name: Test RFC 2136 DNS publisher parsing and reconciliation
+        run: python tests/test_dns_publish.py
       - name: Check release interfaces and package dependencies
         run: node tests/release-interface-contract.mjs
       - name: Check MoCI frontend and Docker add-on JavaScript
@@ -86,6 +97,10 @@ jobs:
           node --check moci/js/modules/wifi-profiles.js
           node --check moci/js/modules/vpn-policies.js
           node --check moci/js/modules/dashboard.js
+          node --check moci/js/modules/devices.js
+          node --check moci/js/modules/profiles.js
+          node --check moci/js/modules/app-integrations.js
+          node --check tests/startwrt-features.test.mjs
           node --check integrations/docker-manager/moci-app-docker/files/addon.js
       - name: Check privileged read-only diagnostic helper syntax
         run: sh -n files/moci-service-inspect
@@ -118,13 +133,19 @@ jobs:
         run: |
           node tests/router-config.test.mjs
           node tests/firmware-upgrade.test.mjs
+      - name: Test StartWRT parity features (profiles, devices, UPnP, Help)
+        run: node tests/startwrt-features.test.mjs
       - name: Test Docker manager integration
         run: python -m unittest discover -s integrations/docker-manager/tests -p 'test*.py'
       - name: Check hardware inventory and installer syntax
         run: |
           sh -n files/moci-hardware-check
+          sh -n files/rpcd-moci
+          sh -n files/moci-verify-image
+          sh -n files/init-moci-dns-publish
           sh -n firmware/files/etc/uci-defaults/93-moci-runtime-defaults
           sh -n firmware/files/etc/uci-defaults/94-moci-grow-root
+          sh -n firmware/files/etc/uci-defaults/95-moci-dns-publish
           bash -n firmware/installer/moci-install
           bash -n firmware/installer/build-live-iso.sh
           bash -n firmware/scripts/build.sh

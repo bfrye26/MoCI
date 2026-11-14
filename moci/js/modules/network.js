@@ -98,7 +98,7 @@ export default class NetworkModule {
 
 	async loadUpnp(){
 		if(!this.upnp){
-			const {default: UpnpModule}=await import('./upnp.js?v=0.11.1r3');
+			const {default: UpnpModule}=await import('./upnp.js?v=1.0.0r1');
 			this.upnp=new UpnpModule(this.core);
 		}
 		await this.upnp.load(document.getElementById('tab-upnp'));
@@ -1423,7 +1423,83 @@ export default class NetworkModule {
 					);
 				}
 			} catch {}
+			this.renderPublishedDns();
 		});
+	}
+
+	async renderPublishedDns() {
+		const root = document.getElementById('dns-published-section');
+		if (!root) return;
+		root.replaceChildren();
+		const el = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; };
+		let data = { allowed: [], records: [], port: 53530, domain: 'lan' };
+		try {
+			const [s, r] = await this.core.ubusCall('moci', 'dnsPublishList', {}, { timeout: 15000 });
+			if (s === 0 && r) data = r;
+		} catch {}
+		root.append(el('div', 'PUBLISHED DNS RECORDS (RFC 2136)', 'section-title'));
+		root.append(el('p', 'Devices you opt in below can publish their own DNS names (record type A/AAAA) to the router on UDP port ' + data.port + ', within the .' + data.domain + ' domain. Publishing is off by default; a device’s records are removed when it loses its DHCP lease. Router and admin names are reserved.', 'page-note'));
+		// Opt-in manager
+		const form = el('form', undefined, 'profiles-allow-form');
+		const ip = el('input'); ip.placeholder = 'Device IPv4 to allow publishing'; ip.required = true; ip.maxLength = 15;
+		ip.setAttribute('aria-label', 'Device IPv4 allowed to publish DNS');
+		const allow = el('button', 'ALLOW DEVICE', 'action-btn'); allow.type = 'submit';
+		form.append(ip, allow);
+		form.addEventListener('submit', async e => {
+			e.preventDefault();
+			const value = ip.value.trim();
+			if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(value) || value.split('.').some(o => Number(o) > 255)) { this.core.showToast('Enter a valid IPv4 address', 'error'); return; }
+			if (!window.confirm('Allow ' + value + ' to publish DNS records to the router?')) return;
+			try {
+				const [s, r] = await this.core.ubusCall('moci', 'dnsPublishPermission', { ip: value, enable: true }, { timeout: 15000 });
+				if (s !== 0 || r?.error) throw new Error(r?.error || 'rejected');
+				this.core.showToast('Device allowed to publish', 'success');
+				this.renderPublishedDns();
+			} catch (err) { this.core.showToast('Could not allow device: ' + err.message, 'error'); }
+		});
+		root.append(form);
+		const allowedList = el('div', undefined, 'profiles-grants');
+		if (!data.allowed.length) allowedList.append(el('p', 'No devices are allowed to publish yet.', 'page-note'));
+		for (const addr of data.allowed) {
+			const line = el('div', undefined, 'profiles-entry');
+			line.append(el('span', addr));
+			const revoke = el('button', 'REVOKE', 'action-btn danger'); revoke.type = 'button';
+			revoke.addEventListener('click', async () => {
+				if (!window.confirm('Stop ' + addr + ' from publishing DNS records?')) return;
+				try {
+					await this.core.ubusCall('moci', 'dnsPublishPermission', { ip: addr, enable: false }, { timeout: 15000 });
+					this.core.showToast('Publishing revoked', 'success');
+					this.renderPublishedDns();
+				} catch (err) { this.core.showToast('Revoke failed: ' + err.message, 'error'); }
+			});
+			line.append(revoke); allowedList.append(line);
+		}
+		root.append(allowedList);
+		// Read-only published records table
+		const table = el('table', undefined, 'data-table');
+		const thead = el('thead'); const hr = el('tr');
+		for (const h of ['Name', 'Address', 'Type', 'Published by', '']) hr.append(el('th', h));
+		thead.append(hr); table.append(thead);
+		const tbody = el('tbody');
+		if (!data.records.length) {
+			const tr = el('tr'); const td = el('td', 'No published records.', 'page-note'); td.colSpan = 5; tr.append(td); tbody.append(tr);
+		}
+		for (const rec of data.records) {
+			const tr = el('tr');
+			tr.append(el('td', rec.name), el('td', rec.addr), el('td', rec.type), el('td', rec.publisher));
+			const act = el('td');
+			const del = el('button', 'REMOVE', 'dev-action danger'); del.type = 'button';
+			del.addEventListener('click', async () => {
+				if (!window.confirm('Remove the published record ' + rec.name + '?')) return;
+				try {
+					await this.core.ubusCall('moci', 'dnsPublishRemove', { name: rec.name }, { timeout: 15000 });
+					this.core.showToast('Record removed', 'success');
+					this.renderPublishedDns();
+				} catch (err) { this.core.showToast('Remove failed: ' + err.message, 'error'); }
+			});
+			act.append(del); tr.append(act); tbody.append(tr);
+		}
+		table.append(tbody); root.append(table);
 	}
 
 	parseHosts(data) {

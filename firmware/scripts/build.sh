@@ -25,6 +25,7 @@ cp -a "$WORK/files"/. files/
 chmod 0755 files/etc/uci-defaults/90-moci-setup files/etc/uci-defaults/91-moci-secure-admin
 chmod 0755 files/etc/uci-defaults/93-moci-runtime-defaults files/usr/libexec/moci-runtime-defaults
 chmod 0755 files/etc/uci-defaults/94-moci-grow-root files/usr/libexec/moci-grow-root
+chmod 0755 files/etc/uci-defaults/95-moci-dns-publish
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 cat > .config <<'CONFIG'
@@ -109,4 +110,18 @@ make -j"${JOBS:-2}" V=s
 for image in bin/targets/x86/64/*ext4-combined-efi.img.gz; do
   python3 "$WORK/scripts/normalize-ext4-image.py" "$image"
 done
+# Sign the release artifacts with usign. The public key ships inside the image
+# (/etc/moci/moci-image.pub); the secret key stays on the build host only.
+USIGN="$(command -v usign || true)"
+[ -n "$USIGN" ] || [ ! -x staging_dir/host/bin/usign ] || USIGN="staging_dir/host/bin/usign"
+IMAGE_KEY="${MOCI_IMAGE_KEY:-$HOME/.usign/moci-image.sec}"
+if [ -n "$USIGN" ] && [ -f "$IMAGE_KEY" ]; then
+  ( cd bin/targets/x86/64 && "$USIGN" -S -m sha256sums -s "$IMAGE_KEY" -x sha256sums.sig )
+  for image in bin/targets/x86/64/*ext4-combined-efi.img.gz; do
+    "$USIGN" -S -m "$image" -s "$IMAGE_KEY" -x "$image.sig"
+  done
+  echo "Firmware artifacts signed with $IMAGE_KEY"
+else
+  echo "WARNING: firmware artifacts NOT signed (usign or $IMAGE_KEY missing)" >&2
+fi
 find bin/targets/x86/64 -maxdepth 1 -name '*ext4-combined-efi.img.gz' -print

@@ -1826,6 +1826,11 @@ body {
 .moci-help-panel ul{padding-left:20px;margin:10px 0}
 .moci-help-panel #moci-help-close{border:1px solid var(--glass-border);background:var(--theme-input);color:var(--starship-steel);padding:7px 12px;border-radius:5px;cursor:pointer}
 .moci-help-panel a{display:inline-block;margin-top:8px;color:var(--theme-link);font-size:12px}
+.moci-help-fields{margin-top:14px;border-top:1px solid var(--glass-border);padding-top:12px}
+.moci-help-fields h4{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--starship-steel);margin-bottom:8px}
+.moci-help-fields dl{display:grid;gap:6px}
+.moci-help-fields dt{font-size:12.5px;font-weight:600;color:var(--starship-steel)}
+.moci-help-fields dd{font-size:12.5px;line-height:1.6;color:var(--steel-muted);margin:0 0 4px}
 @media(max-width:800px){.moci-help-button{padding:7px 9px}.moci-help-panel{padding:15px}}
 
 /* Cloud Light correction: build the entire UI from light semantic surfaces.
@@ -2289,7 +2294,13 @@ body { font-family: var(--font-ui); }
 .sidebar-nav { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 6px 14px 18px; scrollbar-width: thin; }
 .nav-group { margin-top: 18px; }
 .nav-group:first-child { margin-top: 4px; }
-.nav-group-label { display: block; padding: 0 12px 7px; font-size: 10.5px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; color: var(--sidebar-muted); opacity: .85; white-space: nowrap; }
+.nav-group-label { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 12px 7px; font-size: 10.5px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; color: var(--sidebar-muted); opacity: .85; white-space: nowrap; cursor: pointer; user-select: none; }
+.nav-group-label:hover { opacity: 1; }
+.nav-group-label:focus-visible { outline: 2px solid var(--theme-outline); outline-offset: 2px; border-radius: 4px; }
+.nav-group-caret { width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid currentColor; transition: transform .18s ease; opacity: .7; flex-shrink: 0; }
+.nav-group.collapsed .nav-group-caret { transform: rotate(-90deg); }
+/* Collapse via display (not .hidden) so collapsed links stay in the search index. */
+.nav-group.collapsed .nav-item { display: none; }
 .nav-item { display: flex; align-items: center; gap: 12px; padding: 9px 12px; margin: 2px 0; border-radius: var(--ui-radius-s); color: var(--sidebar-text); text-decoration: none; font-size: 14px; font-weight: 500; line-height: 1.25; border: 1px solid transparent; transition: background .16s ease, color .16s ease, border-color .16s ease; position: relative; }
 .nav-item .nav-ico { width: 20px; height: 20px; flex-shrink: 0; display: inline-flex; color: var(--sidebar-muted); transition: color .16s ease; }
 .nav-item .nav-ico svg { width: 20px; height: 20px; }
@@ -2437,6 +2448,11 @@ body { font-family: var(--font-ui); }
 
 /* Devices */
 .dev-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 8px; }
+.dev-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; z-index: 400; padding: 20px; }
+.dev-modal { max-width: 460px; width: 100%; padding: 22px 24px; display: flex; flex-direction: column; gap: 12px; }
+.dev-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dev-modal-head h3 { font-size: 17px; }
+.dev-modal-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .dev-stat { display: flex; flex-direction: column; gap: 4px; padding: 18px 20px; }
 .dev-stat-n { font-size: 28px; font-weight: 800; color: var(--starship-steel); line-height: 1; }
 .dev-stat-l { font-size: 12px; color: var(--steel-muted); letter-spacing: .03em; }

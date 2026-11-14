@@ -27,6 +27,9 @@
         "/etc/hosts": [
           "read"
         ],
+        "/etc/moci-release": [
+          "read"
+        ],
         "/tmp/firmware.bin": [
           "read"
         ],
@@ -113,7 +116,9 @@
         "moci": [
           "getDHCPLeases",
           "getPorts",
-          "getBridges"
+          "getBridges",
+          "wgStatus",
+          "dnsPublishList"
         ],
         "service": [
           "list"
@@ -192,6 +197,18 @@
         ],
         "/tmp/firmware.bin": [
           "write"
+        ],
+        "/tmp/firmware.bin.sig": [
+          "write"
+        ],
+        "/usr/libexec/moci-verify-image /tmp/firmware.bin": [
+          "exec"
+        ],
+        "/usr/libexec/moci-verify-image /tmp/firmware.bin /tmp/firmware.bin.sig": [
+          "exec"
+        ],
+        "/bin/rm -f /tmp/firmware.bin.sig": [
+          "exec"
         ],
         "/etc/init.d/* reload": [
           "exec"
@@ -272,7 +289,9 @@
         ],
         "moci": [
           "setPassword",
-          "wgGenKey"
+          "wgGenKey",
+          "dnsPublishPermission",
+          "dnsPublishRemove"
         ]
       },
       "uci": [

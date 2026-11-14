@@ -49,6 +49,7 @@ export default class VpnPoliciesModule{
       this.firewall=firewall.values||{};
       this.pbr=pbr.data.values||{};
       this.pbrAvailable=!pbr.missing;
+      this.wg=(await this.rpc('moci','wgStatus').catch(()=>({interfaces:{}}))).interfaces||{};
       this.render();
     }catch(e){this.root.replaceChildren(this.el('p','Unable to load VPN configuration: '+e.message,'profiles-description'));}
   }
@@ -97,6 +98,7 @@ export default class VpnPoliciesModule{
     if(!this.pbrAvailable){
       root.append(this.el('p','Policy-based routing (pbr) is not installed or configured. Outbound per-profile VPN routing is disabled until pbr is available, but inbound WireGuard and existing network configuration can still be viewed.','profiles-description'));
     }
+    this.renderHealth(root);
     const tunnels=this.vpnInterfaces(),profiles=this.profiles();
     const managed=Object.entries(this.pbr).filter(([id,v])=>id.startsWith('moci_pbr_')&&v?.['.type']==='policy');
     const form=this.el('form',undefined,'profiles-create');
@@ -155,8 +157,12 @@ export default class VpnPoliciesModule{
     for(const [section,value] of managed){
       const profileId=section.slice('moci_pbr_'.length);
       const card=this.el('article',undefined,'stat-card profiles-entry');
-      card.append(this.el('strong',profileId+' → '+(value.interface||'?')),
-        this.el('p',String(value.src_addr||'')+' · '+String(value.name||''),'profiles-description'));
+      const health=this.healthFor(value.interface);
+      const head=this.el('div',undefined,'dev-res-actions');
+      head.append(this.el('strong',profileId+' → '+(value.interface||'?')),
+        this.el('span',health.label,'dev-badge '+health.cls));
+      card.append(head,
+        this.el('p',String(value.src_addr||'')+' · '+String(value.name||'')+' · handshake '+this.fmtAge(health.age),'profiles-description'));
       const remove=this.el('button','REMOVE VPN POLICY','action-btn danger');remove.type='button';
       remove.addEventListener('click',async()=>{
         if(this.busy||!window.confirm('Remove VPN routing policy for '+profileId+'? This will not automatically enable WAN access for the profile.'))return;
@@ -256,7 +262,7 @@ export default class VpnPoliciesModule{
             await this.uci('delete',{config:'network',section:peer});
           }
           await this.uci('delete',{config:'network',section:iface});
-          for(const section of ['moci_wgzone_'+slug,'moci_wgport_'+slug,'moci_wginternet_'+slug]){
+          for(const section of ['moci_wgzone_'+slug,'moci_wgport_'+slug,'moci_wginternet_'+slug,'moci_wgprofile_'+slug]){
             if(this.firewall[section])await this.uci('delete',{config:'firewall',section});
           }
           await this.apply();
@@ -311,9 +317,93 @@ export default class VpnPoliciesModule{
         });
         line.append(revoke);peers.append(line);
       }
+      const profiles=this.profiles();
+      const profileTitle=this.el('h4','Security profile assignment');
+      const assigned=values.moci_profile||'';
+      const profileStatus=this.el('p',assigned?'Remote clients reach the '+assigned+' profile network.':'No profile assigned — remote clients are isolated to this VPN subnet.','profiles-description');
+      const profileForm=this.el('form',undefined,'profiles-allow-form');
+      const profileSelect=this.el('select');
+      const noneOpt=this.el('option','None (isolated)');noneOpt.value='';profileSelect.append(noneOpt);
+      for(const p of profiles){const opt=this.el('option',p.id);opt.value=p.id;profileSelect.append(opt);}
+      profileSelect.value=assigned;
+      const saveProfile=this.el('button','ASSIGN PROFILE','action-btn');saveProfile.type='submit';
+      profileForm.append(profileSelect,saveProfile);
+      profileForm.addEventListener('submit',e=>{e.preventDefault();this.assignInboundProfile(slug,iface,profileSelect.value);});
       const sectionTitle=this.el('h4','Remote clients');
-      card.append(sectionTitle,peerForm,peers,remove);root.append(card);
+      card.append(profileTitle,profileStatus,profileForm,sectionTitle,peerForm,peers,remove);root.append(card);
     }
+  }
+  healthFor(iface){
+    const s=this.wg?.[iface];
+    if(!this.network[iface])return {label:'Unknown',cls:'dynamic'};
+    if(!s)return {label:'No data',cls:'dynamic'};
+    const hs=s.latest_handshake||0;
+    const base={peers:s.peers||0,rx:s.rx||0,tx:s.tx||0,hs};
+    if(!hs)return {label:'Not responding',cls:'dynamic',...base};
+    const age=Math.max(0,Math.floor(Date.now()/1000)-hs);
+    if(age<=180)return {label:'Connected',cls:'static',age,...base};
+    if(age<=600)return {label:'Idle',cls:'dynamic',age,...base};
+    return {label:'Not responding',cls:'dynamic',age,...base};
+  }
+  fmtAge(sec){
+    if(sec===undefined)return 'never';
+    if(sec<60)return sec+'s ago';
+    if(sec<3600)return Math.floor(sec/60)+'m ago';
+    return Math.floor(sec/3600)+'h '+Math.floor((sec%3600)/60)+'m ago';
+  }
+  fmtBytes(n){
+    if(!n)return '0 B';
+    const u=['B','KiB','MiB','GiB','TiB'];let i=0;
+    while(n>=1024&&i<u.length-1){n/=1024;i++;}
+    return n.toFixed(i?1:0)+' '+u[i];
+  }
+  renderHealth(root){
+    const tunnels=this.vpnInterfaces();
+    root.append(this.el('h3','Tunnel health'));
+    root.append(this.el('p','Live WireGuard state from the router. A profile routed through a tunnel has no WAN fallback: if its tunnel stops responding, traffic is blocked rather than leaked over the WAN (kill-switch by refusal).','profiles-description'));
+    if(!tunnels.length){root.append(this.el('p','No WireGuard interfaces configured.','profiles-description'));return;}
+    const list=this.el('div',undefined,'dev-summary');
+    for(const [iface] of tunnels){
+      const h=this.healthFor(iface);
+      const card=this.el('div',undefined,'dev-stat stat-card');
+      const top=this.el('div',undefined,'dev-res-actions');
+      top.append(this.el('strong',iface,'dev-name'),this.el('span',h.label,'dev-badge '+h.cls));
+      card.append(top,
+        this.el('span','Last handshake: '+this.fmtAge(h.age),'dev-mono dev-res-meta'),
+        this.el('span','Peers: '+(h.peers??0)+'  ·  ↓ '+this.fmtBytes(h.rx)+'  ·  ↑ '+this.fmtBytes(h.tx),'dev-mono dev-res-meta'));
+      list.append(card);
+    }
+    root.append(list);
+    const refresh=this.el('button','REFRESH TUNNEL HEALTH','action-btn');refresh.type='button';
+    refresh.addEventListener('click',()=>this.show());
+    root.append(refresh);
+  }
+  async assignInboundProfile(slug,iface,profileId){
+    if(this.busy||!/^[a-z][a-z0-9]{1,16}$/.test(slug))return;
+    const profiles=this.profiles();
+    if(profileId&&!profiles.some(p=>p.id===profileId)){this.core.showToast('Unknown security profile','error');return;}
+    const forward='moci_wgprofile_'+slug;
+    const current=this.network[iface]?.moci_profile||'';
+    if(profileId===current){this.core.showToast('Profile already assigned','info');return;}
+    if(!window.confirm(profileId
+      ?'Let inbound VPN '+slug+' reach the '+profileId+' profile network? Traffic is still subject to that profile’s firewall rules.'
+      :'Remove the profile assignment from inbound VPN '+slug+'?'))return;
+    this.busy=true;
+    try{
+      if(this.firewall[forward])await this.uci('delete',{config:'firewall',section:forward});
+      if(profileId){
+        const p=profiles.find(v=>v.id===profileId);
+        await this.add('firewall','forwarding',forward);
+        await this.set('firewall',forward,{src:'moci_remote_'+slug,dest:p.zone});
+        await this.set('network',iface,{moci_profile:profileId});
+      }else if(this.network[iface]?.moci_profile){
+        await this.uci('delete',{config:'network',section:iface,option:'moci_profile'});
+      }
+      await this.apply();
+      this.core.showToast(profileId?'Inbound VPN assigned to '+profileId:'Profile assignment removed','success');
+      await this.show();
+    }catch(e){this.core.showToast('Assignment not confirmed: '+e.message,'error');}
+    finally{this.busy=false;}
   }
   renderChain(root,tunnels){
     root.append(this.el('h3','Optional two-hop WireGuard chain'));

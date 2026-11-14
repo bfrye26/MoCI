@@ -32,8 +32,10 @@ export default class UpnpModule {
       const e=Number(external),i=Number(internal);
       if(!['TCP','UDP'].includes(proto)||!PORT(e)||!PORT(i)||!IPV4.test(client))continue;
       if(!client.split('.').every(o=>Number(o)<=255))continue;
+      const expiry=Number(parts[parts.length-1]);
       rows.push({proto,external:e,client,internal:i,
-        description:parts.slice(4,-1).join(':').slice(0,150)});
+        description:parts.slice(4,-1).join(':').slice(0,150),
+        expires:Number.isFinite(expiry)&&expiry>0?expiry:0});
       if(rows.length>=100)break;
     }
     return rows;
@@ -208,26 +210,91 @@ export default class UpnpModule {
       finally{this.busy=false;save.disabled=false;}
     });
 
+    this.renderDelegation(root);
     root.append(this.el('h3','Active automatic port mappings'));
     const table=this.el('table',undefined,'data-table');
     const head=this.el('thead');const row=this.el('tr');
-    for(const name of ['Protocol','WAN port','Client IP','Client port','Description'])row.append(this.el('th',name));
+    for(const name of ['Protocol','WAN port','Client IP','Client port','Description','Expires'])row.append(this.el('th',name));
     head.append(row);table.append(head);
     const tbody=this.el('tbody');
     for(const mapping of status.mappings){
       const line=this.el('tr');
-      for(const value of [mapping.proto,String(mapping.external),mapping.client,String(mapping.internal),mapping.description])
+      for(const value of [mapping.proto,String(mapping.external),mapping.client,String(mapping.internal),mapping.description,this.fmtExpiry(mapping.expires)])
         line.append(this.el('td',value));
       tbody.appendChild(line);
     }
     if(!status.mappings.length){
       const row=this.el('tr');const cell=this.el('td','No active UPnP leases available.','profiles-description');
-      cell.colSpan=5;row.append(cell);tbody.append(row);
+      cell.colSpan=6;row.append(cell);tbody.append(row);
     }
     table.append(tbody);root.append(table);
     const refresh=this.el('button','REFRESH ACTIVE MAPPINGS','action-btn');refresh.type='button';
     refresh.addEventListener('click',()=>this.load(this._loadTarget));root.append(refresh);
-    root.append(this.el('p','Mapping descriptions are untrusted client input and are displayed as text only. For granular permission-rule editing, use OpenWrt Tools > UPnP configuration until a dedicated rule editor is validated.','profiles-description'));
+    root.append(this.el('p','Mapping descriptions are untrusted client input and are displayed as text only. Leases expire automatically; delegated devices may only forward ports to themselves (secure mode).','profiles-description'));
+  }
+  fmtExpiry(epoch){
+    if(!epoch)return '—';
+    const remain=Math.max(0,Math.floor(epoch-Date.now()/1000));
+    if(remain<=0)return 'expired';
+    if(remain>=3600)return Math.floor(remain/3600)+'h '+Math.floor((remain%3600)/60)+'m';
+    if(remain>=60)return Math.floor(remain/60)+'m';
+    return remain+'s';
+  }
+  async reloadUpnp(){
+    await this.rpc('uci','commit',{config:'upnpd'});
+    const result=await this.rpc('file','exec',{command:'/etc/init.d/miniupnpd',params:['restart']});
+    if(result.code!==0)throw new Error('miniupnpd restart failed');
+  }
+  renderDelegation(root){
+    root.append(this.el('h3','Delegated device access'));
+    root.append(this.el('p','Off by default. Explicitly grant a trusted device permission to open its own incoming ports via UPnP/NAT-PMP (self-service). Devices without a delegation are denied. Leases expire automatically and secure mode keeps each device forwarding only to itself.','profiles-description'));
+    const rules=Object.entries(this.cfg||{}).filter(([,v])=>v?.['.type']==='perm_rule'&&String(v.comment||'').startsWith('MoCI delegation'));
+    const list=this.el('div',undefined,'upnp-permissions');
+    if(!rules.length)list.append(this.el('p','No devices delegated. Add one below to allow it to request ports.','profiles-description'));
+    for(const [id,v] of rules){
+      const line=this.el('div',undefined,'profiles-entry');
+      line.append(this.el('span',(v.int_addr||'?')+' · ports '+(v.int_ports||'1024-65535')));
+      const revoke=this.el('button','REVOKE','action-btn danger');revoke.type='button';
+      revoke.addEventListener('click',()=>this.removeDelegation(id,v.int_addr));
+      line.append(revoke);list.append(line);
+    }
+    root.append(list);
+    const form=this.el('form',undefined,'profiles-allow-form');
+    const ip=this.el('input');ip.placeholder='Trusted device IPv4 (e.g. 192.168.50.40)';ip.required=true;ip.maxLength=15;
+    ip.setAttribute('aria-label','Delegated device IPv4');
+    const add=this.el('button','DELEGATE DEVICE','action-btn');add.type='submit';
+    form.append(ip,add);
+    form.addEventListener('submit',e=>{e.preventDefault();this.addDelegation(ip.value.trim(),add);});
+    root.append(form);
+  }
+  async addDelegation(ip,btn){
+    if(this.busy)return;
+    if(!IPV4.test(ip)||!ip.split('.').every(o=>Number(o)<=255)){this.core.showToast('Enter a valid device IPv4 address','error');return;}
+    const exists=Object.values(this.cfg||{}).some(v=>v?.['.type']==='perm_rule'&&String(v.comment||'').startsWith('MoCI delegation')&&v.int_addr===ip);
+    if(exists){this.core.showToast('That device is already delegated','error');return;}
+    if(!window.confirm('Allow '+ip+' to open its own incoming ports via UPnP? It may expose services on this device to the internet. Leases expire automatically.'))return;
+    this.busy=true;if(btn)btn.disabled=true;
+    try{
+      const r=await this.rpc('uci','add',{config:'upnpd',type:'perm_rule'});
+      await this.rpc('uci','set',{config:'upnpd',section:r.section,values:{
+        action:'allow',ext_ports:'1024-65535',int_addr:ip,int_ports:'1024-65535',comment:'MoCI delegation '+ip}});
+      await this.reloadUpnp();
+      this.core.showToast('Device delegated','success');
+      await this.load(this._loadTarget);
+    }catch(e){this.core.showToast('Delegation failed: '+e.message,'error');}
+    finally{this.busy=false;if(btn)btn.disabled=false;}
+  }
+  async removeDelegation(section,ip){
+    if(this.busy||!section)return;
+    if(!window.confirm('Revoke port delegation for '+(ip||'this device')+'? Its active leases will expire.'))return;
+    this.busy=true;
+    try{
+      await this.rpc('uci','delete',{config:'upnpd',section});
+      await this.reloadUpnp();
+      this.core.showToast('Delegation revoked','success');
+      await this.load(this._loadTarget);
+    }catch(e){this.core.showToast('Revoke failed: '+e.message,'error');}
+    finally{this.busy=false;}
   }
 }
 

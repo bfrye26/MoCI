@@ -1,6 +1,6 @@
 // Bump on every frontend release so browsers fetch fresh modules instead of a
 // stale cached bundle. Kept in sync with the query strings in index.html.
-const ASSET_VER = '0.11.1r3';
+const ASSET_VER = '1.0.0r1';
 
 export class OpenWrtCore {
 	constructor() {
@@ -16,7 +16,7 @@ export class OpenWrtCore {
 		this.addons = new Map();
 		this.addonManifests = new Map();
 		this.addonRouteMap = new Map();
-		this.helpOpen = false;
+		this.helpOpen = this.getSavedHelpOpen();
 		this.appearanceThemes = new Set(['obsidian', 'cloud', 'ocean', 'terminal', 'amethyst', 'copper']);
 		this.applyTheme(this.getSavedTheme());
 	}
@@ -28,6 +28,10 @@ export class OpenWrtCore {
 		} catch {
 			return 'obsidian';
 		}
+	}
+
+	getSavedHelpOpen() {
+		try { return localStorage.getItem('moci_help_open') === '1'; } catch { return false; }
 	}
 
 	applyTheme(theme) {
@@ -389,13 +393,46 @@ export class OpenWrtCore {
 				list.appendChild(li);
 			}
 		}
+		const fields=document.getElementById('moci-help-fields');
+		if(fields) {
+			const guide=this.getFieldHelp();
+			fields.replaceChildren();
+			const entries=Object.entries(guide);
+			fields.classList.toggle('hidden',!entries.length);
+			if(entries.length) {
+				const h=document.createElement('h4');
+				h.textContent='Field guide';
+				fields.appendChild(h);
+				const dl=document.createElement('dl');
+				for(const [name,explain] of entries) {
+					const dt=document.createElement('dt');dt.textContent=name;
+					const dd=document.createElement('dd');dd.textContent=explain;
+					dl.append(dt,dd);
+				}
+				fields.appendChild(dl);
+			}
+		}
+	}
+	getFieldHelp() {
+		const section=(window.location.hash||'#/dashboard').slice(2).split('/')[0]||'dashboard';
+		const guides={
+			wan:{'Connection type':'How the router reaches the internet: DHCP (automatic), static IP, or PPPoE (username & password from your ISP).','IPv4 address / gateway':'Only for a static connection. The gateway is your ISP’s next-hop address.','DNS servers':'Resolvers the router uses. Leave automatic unless you run your own (e.g. Pi-hole/AdGuard).'},
+			profiles:{'Name':'A short lowercase label for the segment (e.g. guest, kids, iot).','DNS':'Which resolver devices in this profile use — system, a custom resolver, or one reached through a VPN.','Outbound':'Whether traffic leaves directly over the WAN or through a WireGuard tunnel.','LAN access':'Which other profiles/devices this segment may reach. Isolated by default.','WAN access':'Whether this segment may reach the internet at all.','Quiet hours':'Time windows when internet access is blocked for this profile.'},
+			devices:{'Hostname':'The name the device reports via DHCP. May be blank for some devices.','Vendor':'Identified from the MAC address prefix (OUI). Helps recognise phones, laptops and IoT gear.','Make static':'Reserve a fixed IP for this MAC so forwards and DNS names never break.','Profile':'The security profile this device is assigned to (via its Wi-Fi password, port, or reservation).'},
+			'vpn-policies':{'Tunnel':'A WireGuard interface. Outbound policies route a profile through it.','Kill-switch':'If the tunnel has no recent handshake, traffic stops instead of leaking over the WAN.','Last handshake':'How long ago the tunnel last exchanged keys. “Not responding” means it is down.','Chain':'Send traffic through one tunnel, then a second, to separate identity from destination.'},
+			'published-ports':{'Secure mode':'A device may only forward ports to itself — never to another host or the router.','Delegation':'Let a trusted device open its own ports on demand. Off by default; leases expire automatically.','Automatic mappings':'Ports opened by UPnP/NAT-PMP. Read-only; manual rules always win.'},
+			networks:{'Segment type':'Guest, Smart Home/IoT, Kids, or fully isolated. Sets the default internet policy.','Gateway IPv4':'The .1 address of a private /24 subnet not already in use.','Allow internet':'Devices stay isolated from your main LAN either way; this only controls internet reach.'}
+		};
+		return guides[section]||{};
 	}
 	setHelpOpen(open) {
 		this.helpOpen=Boolean(open);
+		try{localStorage.setItem('moci_help_open',this.helpOpen?'1':'0');}catch{}
 		const panel=document.getElementById('moci-help-panel');
 		const toggle=document.getElementById('moci-help-toggle');
 		panel?.classList.toggle('hidden',!this.helpOpen);
 		if(toggle)toggle.setAttribute('aria-expanded',String(this.helpOpen));
+		document.body.classList.toggle('help-mode',this.helpOpen);
 		this.refreshHelp();
 	}
 	attachEventListeners() {
@@ -407,7 +444,55 @@ export class OpenWrtCore {
 			this.setTheme(event.target.value);
 		});
 		this.initSidebar();
+		this.initNavGroups();
 		this.initSearch();
+		this.setHelpOpen(this.helpOpen);
+		document.addEventListener('keydown', event => {
+			if ((event.ctrlKey || event.metaKey) && (event.key === 'k' || event.key === 'K')) {
+				event.preventDefault();
+				this.openPalette();
+			}
+		});
+	}
+
+	initNavGroups() {
+		let collapsed = new Set();
+		try { collapsed = new Set(JSON.parse(localStorage.getItem('moci_nav_collapsed') || '[]')); } catch {}
+		const save = () => { try { localStorage.setItem('moci_nav_collapsed', JSON.stringify([...collapsed])); } catch {} };
+		document.querySelectorAll('.sidebar-nav .nav-group').forEach(group => {
+			const label = group.querySelector('.nav-group-label');
+			if (!label || label.dataset.collapseInit) return;
+			label.dataset.collapseInit = '1';
+			const name = label.textContent.trim();
+			label.setAttribute('role', 'button');
+			label.setAttribute('tabindex', '0');
+			const caret = document.createElement('span');
+			caret.className = 'nav-group-caret';
+			caret.setAttribute('aria-hidden', 'true');
+			label.appendChild(caret);
+			const apply = () => {
+				const isCollapsed = collapsed.has(name);
+				group.classList.toggle('collapsed', isCollapsed);
+				label.setAttribute('aria-expanded', String(!isCollapsed));
+			};
+			const toggle = () => {
+				if (collapsed.has(name)) collapsed.delete(name); else collapsed.add(name);
+				save(); apply();
+			};
+			label.addEventListener('click', toggle);
+			label.addEventListener('keydown', event => {
+				if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle(); }
+			});
+			apply();
+		});
+	}
+
+	openPalette() {
+		const input = document.getElementById('moci-search');
+		if (!input) return;
+		input.focus();
+		input.select();
+		this.renderSearch();
 	}
 
 	initSidebar() {
@@ -474,50 +559,55 @@ export class OpenWrtCore {
 		return items;
 	}
 
+	renderSearch() {
+		const input = document.getElementById('moci-search');
+		const results = document.getElementById('search-results');
+		if (!input || !results) return;
+		const query = input.value.trim().toLowerCase();
+		results.replaceChildren();
+		this._searchKbd = -1;
+		const index = this.buildSearchIndex();
+		// With no query (e.g. Ctrl+K) show the full command list, palette-style.
+		const matches = (query
+			? index.filter(it => it.label.toLowerCase().includes(query) || it.keywords.toLowerCase().includes(query))
+			: index).slice(0, query ? 9 : 14);
+		if (!matches.length) {
+			const empty = document.createElement('div');
+			empty.className = 'search-empty';
+			empty.textContent = 'No matching settings or pages.';
+			results.appendChild(empty);
+			results.classList.remove('hidden');
+			return;
+		}
+		for (const it of matches) {
+			const a = document.createElement('a');
+			a.className = 'search-result';
+			a.href = `#${it.path}`;
+			const ico = document.createElement('span');
+			ico.className = 'nav-ico';
+			ico.innerHTML = it.icon;
+			const label = document.createElement('span');
+			label.textContent = it.label;
+			const group = document.createElement('small');
+			group.textContent = it.group;
+			a.append(ico, label, group);
+			a.addEventListener('click', () => this.closeSearch());
+			results.appendChild(a);
+		}
+		results.classList.remove('hidden');
+	}
+
 	initSearch() {
 		const input = document.getElementById('moci-search');
 		const results = document.getElementById('search-results');
 		if (!input || !results) return;
-		let kbd = -1;
-		const render = () => {
-			const query = input.value.trim().toLowerCase();
-			results.replaceChildren();
-			kbd = -1;
-			if (!query) { results.classList.add('hidden'); return; }
-			const matches = this.buildSearchIndex()
-				.filter(it => it.label.toLowerCase().includes(query) || it.keywords.toLowerCase().includes(query))
-				.slice(0, 9);
-			if (!matches.length) {
-				const empty = document.createElement('div');
-				empty.className = 'search-empty';
-				empty.textContent = 'No matching settings or pages.';
-				results.appendChild(empty);
-				results.classList.remove('hidden');
-				return;
-			}
-			for (const it of matches) {
-				const a = document.createElement('a');
-				a.className = 'search-result';
-				a.href = `#${it.path}`;
-				const ico = document.createElement('span');
-				ico.className = 'nav-ico';
-				ico.innerHTML = it.icon;
-				const label = document.createElement('span');
-				label.textContent = it.label;
-				const group = document.createElement('small');
-				group.textContent = it.group;
-				a.append(ico, label, group);
-				a.addEventListener('click', () => this.closeSearch());
-				results.appendChild(a);
-			}
-			results.classList.remove('hidden');
-		};
-		input.addEventListener('input', render);
-		input.addEventListener('focus', () => { if (input.value) render(); });
+		input.addEventListener('input', () => this.renderSearch());
+		input.addEventListener('focus', () => this.renderSearch());
 		input.addEventListener('keydown', event => {
 			const items = [...results.querySelectorAll('.search-result')];
-			if (event.key === 'ArrowDown') { event.preventDefault(); kbd = Math.min(kbd + 1, items.length - 1); this.markSearchKbd(items, kbd); }
-			else if (event.key === 'ArrowUp') { event.preventDefault(); kbd = Math.max(kbd - 1, 0); this.markSearchKbd(items, kbd); }
+			let kbd = this._searchKbd ?? -1;
+			if (event.key === 'ArrowDown') { event.preventDefault(); kbd = Math.min(kbd + 1, items.length - 1); this._searchKbd = kbd; this.markSearchKbd(items, kbd); }
+			else if (event.key === 'ArrowUp') { event.preventDefault(); kbd = Math.max(kbd - 1, 0); this._searchKbd = kbd; this.markSearchKbd(items, kbd); }
 			else if (event.key === 'Enter') {
 				event.preventDefault();
 				const target = items[kbd] || items[0];

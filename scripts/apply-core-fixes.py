@@ -10,8 +10,8 @@ import time
 
 stage = pathlib.Path(__file__).resolve().parent
 release = pathlib.Path('/etc/moci-release').read_text()
-if not re.search(r'^MOCI_VERSION=[\'\"]?0\.11\.', release, re.M):
-    raise SystemExit('This update requires an installed MoCI 0.11.x candidate.')
+if not re.search(r'^MOCI_VERSION=[\'\"]?(0\.11\.|1\.)', release, re.M):
+    raise SystemExit('This update requires an installed MoCI/Haven release candidate.')
 targets = {
     'core.js': pathlib.Path('/www/moci/js/core.js'),
     'network.js': pathlib.Path('/www/moci/js/modules/network.js'),

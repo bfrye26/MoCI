@@ -14,7 +14,7 @@
 		<meta name="apple-mobile-web-app-capable" content="yes" />
 		<meta name="apple-mobile-web-app-status-bar-style" content="black" />
 		<link rel="apple-touch-icon" href="icons/icon-192.png" />
-		<link rel="stylesheet" href="app.css?v=0.11.1r3" />
+		<link rel="stylesheet" href="app.css?v=1.0.0r1" />
 	</head>
 	<body>
 		<div id="app">
@@ -102,7 +102,7 @@
 							<button class="menu-toggle" id="menu-toggle" aria-label="Open menu" aria-expanded="false"><span></span><span></span><span></span></button>
 							<div class="topbar-search">
 								<span class="search-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg></span>
-								<input id="moci-search" type="search" placeholder="Search settings and pages…" autocomplete="off" aria-label="Search settings and pages" />
+								<input id="moci-search" type="search" placeholder="Search settings and pages…  (Ctrl+K)" autocomplete="off" aria-label="Search settings and pages" />
 								<div class="search-results hidden" id="search-results" role="listbox" aria-label="Search results"></div>
 							</div>
 							<div class="topbar-actions">
@@ -1454,6 +1454,7 @@
 									</tbody>
 								</table>
 							</div>
+							<div class="stat-card" id="dns-published-section" style="margin-top: 24px"></div>
 						</div>
 
 						<div class="tab-content hidden" id="tab-ddns">
@@ -2386,6 +2387,7 @@
 						</div>
 
 						<div class="tab-content hidden" id="tab-upgrade">
+							<div class="stat-card" id="upgrade-current-version" style="margin-bottom: 20px"></div>
 							<div class="stat-card">
 								<div class="section-title">FIRMWARE UPGRADE</div>
 								<div
@@ -2451,6 +2453,14 @@
 										id="firmware-details"
 										style="font-family: monospace; font-size: 12px; color: var(--steel-light)"
 									></div>
+								</div>
+
+								<div class="form-group" style="margin-top: 24px">
+									<label class="form-label" for="firmware-sig-file">SIGNATURE FILE (.sig, optional but recommended)</label>
+									<input type="file" id="firmware-sig-file" accept=".sig" class="form-input" />
+									<div id="firmware-sig-name" style="color: var(--steel-muted); font-size: 12px; margin-top: 6px">
+										No signature selected (image will be treated as unsigned).
+									</div>
 								</div>
 
 								<div class="form-group" style="margin-top: 24px">
@@ -2628,6 +2638,7 @@
 								</div>
 								<p id="moci-help-description"></p>
 								<ul id="moci-help-topics"></ul>
+								<div id="moci-help-fields" class="moci-help-fields hidden"></div>
 								<a id="moci-help-reference" href="https://openwrt.org/docs/start" target="_blank" rel="noopener noreferrer">OpenWrt documentation</a>
 							</aside>
 						</div>
@@ -2637,7 +2648,7 @@
 		</div>
 
 		<script type="module">
-			import { OpenWrtCore } from './js/core.js?v=0.11.1r3';
+			import { OpenWrtCore } from './js/core.js?v=1.0.0r1';
 			window.app = new OpenWrtCore();
 			window.app.init();
 		</script>

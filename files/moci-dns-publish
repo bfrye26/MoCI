@@ -1,0 +1,331 @@
+#!/usr/bin/env python3
+"""Haven RFC 2136 DNS record publisher.
+
+Receives DNS UPDATE messages (opcode 5) on a dedicated port and reconciles A/AAAA
+records into dnsmasq through an addn-hosts file. Publishing is OFF by default:
+only device IPs the administrator has explicitly opted in (allow.json) may
+publish. Names are restricted to the local domain, router/admin names are
+refused, and a publisher's records are dropped when it loses its DHCP lease.
+
+The packet parser and reconciler are pure functions so they can be unit-tested
+without a network or a router (see tests/test_dns_publish.py).
+"""
+import fcntl
+import json
+import os
+import re
+import socket
+import struct
+import subprocess
+import sys
+import time
+
+ROOT = '/etc/moci-dns-publish'
+ALLOW = ROOT + '/allow.json'
+HOSTS = '/etc/moci-published.hosts'
+STATE = '/var/run/moci-dns-publish.json'
+LEASES = '/tmp/dhcp.leases'
+LOCK = '/var/run/moci-dns-publish.lock'
+PORT = 53530
+LOCAL_DOMAIN = 'lan'
+MAX_PER_PUBLISHER = 64
+RESERVED = {'router', 'haven', 'moci', 'localhost', 'openwrt', 'lan'}
+LABEL = re.compile(r'^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$', re.I)
+
+
+def load(path, default):
+    try:
+        with open(path, encoding='utf-8') as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return default
+
+
+def save(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        json.dump(data, f)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
+def parse_name(buf, off):
+    """Parse a possibly-compressed DNS name; return (name, next_offset)."""
+    labels = []
+    jumped = False
+    end = off
+    seen = 0
+    while True:
+        if off >= len(buf):
+            raise ValueError('truncated name')
+        ln = buf[off]
+        if ln == 0:
+            if not jumped:
+                end = off + 1
+            break
+        if ln & 0xC0:
+            if off + 1 >= len(buf):
+                raise ValueError('truncated pointer')
+            ptr = ((ln & 0x3F) << 8) | buf[off + 1]
+            if not jumped:
+                end = off + 2
+            off = ptr
+            jumped = True
+            seen += 1
+            if seen > 64:
+                raise ValueError('pointer loop')
+            continue
+        off += 1
+        if off + ln > len(buf):
+            raise ValueError('truncated label')
+        labels.append(buf[off:off + ln].decode('ascii', 'replace'))
+        off += ln
+    return '.'.join(labels), end
+
+
+def parse_update(buf):
+    """Parse an RFC 2136 UPDATE; return (zone, [ {name,type,addr,action} ]).
+
+    Only A/AAAA additions (class IN) and deletions (class ANY) are extracted.
+    Raises ValueError on malformed or non-UPDATE packets.
+    """
+    if len(buf) < 12:
+        raise ValueError('short header')
+    _id, flags, qd, an, ns, ar = struct.unpack('!HHHHHH', buf[:12])
+    if (flags >> 15) & 1:
+        raise ValueError('not a query')
+    if (flags >> 11) & 0xF != 5:
+        raise ValueError('not an UPDATE')
+    off = 12
+    zone = ''
+    for i in range(qd):
+        name, off = parse_name(buf, off)
+        if off + 4 > len(buf):
+            raise ValueError('truncated question')
+        qtype, qclass = struct.unpack('!HH', buf[off:off + 4])
+        off += 4
+        if i == 0:
+            zone = name
+    records = []
+    for _ in range(an):
+        name, off = parse_name(buf, off)
+        if off + 10 > len(buf):
+            raise ValueError('truncated RR')
+        rtype, rclass, _ttl, rdlen = struct.unpack('!HHIH', buf[off:off + 10])
+        off += 10
+        rdata = buf[off:off + rdlen]
+        if len(rdata) != rdlen:
+            raise ValueError('truncated rdata')
+        off += rdlen
+        if rtype == 1:
+            if rdlen == 4:
+                addr = socket.inet_ntoa(rdata)
+            elif rdlen == 0 and rclass == 255:
+                addr = ''  # delete the whole A RRset for this name
+            else:
+                continue
+            action = 'add' if rclass == 1 else ('delete' if rclass == 255 else None)
+            if action:
+                records.append({'name': name, 'type': 'A', 'addr': addr, 'action': action})
+        elif rtype == 28:
+            if rdlen == 16:
+                addr = socket.inet_ntop(socket.AF_INET6, rdata)
+            elif rdlen == 0 and rclass == 255:
+                addr = ''  # delete the whole AAAA RRset for this name
+            else:
+                continue
+            action = 'add' if rclass == 1 else ('delete' if rclass == 255 else None)
+            if action:
+                records.append({'name': name, 'type': 'AAAA', 'addr': addr, 'action': action})
+    return zone, records
+
+
+def valid_name(name):
+    name = name.rstrip('.').lower()
+    if not name or len(name) > 253:
+        return None
+    labels = name.split('.')
+    if not all(LABEL.match(l) for l in labels):
+        return None
+    if labels[0] in RESERVED:
+        return None
+    # Restrict to the local domain (single label or *.lan).
+    if len(labels) > 1 and labels[-1] != LOCAL_DOMAIN:
+        return None
+    return name
+
+
+def apply_records(state, publisher, records):
+    """Pure reconciler: mutate a copy of state for one publisher's records."""
+    state = {ip: dict(recs) for ip, recs in state.items()}
+    mine = state.setdefault(publisher, {})
+    for r in records:
+        name = valid_name(r['name'])
+        if not name:
+            continue
+        key = name + '/' + r['type']
+        if r['action'] == 'add':
+            if len(mine) >= MAX_PER_PUBLISHER and key not in mine:
+                continue
+            mine[key] = r['addr']
+        elif r['action'] == 'delete':
+            mine.pop(key, None)
+    if not mine:
+        state.pop(publisher, None)
+    return state
+
+
+def render_hosts(state):
+    lines = ['# Haven published DNS records (managed by moci-dns-publish; do not edit)']
+    for ip in sorted(state):
+        for key in sorted(state[ip]):
+            name, _type = key.rsplit('/', 1)
+            lines.append(state[ip][key] + ' ' + name)
+    return '\n'.join(lines) + '\n'
+
+
+def active_lease_ips():
+    ips = set()
+    try:
+        with open(LEASES, encoding='utf-8') as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 3:
+                    ips.add(parts[2])
+    except OSError:
+        pass
+    return ips
+
+
+def prune(state):
+    """Drop records for publishers that no longer hold a DHCP lease."""
+    active = active_lease_ips()
+    if not active:
+        return state  # no lease data yet; do not prune blindly
+    return {ip: recs for ip, recs in state.items() if ip in active}
+
+
+def reload_dnsmasq():
+    try:
+        subprocess.run(['/etc/init.d/dnsmasq', 'reload'],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       timeout=20, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+
+def write_hosts(state):
+    text = render_hosts(state)
+    tmp = HOSTS + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        f.write(text)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, HOSTS)
+
+
+def handle_packet(buf, publisher, state):
+    allow = load(ALLOW, {})
+    if not allow.get(publisher):
+        return state, False  # not opted in
+    try:
+        _zone, records = parse_update(buf)
+    except ValueError:
+        return state, False
+    new = apply_records(state, publisher, records)
+    return new, new != state
+
+
+def serve():
+    os.makedirs(ROOT, mode=0o700, exist_ok=True)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(('0.0.0.0', PORT))
+    sock.settimeout(30)
+    state = load(STATE, {})
+    last_prune = 0
+    while True:
+        try:
+            buf, addr = sock.recvfrom(4096)
+        except socket.timeout:
+            buf = None
+        now = time.time()
+        changed = False
+        if buf:
+            state, changed = handle_packet(buf, addr[0], state)
+        if now - last_prune >= 60:
+            pruned = prune(state)
+            if pruned != state:
+                state = pruned
+                changed = True
+            last_prune = now
+        if changed:
+            with open(LOCK, 'a+') as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                write_hosts(state)
+                save(STATE, state)
+                reload_dnsmasq()
+
+
+def admin_list():
+    allow = load(ALLOW, {})
+    state = load(STATE, {})
+    records = []
+    for ip in sorted(state):
+        for key in sorted(state[ip]):
+            name, rtype = key.rsplit('/', 1)
+            records.append({'name': name, 'addr': state[ip][key], 'type': rtype, 'publisher': ip})
+    return {'allowed': sorted(allow.keys()), 'records': records, 'port': PORT, 'domain': LOCAL_DOMAIN}
+
+
+def admin_permit(ip, enable):
+    if not re.fullmatch(r'(?:\d{1,3}\.){3}\d{1,3}', ip) or any(int(o) > 255 for o in ip.split('.')):
+        raise ValueError('invalid IPv4 address')
+    allow = load(ALLOW, {})
+    if enable:
+        allow[ip] = True
+    else:
+        allow.pop(ip, None)
+    save(ALLOW, allow)
+    return {'ok': True, 'ip': ip, 'enabled': bool(enable)}
+
+
+def admin_remove(name):
+    name = (name or '').rstrip('.').lower()
+    state = load(STATE, {})
+    changed = False
+    for ip in list(state):
+        for key in list(state[ip]):
+            if key.rsplit('/', 1)[0] == name:
+                del state[ip][key]
+                changed = True
+        if not state[ip]:
+            del state[ip]
+    if changed:
+        with open(LOCK, 'a+') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            write_hosts(state)
+            save(STATE, state)
+            reload_dnsmasq()
+    return {'ok': True, 'removed': name}
+
+
+if __name__ == '__main__':
+    args = sys.argv[1:]
+    try:
+        if args[:1] == ['render']:
+            sys.stdout.write(render_hosts(load(STATE, {})))
+        elif args[:1] == ['list']:
+            print(json.dumps(admin_list()))
+        elif args[:2] == ['permit'] and len(args) == 4:
+            print(json.dumps(admin_permit(args[2], args[3] == '1')))
+        elif args[:2] == ['remove'] and len(args) == 3:
+            print(json.dumps(admin_remove(args[2])))
+        elif not args:
+            serve()
+        else:
+            sys.exit(2)
+    except ValueError as exc:
+        print(json.dumps({'error': str(exc)}))

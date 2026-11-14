@@ -1,0 +1,11 @@
+#!/bin/sh
+# Haven published DNS records: let dnsmasq serve the addn-hosts file maintained
+# by moci-dns-publish. Publishing itself stays off until devices are opted in.
+HOSTS=/etc/moci-published.hosts
+[ -f "$HOSTS" ] || printf '# Haven published DNS records (managed by moci-dns-publish)\n' > "$HOSTS"
+if ! uci -q get dhcp.@dnsmasq[0].addnhosts 2>/dev/null | grep -qx "$HOSTS"; then
+	uci add_list dhcp.@dnsmasq[0].addnhosts="$HOSTS"
+	uci commit dhcp
+	/etc/init.d/dnsmasq reload 2>/dev/null || :
+fi
+exit 0

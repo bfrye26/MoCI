@@ -1045,6 +1045,16 @@ export default class SystemModule {
 			if (fileInput.files.length) this.handleFirmwareFile(fileInput.files[0]);
 		});
 
+		const sigInput = document.getElementById('firmware-sig-file');
+		sigInput?.addEventListener('change', () => {
+			this.firmwareSigFile = sigInput.files.length ? sigInput.files[0] : null;
+			this.firmwareValidatedFile = null;
+			const flashBtn2 = document.getElementById('flash-firmware-btn');
+			if (flashBtn2) flashBtn2.disabled = true;
+			const sigName = document.getElementById('firmware-sig-name');
+			if (sigName) sigName.textContent = this.firmwareSigFile ? this.firmwareSigFile.name : 'No signature selected (image will be treated as unsigned).';
+		});
+
 		validateBtn?.addEventListener('click', () => this.validateFirmware());
 		flashBtn?.addEventListener('click', () => this.flashFirmware());
 	}
@@ -1075,8 +1085,8 @@ export default class SystemModule {
 		if (validateBtn) validateBtn.disabled = false;
 	}
 
-	async uploadFirmwareChunked() {
-		if (!this.firmwareFile) throw new Error('No file selected');
+	async uploadFileChunked(file, path) {
+		if (!file) throw new Error('No file selected');
 		const CHUNK_SIZE = 65536;
 		const reader = new FileReader();
 
@@ -1087,11 +1097,11 @@ export default class SystemModule {
 				reader.readAsArrayBuffer(blob);
 			});
 
-		const total = this.firmwareFile.size;
+		const total = file.size;
 		let offset = 0;
 
 		while (offset < total) {
-			const chunk = this.firmwareFile.slice(offset, offset + CHUNK_SIZE);
+			const chunk = file.slice(offset, offset + CHUNK_SIZE);
 			const buffer = await readChunk(chunk);
 			const bytes = new Uint8Array(buffer);
 			const parts = [];
@@ -1105,7 +1115,7 @@ export default class SystemModule {
 				'file',
 				'write',
 				{
-					path: '/tmp/firmware.bin',
+					path,
 					data: b64,
 					base64: true,
 					...(offset > 0 ? { append: true } : {})
@@ -1115,6 +1125,10 @@ export default class SystemModule {
 			if (status !== 0) throw new Error('Firmware upload chunk rejected');
 			offset += CHUNK_SIZE;
 		}
+	}
+
+	async uploadFirmwareChunked() {
+		await this.uploadFileChunked(this.firmwareFile, '/tmp/firmware.bin');
 	}
 
 	async validateFirmware() {
@@ -1133,8 +1147,36 @@ export default class SystemModule {
 
 		try {
 			await this.uploadFirmwareChunked();
-			if (statusEl) statusEl.textContent = 'Validating firmware...';
+			if (statusEl) statusEl.textContent = 'Checking firmware signature...';
 
+			// Verify the detached usign signature when one is supplied. A bad
+			// signature blocks installation; an unsigned image requires an extra
+			// explicit confirmation at flash time.
+			this.firmwareUnsigned = false;
+			let verify = { verified: false, reason: 'unsigned' };
+			if (this.firmwareSigFile) {
+				await this.uploadFileChunked(this.firmwareSigFile, '/tmp/firmware.bin.sig');
+				const [vs, vr] = await this.core.ubusCall('file', 'exec',
+					{ command: '/usr/libexec/moci-verify-image', params: ['/tmp/firmware.bin', '/tmp/firmware.bin.sig'] },
+					{ timeout: 30000 });
+				try { verify = JSON.parse(vr?.stdout || '{}'); } catch { verify = { verified: false, reason: 'invalid signature' }; }
+				if (vs !== 0) verify = { verified: false, reason: 'verification failed' };
+			} else {
+				const [vs, vr] = await this.core.ubusCall('file', 'exec',
+					{ command: '/usr/libexec/moci-verify-image', params: ['/tmp/firmware.bin'] },
+					{ timeout: 30000 });
+				try { verify = JSON.parse(vr?.stdout || '{}'); } catch { verify = { verified: false, reason: 'unsigned' }; }
+			}
+			if (this.firmwareSigFile && !verify.verified) {
+				if (statusEl) statusEl.textContent = 'Signature check failed: ' + (verify.reason || 'invalid signature') + '. Installation blocked.';
+				this.core.showToast('Firmware signature is invalid — installation blocked', 'error');
+				await this.core.ubusCall('file', 'exec', { command: '/bin/rm', params: ['-f', '/tmp/firmware.bin'] });
+				await this.core.ubusCall('file', 'exec', { command: '/bin/rm', params: ['-f', '/tmp/firmware.bin.sig'] }).catch(() => {});
+				return;
+			}
+			this.firmwareUnsigned = !verify.verified;
+
+			if (statusEl) statusEl.textContent = 'Validating firmware...';
 			const [s, r] = await this.core.ubusCall(
 				'file',
 				'exec',
@@ -1150,10 +1192,11 @@ export default class SystemModule {
 				return;
 			}
 
-			if (statusEl) statusEl.textContent = 'Firmware validated successfully. Ready to flash.';
+			const sigNote = verify.verified ? 'Signature verified. ' : (this.firmwareUnsigned ? 'Unsigned image — extra confirmation required. ' : '');
+			if (statusEl) statusEl.textContent = sigNote + 'Firmware validated successfully. Ready to flash.';
 			this.firmwareValidatedFile = this.firmwareFile;
 			if (flashBtn) flashBtn.disabled = false;
-			this.core.showToast('Firmware validated', 'success');
+			this.core.showToast(verify.verified ? 'Firmware validated and signature verified' : 'Firmware validated', 'success');
 		} catch {
 			if (statusEl) statusEl.textContent = 'Upload or validation failed';
 			this.core.showToast('Firmware validation failed', 'error');
@@ -1171,6 +1214,7 @@ export default class SystemModule {
 			this.core.showToast('Validate the selected firmware image before flashing.', 'error');
 			return;
 		}
+		if (this.firmwareUnsigned && !confirm('This image has no valid Haven signature. Only continue if you built it yourself and trust it. Flash unsigned firmware?')) return;
 		if (!confirm('Flash firmware now? The device will reboot.')) return;
 		if (!confirm('This will replace the firmware. Proceed?')) return;
 		this.firmwareBusy = true;
@@ -1205,6 +1249,29 @@ export default class SystemModule {
 		}
 	}
 
-	loadUpgrade() {}
+	async loadUpgrade() {
+		const root = document.getElementById('upgrade-current-version');
+		if (!root) return;
+		root.replaceChildren();
+		const el = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; };
+		let version = 'unknown', status = '';
+		try {
+			const [s, r] = await this.core.ubusCall('file', 'read', { path: '/etc/moci-release' }, { timeout: 10000 });
+			if (s === 0 && r?.data) {
+				const mv = r.data.match(/MOCI_VERSION=(.+)/); if (mv) version = mv[1].trim();
+				const ms = r.data.match(/MOCI_STATUS=(.+)/); if (ms) status = ms[1].trim();
+			}
+		} catch {}
+		root.append(el('div', 'INSTALLED FIRMWARE', 'section-title'));
+		const row = el('div', undefined, 'dev-res-actions');
+		row.append(el('strong', 'Haven ' + version, 'dev-name'), el('span', status || 'release', 'dev-badge static'));
+		root.append(row);
+		root.append(el('p', 'Updates are signed and opt-in — nothing installs automatically. Download the latest release image and its .sig signature, then use the manual upgrade below: Haven verifies the signature before installing (Install now), or you can close this page and update later. A bad signature blocks installation; an unsigned image needs an extra confirmation.', 'page-note'));
+		const links = el('div', undefined, 'dev-modal-actions');
+		const rel = el('a', 'LATEST RELEASES', 'action-btn'); rel.href = 'https://github.com/bfrye26/MoCI/releases'; rel.target = '_blank'; rel.rel = 'noopener';
+		const asu = el('a', 'ONLINE UPDATE (LuCI)', 'action-btn'); asu.href = '/cgi-bin/luci/admin/system/attendedsysupgrade'; asu.target = '_blank'; asu.rel = 'noopener';
+		links.append(rel, asu);
+		root.append(links);
+	}
 }
 

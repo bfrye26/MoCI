@@ -120,7 +120,7 @@ def main():
             actual=uuid.UUID(Path('/sys/class/dmi/id/product_uuid').read_text().strip())
             if actual not in (expected,uuid.UUID(bytes=expected.bytes_le)):
                 raise RuntimeError('Target is not the expected disposable VM')
-        if not re.search(r'^MOCI_VERSION=0\.11\.',Path('/etc/moci-release').read_text(),re.M):
+        if not re.search(r'^MOCI_VERSION=(0\.11\.|1\.)',Path('/etc/moci-release').read_text(),re.M):
             raise RuntimeError('MoCI release marker is missing')
         if args.diagnose_only:
             disk,root,_=root_device()

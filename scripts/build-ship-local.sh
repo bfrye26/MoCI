@@ -41,10 +41,12 @@ mode=${1:-firmware}
 jobs=${2:-20}
 case "$mode" in firmware|all|check) ;; *) echo 'Mode must be firmware, all or check' >&2; exit 2;; esac
 [[ "$jobs" =~ ^[0-9]+$ ]] && ((jobs>=1 && jobs<=64)) || exit 2
-commit='77ac51bf9c725b89233b441926a4115095e97a96'
-branch='fix/docker-firewall-release-20261112'
+# Release source is overridable so a validated release commit can be built without
+# editing this script. Defaults remain the last reviewed pinned build.
+commit="${MOCI_SHIP_COMMIT:-77ac51bf9c725b89233b441926a4115095e97a96}"
+branch="${MOCI_SHIP_BRANCH:-fix/docker-firewall-release-20261112}"
 project_root="$HOME/Projects"
-original="$project_root/MoCI"
+original="${MOCI_SHIP_ORIGINAL:-$project_root/MoCI}"
 openwrt="$project_root/openwrt"
 checkout="$project_root/MoCI-ship-${commit:0:12}"
 die() { printf '[MoCI] %s\n' "$*" >&2; exit 1; }
