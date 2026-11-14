@@ -7,14 +7,14 @@ traffic tests, and external WAN-client isolation still require physical hardware
 `release_ready` remains `false` for production use. Treat this as a candidate for
 lab/VM and guided bring-up, not a production-hardened firmware.
 
-Built from MoCI commit `f8538a6` on OpenWrt **v25.12.6** (`64900e756efa`).
+Built from MoCI commit `aacdda3` on OpenWrt **v25.12.6** (`64900e756efa`).
 
 **Firmware image SHA-256:**
-`f4842332ad523e24f43110e3375088a21f8214b6495ab89a1b6e3973e822fbf1`
+`565e4aa0ffd729a29e067cf204e3044e373f8fc7fa9d5912f1d3a4be214b4483`
 (`openwrt-x86-64-generic-ext4-combined-efi.img.gz`)
 
 **Installer ISO SHA-256 (dual-boot BIOS + UEFI):**
-`d98f9a80572396c8d4f465ab6da68a6de776b7776ec243f134638f71cb5e7060`
+`d980b473319b2991576bd57edd5c4cc5f41fbeeeab2426461c2228f3d1e4824d`
 (`MoCI-x86-64-Installer.iso`)
 
 Validated on a lab VM: clean boot into 1.0.0-rc.1, RFC 2136 DNS publishing
@@ -32,6 +32,27 @@ in the sidebar automatically when apps are installed/started/stopped/removed.
   dropped to `grub rescue> … i386-pc/normal.mod not found` on hardware booting in
   BIOS/CSM mode. The ISO now carries a Syslinux BIOS bootloader alongside GRUB
   EFI (verified: `isolinux.bin` + isohybrid MBR + EFI boot image).
+- **All Ethernet ports are activated on multi-port x86 routers.** First-boot now
+  brings up every physical port and bridges all non-WAN ports into the LAN
+  (previously only one WAN + one LAN port were configured, leaving the rest
+  DOWN). Verified on a 6-port I225-V (P09B) device.
+- **Ethernet port profiles can reclaim LAN ports.** The wizard previously
+  reserved every bridge member, so no port was selectable once all ports were
+  bridged. Now only the WAN uplink and the last management LAN port are reserved;
+  other LAN ports can be assigned to an isolated profile (removed from the bridge,
+  rollback-safe).
+- **Wi-Fi drivers + stack are now included.** The image ships the mac80211/cfg80211
+  stack, `rt2800-usb` (the Ralink RT3070 `13d3:3273` found in the P09B), plus
+  mt76 / rtl8xxxu / ath9k-htc USB Wi-Fi drivers and firmware, iwinfo and
+  wireless-regdb. The RT3070 is detected (phy0) on the test hardware.
+- **Devices page shows every LAN device.** It previously counted only DHCP leases
+  issued by this router, under-counting on networks where another DHCP server
+  (e.g. a mesh system) serves most clients. It now lists every device seen on the
+  LAN (ARP), matching the dashboard, enriched with lease/reservation hostnames.
+- **Isolated networks can reach the internet.** Port profiles with “Allow internet
+  access via WAN” correctly forward to the WAN with NAT (verified: `accept_to_wan`
+  + wan masquerade), so an isolated segment still has internet while staying
+  separated from the main LAN.
 
 ## What's new in 1.0.0-rc.1
 
