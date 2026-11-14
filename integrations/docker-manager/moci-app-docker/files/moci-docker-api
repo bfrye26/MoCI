@@ -42,7 +42,7 @@ def public_image_tag(value):
         return first in APPROVED_REGISTRIES and len(parts)>=2
     return True
 IDENT=re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$|^[a-f0-9]{12,64}$')
-READ_METHODS=['status','containers','stacks','images','volumes','networks','storage','logs','container_stats','catalog','managed_stacks','diagnostics','app_fetch','app_info','pihole_blocking']
+READ_METHODS=['status','containers','stacks','images','volumes','networks','storage','logs','container_stats','catalog','managed_stacks','diagnostics','app_fetch','app_info','pihole_blocking','adguard_login','adguard_blocking']
 WRITE_METHODS=['stack_config','deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action','set_deployments']
 # Deployments are opt-in: secure default for a router control plane.
 # The root administrator must explicitly create this local-only enable file.
@@ -316,6 +316,8 @@ def managed_stacks():
 # arbitrary URL (no SSRF). The browser renders the result inside the MoCI UI.
 APP_INTEGRATIONS={
     'pihole':{'paths':('/admin/api.php','/api/'),'label':'Pi-hole'},
+    'adguard-home':{'paths':('/control/',),'label':'AdGuard Home'},
+    'uptime-kuma':{'paths':('/api/','/metrics'),'label':'Uptime Kuma'},
 }
 def app_fetch(args):
     app=args.get('app');path=args.get('path')
@@ -333,6 +335,8 @@ def app_fetch(args):
     port=stack['published_ports'][0]
     if app=='pihole':
         return {'app':app,'status':200,'body':json.dumps(pihole_summary(ip,port))}
+    if app=='adguard-home':
+        return {'app':app,'status':200,'body':json.dumps(adguard_summary(ip,port))}
     url='http://'+ip+':'+str(port)+path
     req=urllib.request.Request(url,headers={'User-Agent':'MoCI-Integration'})
     try:
@@ -428,6 +432,119 @@ def pihole_blocking(args):
     except (OSError,ValueError) as exc:
         raise ValueError('Pi-hole blocking change failed') from exc
     return {'blocking':result.get('blocking',enable)}
+
+
+def adguard_credentials():
+    # AdGuard Home's login is chosen by the user in its setup wizard (unlike
+    # Pi-hole's generated password). The Haven panel stores it server-side only
+    # (0600, never returned to the browser) once the user connects their login.
+    try:
+        with open(STACKS+'/adguard-home/credentials.json',encoding='utf-8') as f:
+            creds=json.load(f)
+    except (OSError,ValueError):
+        return None
+    name=creds.get('name');password=creds.get('password')
+    if not isinstance(name,str) or not name or not isinstance(password,str) or not password:
+        return None
+    return {'name':name,'password':password}
+
+
+def adguard_session(ip,port,creds):
+    base='http://'+ip+':'+str(port)
+    req=urllib.request.Request(base+'/control/login',
+        data=json.dumps({'name':creds['name'],'password':creds['password']}).encode('utf-8'),
+        headers={'Content-Type':'application/json','User-Agent':'MoCI-Integration'})
+    try:
+        with urllib.request.urlopen(req,timeout=8) as res:
+            cookie=res.headers.get('Set-Cookie') or ''
+    except (OSError,ValueError) as exc:
+        raise ValueError('AdGuard Home rejected those credentials') from exc
+    match=re.search(r'agh_session=([^;]+)',cookie)
+    if not match:
+        raise ValueError('AdGuard Home did not return a session')
+    return base,'agh_session='+match.group(1)
+
+
+def adguard_summary(ip,port):
+    creds=adguard_credentials()
+    if not creds:
+        raise ValueError('AdGuard Home login required')
+    base,cookie=adguard_session(ip,port,creds)
+    def get(path):
+        req=urllib.request.Request(base+path,headers={'Cookie':cookie,'User-Agent':'MoCI-Integration'})
+        try:
+            with urllib.request.urlopen(req,timeout=8) as res:
+                return json.loads(res.read(MAX_REPLY+1))
+        except (OSError,ValueError) as exc:
+            raise ValueError('AdGuard Home stats unavailable') from exc
+    status=get('/control/status')
+    stats=get('/control/stats')
+    total=stats.get('num_dns_queries',0) or 0
+    blocked=stats.get('num_blocked_filtering',0) or 0
+    return {
+        'status':'enabled' if status.get('protection_enabled',True) else 'disabled',
+        'version':status.get('version',''),
+        'dns_queries_today':total,
+        'ads_blocked_today':blocked,
+        'ads_percentage_today':round(blocked*100.0/total,1) if total else 0,
+        'avg_processing_time':stats.get('avg_processing_time',0),
+        'unique_clients':len(stats.get('top_clients') or []),
+        'top_queried':stats.get('top_queried_domains') or [],
+        'top_blocked':stats.get('top_blocked_domains') or []
+    }
+
+
+def adguard_login(args):
+    name=args.get('name');password=args.get('password')
+    if not isinstance(name,str) or not name.strip() or len(name)>100:
+        raise ValueError('Invalid AdGuard Home username')
+    if not isinstance(password,str) or not password or len(password)>200:
+        raise ValueError('Invalid AdGuard Home password')
+    stacks=managed_stacks().get('managed_stacks',[])
+    stack=next((s for s in stacks if s.get('name')=='adguard-home'),None)
+    if not stack or not stack.get('running') or not stack.get('published_ports'):
+        raise ValueError('AdGuard Home is not running')
+    ip=lan_ip();port=stack['published_ports'][0]
+    creds={'name':name.strip(),'password':password}
+    # Verify the login against the live container before persisting anything.
+    adguard_session(ip,port,creds)
+    root=STACKS+'/adguard-home'
+    os.makedirs(root,mode=0o700,exist_ok=True)
+    path=root+'/credentials.json'
+    if os.path.islink(path):raise ValueError('Unsafe credentials path')
+    fd,tmp=tempfile.mkstemp(dir=root,prefix='.creds-')
+    try:
+        with os.fdopen(fd,'w',encoding='utf-8') as f:
+            os.fchmod(f.fileno(),0o600)
+            json.dump(creds,f);f.flush();os.fsync(f.fileno())
+        os.replace(tmp,path)
+    finally:
+        if os.path.exists(tmp):os.unlink(tmp)
+    return {'connected':True}
+
+
+def adguard_blocking(args):
+    enable=args.get('enable')
+    if type(enable) is not bool:
+        raise ValueError('Invalid protection request')
+    creds=adguard_credentials()
+    if not creds:
+        raise ValueError('AdGuard Home login required')
+    stacks=managed_stacks().get('managed_stacks',[])
+    stack=next((s for s in stacks if s.get('name')=='adguard-home'),None)
+    if not stack or not stack.get('running') or not stack.get('published_ports'):
+        raise ValueError('AdGuard Home is not running')
+    ip=lan_ip();port=stack['published_ports'][0]
+    base,cookie=adguard_session(ip,port,creds)
+    req=urllib.request.Request(base+'/control/protection',
+        data=json.dumps({'enabled':enable}).encode('utf-8'),
+        headers={'Content-Type':'application/json','Cookie':cookie,'User-Agent':'MoCI-Integration'})
+    try:
+        with urllib.request.urlopen(req,timeout=8) as res:
+            res.read(MAX_REPLY+1)
+    except (OSError,ValueError) as exc:
+        raise ValueError('AdGuard Home protection change failed') from exc
+    return {'protection_enabled':enable}
 
 
 def app_info(args):
@@ -590,7 +707,7 @@ def spec_validate(spec, app_id=None, advanced=False):
                     # configuration on start (OpenSpeedTest also runs crond;
                     # Homarr rewrites its nginx.conf and redis setup).
                     # Root UID is allowed for these reviewed apps only.
-                    if app_id in ('openspeedtest','homarr','pihole') and profile_user=='0:0':
+                    if app_id in ('openspeedtest','homarr','pihole','adguard-home','vaultwarden','home-assistant','plex','duplicati') and profile_user=='0:0':
                         managed['user']='0:0'
                     elif isinstance(profile_user,str) and re.fullmatch(r'[1-9][0-9]{0,4}:[1-9][0-9]{0,4}',profile_user):
                         managed['user']=profile_user
@@ -602,7 +719,12 @@ def spec_validate(spec, app_id=None, advanced=False):
                 # immutable image digest and exact approved app template required.
                 reviewed_caps={'openspeedtest':['CHOWN','DAC_OVERRIDE','FOWNER','SETGID','SETUID'],
                                'homarr':['CHOWN','DAC_OVERRIDE'],
-                               'pihole':['CHOWN','DAC_OVERRIDE','FOWNER','SETGID','SETUID','NET_BIND_SERVICE','NET_RAW','SYS_NICE','KILL']}
+                               'pihole':['CHOWN','DAC_OVERRIDE','FOWNER','SETGID','SETUID','NET_BIND_SERVICE','NET_RAW','SYS_NICE','KILL'],
+                               'adguard-home':['CHOWN','DAC_OVERRIDE','FOWNER','SETGID','SETUID','NET_BIND_SERVICE','NET_RAW'],
+                               'vaultwarden':['CHOWN','DAC_OVERRIDE','FOWNER','SETGID','SETUID','NET_BIND_SERVICE'],
+                               'home-assistant':['CHOWN','DAC_OVERRIDE','FOWNER','SETGID','SETUID','NET_RAW'],
+                               'plex':['CHOWN','DAC_OVERRIDE','FOWNER','SETGID','SETUID'],
+                               'duplicati':['CHOWN','DAC_OVERRIDE','FOWNER','SETGID','SETUID']}
                 if app_id not in reviewed_caps or profile_caps!=reviewed_caps[app_id] or managed.get('user')!='0:0' or managed.get('read_only') is not False:
                     raise ValueError('Unapproved application capabilities')
                 managed['cap_add']=profile_caps
@@ -1070,6 +1192,8 @@ def run(method,args):
     if method=='app_fetch':return app_fetch(args)
     if method=='app_info':return app_info(args)
     if method=='pihole_blocking':return pihole_blocking(args)
+    if method=='adguard_login':return adguard_login(args)
+    if method=='adguard_blocking':return adguard_blocking(args)
     if method=='stack_config':
         name=args.get('name')
         if not isinstance(name,str) or not NAME.fullmatch(name):
@@ -1212,7 +1336,7 @@ def run(method,args):
     raise ValueError('Unknown method')
 
 METHODS={'set_deployments':{'enabled':'bool','confirmation':'str'}}
-METHODS.update({k:({} if k not in ('logs','container_stats','stack_config','deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action','app_fetch','app_info','pihole_blocking') else {'logs':{'id':'str'},'container_stats':{'id':'str'},'stack_config':{'name':'str'},'deploy':{'name':'str','spec':'str','confirmation':'str'},'prepare_app':{'id':'str'},'prepare_custom':{'image':'str'},'install_catalog':{'id':'str'},'stack_action':{'name':'str','action':'str'},'container_action':{'id':'str','action':'str'},'volume_action':{'name':'str','action':'str'},'network_action':{'name':'str','action':'str'},'image_action':{'id':'str','action':'str'},'app_fetch':{'app':'str','path':'str'},'app_info':{'app':'str'},'pihole_blocking':{'enable':'bool'}}[k]) for k in READ_METHODS+WRITE_METHODS if k!='set_deployments'})
+METHODS.update({k:({} if k not in ('logs','container_stats','stack_config','deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action','app_fetch','app_info','pihole_blocking','adguard_login','adguard_blocking') else {'logs':{'id':'str'},'container_stats':{'id':'str'},'stack_config':{'name':'str'},'deploy':{'name':'str','spec':'str','confirmation':'str'},'prepare_app':{'id':'str'},'prepare_custom':{'image':'str'},'install_catalog':{'id':'str'},'stack_action':{'name':'str','action':'str'},'container_action':{'id':'str','action':'str'},'volume_action':{'name':'str','action':'str'},'network_action':{'name':'str','action':'str'},'image_action':{'id':'str','action':'str'},'app_fetch':{'app':'str','path':'str'},'app_info':{'app':'str'},'pihole_blocking':{'enable':'bool'},'adguard_login':{'name':'str','password':'str'},'adguard_blocking':{'enable':'bool'}}[k]) for k in READ_METHODS+WRITE_METHODS if k!='set_deployments'})
 if __name__=='__main__':
     if len(sys.argv)==2 and sys.argv[1]=='list':
         print(json.dumps(METHODS))

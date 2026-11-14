@@ -1946,8 +1946,9 @@ body {
 .profiles-create .advanced-field{display:flex;flex-direction:column;gap:8px}
 .profiles-create input[type=text],.profiles-create select{width:100%;border:1px solid var(--glass-border);background:var(--theme-input);color:var(--starship-steel);border-radius:6px;padding:10px}
 .profiles-create .profiles-description,.profiles-create .profiles-check{grid-column:1/-1}
-.profiles-check{display:flex;gap:10px;align-items:start;color:var(--starship-steel);font-size:13px}
-.profiles-check input{margin-top:4px}
+.profiles-check{display:flex;gap:10px;align-items:flex-start;color:var(--starship-steel);font-size:13px;line-height:1.5}
+.profiles-check input[type=checkbox]{width:16px !important;height:16px !important;min-width:16px !important;max-width:16px !important;flex:0 0 auto;margin:2px 0 0;padding:0;accent-color:var(--primary-accent);cursor:pointer}
+.profiles-check span{flex:1;min-width:0}
 .profiles-create .action-btn{justify-self:start}
 .profiles-create .action-btn:disabled{opacity:.45;cursor:not-allowed}
 .profiles-list{display:grid;gap:13px}
@@ -1970,9 +1971,9 @@ body {
 
 /* StartWRT-inspired VPN policy editor */
 #vpn-policies-content{display:grid;gap:16px}
-#vpn-policies-content .profiles-create input,
+#vpn-policies-content .profiles-create input:not([type=checkbox]),
 #vpn-policies-content .profiles-create select{width:100%;min-width:0;background:var(--theme-input);border:1px solid var(--glass-border);border-radius:6px;color:var(--starship-steel);padding:9px}
-:root[data-theme="cloud"] #vpn-policies-content .profiles-create input,
+:root[data-theme="cloud"] #vpn-policies-content .profiles-create input:not([type=checkbox]),
 :root[data-theme="cloud"] #vpn-policies-content .profiles-create select{background:#fff;color:#1e2d43;border-color:#bfcfe0}
 
 /* Compact navigation for business management and StartWRT workspaces. */
@@ -2000,7 +2001,7 @@ body {
 
 /* Ethernet security profile wizard */
 #ethernet-profiles-content{display:grid;gap:16px}
-#ethernet-profiles-content .profiles-create input,
+#ethernet-profiles-content .profiles-create input:not([type=checkbox]),
 #ethernet-profiles-content .profiles-create select{width:100%;min-width:0;padding:10px;border-radius:6px;color:var(--starship-steel);border:1px solid var(--glass-border);background:var(--theme-input)}
 :root[data-theme="cloud"] #ethernet-profiles-content .profiles-create input,
 :root[data-theme="cloud"] #ethernet-profiles-content .profiles-create select{color:#1e2d43;background:#fff;border-color:#bfcfe0}

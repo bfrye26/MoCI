@@ -66,7 +66,7 @@
         "pihole-data:/etc/pihole",
         "pihole-dnsmasq:/etc/dnsmasq.d"
       ],
-      "description": "Network-wide DNS ad-blocking. One-click install runs Pi-hole with a generated admin password; the web admin is on LAN port 8053. Router-critical: installing it does not change your DNS — use the Pi-hole integration to opt in to network DNS, and keep a fallback in mind.",
+      "description": "Network-wide DNS ad-blocking. One-click install runs Pi-hole with a generated admin password; the web admin is on LAN port 8053. Router-critical: installing it does not change your DNS \u2014 use the Pi-hole integration to opt in to network DNS, and keep a fallback in mind.",
       "path": "http://ROUTER_IP:8053/",
       "needs_write_access": true,
       "run_as_user": "0:0",
@@ -633,7 +633,193 @@
       },
       "description": "Restic backup orchestration with private managed data/config/cache and repository volumes; GUI at LAN port 9898. Only the managed /repos volume is writable as a backup target. The app cannot access router host paths or NAS shares without separate audited storage setup. Create administrator access on first launch.",
       "path": "http://ROUTER_IP:9898/"
+    },
+    "adguard-home": {
+      "image": "adguard/adguardhome:latest",
+      "repository": "adguard/adguardhome",
+      "ports": [
+        "3003:3000"
+      ],
+      "volumes": [
+        "adguard-work:/opt/adguardhome/work",
+        "adguard-conf:/opt/adguardhome/conf"
+      ],
+      "description": "Network-wide DNS ad-blocking and parental controls. One-click install runs AdGuard Home; finish the setup wizard on LAN port 3003, then use the AdGuard integration to make it your network DNS. Router-critical: installing does not change your DNS until you opt in.",
+      "path": "http://ROUTER_IP:3003/",
+      "needs_write_access": true,
+      "run_as_user": "0:0",
+      "cap_add": [
+        "CHOWN",
+        "DAC_OVERRIDE",
+        "FOWNER",
+        "SETGID",
+        "SETUID",
+        "NET_BIND_SERVICE",
+        "NET_RAW"
+      ],
+      "mem_limit": "512m",
+      "reviewed_risk": "router-critical"
+    },
+    "vaultwarden": {
+      "image": "vaultwarden/server:latest",
+      "repository": "vaultwarden/server",
+      "ports": [
+        "8085:80"
+      ],
+      "volumes": [
+        "vaultwarden-data:/data"
+      ],
+      "description": "Lightweight Bitwarden-compatible password manager for your whole household. Web vault on LAN port 8085; create the first account on first visit. Keep the admin token and backups private.",
+      "path": "http://ROUTER_IP:8085/",
+      "needs_write_access": true,
+      "run_as_user": "0:0",
+      "cap_add": [
+        "CHOWN",
+        "DAC_OVERRIDE",
+        "FOWNER",
+        "SETGID",
+        "SETUID",
+        "NET_BIND_SERVICE"
+      ],
+      "mem_limit": "512m"
+    },
+    "syncthing": {
+      "image": "syncthing/syncthing:latest",
+      "repository": "syncthing/syncthing",
+      "ports": [
+        "8384:8384"
+      ],
+      "volumes": [
+        "syncthing-data:/var/syncthing"
+      ],
+      "description": "Continuous peer-to-peer file sync across your devices with no cloud. Web UI on LAN port 8384. Add folders and pair devices from the UI; data stays on the managed volume.",
+      "path": "http://ROUTER_IP:8384/",
+      "needs_write_access": true,
+      "run_as_user": "1000:1000",
+      "volume_initializer": {
+        "path": "/var/syncthing",
+        "uid": 1000,
+        "gid": 1000
+      },
+      "mem_limit": "512m"
+    },
+    "home-assistant": {
+      "image": "ghcr.io/home-assistant/home-assistant:stable",
+      "repository": "ghcr.io/home-assistant/home-assistant",
+      "ports": [
+        "8123:8123"
+      ],
+      "volumes": [
+        "homeassistant-config:/config"
+      ],
+      "description": "Open-source smart-home hub to automate lights, sensors and IoT devices on your isolated networks. Web UI on LAN port 8123; complete the onboarding on first visit.",
+      "path": "http://ROUTER_IP:8123/",
+      "needs_write_access": true,
+      "run_as_user": "0:0",
+      "cap_add": [
+        "CHOWN",
+        "DAC_OVERRIDE",
+        "FOWNER",
+        "SETGID",
+        "SETUID",
+        "NET_RAW"
+      ],
+      "mem_limit": "1024m"
+    },
+    "plex": {
+      "image": "lscr.io/linuxserver/plex:latest",
+      "repository": "lscr.io/linuxserver/plex",
+      "ports": [
+        "32400:32400"
+      ],
+      "volumes": [
+        "plex-config:/config",
+        "plex-media:/media"
+      ],
+      "description": "Stream your own movies, shows and music to every device. Web UI on LAN port 32400; sign in and point libraries at the managed media volume. Transcoding stays on the router CPU.",
+      "path": "http://ROUTER_IP:32400/web",
+      "needs_write_access": true,
+      "run_as_user": "0:0",
+      "cap_add": [
+        "CHOWN",
+        "DAC_OVERRIDE",
+        "FOWNER",
+        "SETGID",
+        "SETUID"
+      ],
+      "mem_limit": "1024m",
+      "environment": {
+        "PUID": "0",
+        "PGID": "0"
+      }
+    },
+    "wiki-js": {
+      "image": "requarks/wiki:latest",
+      "repository": "requarks/wiki",
+      "ports": [
+        "3004:3000"
+      ],
+      "volumes": [
+        "wikijs-data:/wiki/data/content"
+      ],
+      "description": "Modern wiki for household or team documentation, backed by SQLite. Web UI on LAN port 3004; create the administrator account on first visit.",
+      "path": "http://ROUTER_IP:3004/",
+      "needs_write_access": true,
+      "run_as_user": "1000:1000",
+      "volume_initializer": {
+        "path": "/wiki/data/content",
+        "uid": 1000,
+        "gid": 1000
+      },
+      "mem_limit": "512m"
+    },
+    "vikunja": {
+      "image": "vikunja/vikunja:latest",
+      "repository": "vikunja/vikunja",
+      "ports": [
+        "3456:3456"
+      ],
+      "volumes": [
+        "vikunja-files:/app/vikunja/files"
+      ],
+      "description": "Self-hosted to-do lists and task management with SQLite. Web UI on LAN port 3456; register the first account on first visit.",
+      "path": "http://ROUTER_IP:3456/",
+      "needs_write_access": true,
+      "run_as_user": "1000:1000",
+      "volume_initializer": {
+        "path": "/app/vikunja/files",
+        "uid": 1000,
+        "gid": 1000
+      },
+      "mem_limit": "512m"
+    },
+    "duplicati": {
+      "image": "lscr.io/linuxserver/duplicati:latest",
+      "repository": "lscr.io/linuxserver/duplicati",
+      "ports": [
+        "8200:8200"
+      ],
+      "volumes": [
+        "duplicati-config:/config",
+        "duplicati-backups:/backups"
+      ],
+      "description": "Encrypted, scheduled backups of your router config and app data to local or cloud targets. Web UI on LAN port 8200. Sensitive-data: protect the backup passphrase and destination credentials.",
+      "path": "http://ROUTER_IP:8200/",
+      "needs_write_access": true,
+      "run_as_user": "0:0",
+      "cap_add": [
+        "CHOWN",
+        "DAC_OVERRIDE",
+        "FOWNER",
+        "SETGID",
+        "SETUID"
+      ],
+      "mem_limit": "512m",
+      "reviewed_risk": "sensitive-data",
+      "environment": {
+        "PUID": "0",
+        "PGID": "0"
+      }
     }
   }
 }
-

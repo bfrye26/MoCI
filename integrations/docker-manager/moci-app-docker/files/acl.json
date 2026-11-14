@@ -18,7 +18,9 @@
           "container_stats",
           "app_fetch",
           "app_info",
-          "pihole_blocking"
+          "pihole_blocking",
+          "adguard_login",
+          "adguard_blocking"
         ]
       }
     }

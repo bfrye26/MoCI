@@ -50,7 +50,7 @@ class DockerStoreContract(unittest.TestCase):
 
     def test_reviewed_templates_match_listings_and_repositories(self):
         catalog_by_id={a['id']:a for a in CATALOG}
-        self.assertEqual(len(TEMPLATES),25)
+        self.assertEqual(len(TEMPLATES),33)
         for name,template in TEMPLATES.items():
             self.assertIn(name,catalog_by_id)
             self.assertTrue(catalog_by_id[name]['template_available'])
@@ -80,8 +80,8 @@ class DockerStoreContract(unittest.TestCase):
         with patch.dict(API['catalog'].__globals__,{'writes_enabled':lambda:True}):
             apps=API['catalog']()['catalog']
         reviewed=[a for a in apps if a['can_prepare']]
-        self.assertEqual(len(reviewed),25)
-        self.assertEqual(len([a for a in apps if a['setup_state']=='manual']),48)
+        self.assertEqual(len(reviewed),33)
+        self.assertEqual(len([a for a in apps if a['setup_state']=='manual']),40)
         self.assertTrue(all(a['reviewed_template'] for a in reviewed))
         self.assertTrue(all(not a['ready'] for a in apps))
 
@@ -268,7 +268,7 @@ class DockerStoreContract(unittest.TestCase):
     def test_candidate_templates_have_unique_host_ports_and_volume_owners(self):
         host_ports=set()
         catalog={app['id']:app for app in CATALOG}
-        self.assertEqual(len(TEMPLATES),25)
+        self.assertEqual(len(TEMPLATES),33)
         for name,template in TEMPLATES.items():
             self.assertTrue(catalog[name]['template_available'])
             self.assertEqual(catalog[name]['repository'],template['repository'])

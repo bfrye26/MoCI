@@ -7,7 +7,7 @@
       "category": "Networking",
       "repository": "adguard/adguardhome",
       "description": "DNS filtering",
-      "template_available": false,
+      "template_available": true,
       "profile": "both",
       "complexity": "medium",
       "risk": "router-critical"
@@ -197,7 +197,7 @@
       "profile": "both",
       "complexity": "medium",
       "risk": "sensitive-data",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "fail2ban",
@@ -315,9 +315,9 @@
       "category": "Automation",
       "repository": "ghcr.io/home-assistant/home-assistant",
       "description": "Home automation",
-      "template_available": false,
+      "template_available": true,
       "profile": "home",
-      "complexity": "advanced",
+      "complexity": "medium",
       "risk": "review"
     },
     {
@@ -615,7 +615,7 @@
       "profile": "home",
       "complexity": "medium",
       "risk": "review",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "portainer",
@@ -711,7 +711,7 @@
       "category": "Storage",
       "repository": "syncthing/syncthing",
       "description": "File synchronization",
-      "template_available": false,
+      "template_available": true,
       "profile": "both",
       "complexity": "medium",
       "risk": "review"
@@ -744,7 +744,7 @@
       "category": "Security",
       "repository": "vaultwarden/server",
       "description": "Password management",
-      "template_available": false,
+      "template_available": true,
       "profile": "office",
       "complexity": "medium",
       "risk": "review"
@@ -758,7 +758,7 @@
       "profile": "office",
       "complexity": "medium",
       "risk": "review",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "watchtower",
@@ -791,7 +791,7 @@
       "profile": "office",
       "complexity": "medium",
       "risk": "review",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "zitadel",
