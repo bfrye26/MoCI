@@ -44,7 +44,10 @@ in the sidebar automatically when apps are installed/started/stopped/removed.
 - **Wi-Fi drivers + stack are now included.** The image ships the mac80211/cfg80211
   stack, `rt2800-usb` (the Ralink RT3070 `13d3:3273` found in the P09B), plus
   mt76 / rtl8xxxu / ath9k-htc USB Wi-Fi drivers and firmware, iwinfo and
-  wireless-regdb. The RT3070 is detected (phy0) on the test hardware.
+  wireless-regdb. **Verified working on the P09B:** after a clean install the
+  RT3070 comes up as an AP (`phy0-ap0`, bridged into the LAN). Configure the SSID
+  on the Wi-Fi page. (A file-level hotfix onto an older install does not fully
+  initialize the wireless service — use a clean install / sysupgrade.)
 - **Devices page shows every LAN device.** It previously counted only DHCP leases
   issued by this router, under-counting on networks where another DHCP server
   (e.g. a mesh system) serves most clients. It now lists every device seen on the
