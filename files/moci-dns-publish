@@ -20,13 +20,13 @@ import subprocess
 import sys
 import time
 
-ROOT = '/etc/moci-dns-publish'
+ROOT = os.environ.get('MOCI_DNS_PUBLISH_ROOT', '/etc/moci-dns-publish')
 ALLOW = ROOT + '/allow.json'
-HOSTS = '/etc/moci-published.hosts'
-STATE = '/var/run/moci-dns-publish.json'
-LEASES = '/tmp/dhcp.leases'
-LOCK = '/var/run/moci-dns-publish.lock'
-PORT = 53530
+HOSTS = os.environ.get('MOCI_DNS_PUBLISH_HOSTS', '/etc/moci-published.hosts')
+STATE = os.environ.get('MOCI_DNS_PUBLISH_STATE', '/var/run/moci-dns-publish.json')
+LEASES = os.environ.get('MOCI_DNS_PUBLISH_LEASES', '/tmp/dhcp.leases')
+LOCK = os.environ.get('MOCI_DNS_PUBLISH_LOCK', '/var/run/moci-dns-publish.lock')
+PORT = int(os.environ.get('MOCI_DNS_PUBLISH_PORT', '53530'))
 LOCAL_DOMAIN = 'lan'
 MAX_PER_PUBLISHER = 64
 RESERVED = {'router', 'haven', 'moci', 'localhost', 'openwrt', 'lan'}
@@ -319,10 +319,10 @@ if __name__ == '__main__':
             sys.stdout.write(render_hosts(load(STATE, {})))
         elif args[:1] == ['list']:
             print(json.dumps(admin_list()))
-        elif args[:2] == ['permit'] and len(args) == 4:
-            print(json.dumps(admin_permit(args[2], args[3] == '1')))
-        elif args[:2] == ['remove'] and len(args) == 3:
-            print(json.dumps(admin_remove(args[2])))
+        elif args[:1] == ['permit'] and len(args) == 3:
+            print(json.dumps(admin_permit(args[1], args[2] == '1')))
+        elif args[:1] == ['remove'] and len(args) == 2:
+            print(json.dumps(admin_remove(args[1])))
         elif not args:
             serve()
         else:

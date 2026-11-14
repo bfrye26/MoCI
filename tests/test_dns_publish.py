@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 """Offline contract tests for the Haven RFC 2136 DNS publisher (no network/root)."""
+import json
+import os
 import runpy
 import socket
 import struct
+import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -109,6 +114,58 @@ class DnsPublishContract(unittest.TestCase):
             self.assertTrue(all(ip in active for ip in pruned))
         else:
             self.assertEqual(pruned, state)  # no lease data -> do not prune blindly
+
+
+class DnsPublishCli(unittest.TestCase):
+    """Regression: the admin CLI dispatch (permit/remove/list) must actually run.
+
+    A prior bug compared args[:2] to a one-element list and used wrong lengths,
+    so permit/remove silently exited 2. These tests drive the real script.
+    """
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        root = Path(self.tmp.name)
+        self.env = dict(os.environ,
+                        MOCI_DNS_PUBLISH_ROOT=str(root / 'etc'),
+                        MOCI_DNS_PUBLISH_HOSTS=str(root / 'published.hosts'),
+                        MOCI_DNS_PUBLISH_STATE=str(root / 'state.json'),
+                        MOCI_DNS_PUBLISH_LOCK=str(root / 'lock'),
+                        MOCI_DNS_PUBLISH_LEASES=str(root / 'dhcp.leases'))
+        self.script = str(BASE / 'files/moci-dns-publish')
+
+    def cli(self, *args):
+        p = subprocess.run([sys.executable, self.script, *args],
+                           capture_output=True, text=True, env=self.env, timeout=20)
+        return p.returncode, p.stdout.strip()
+
+    def test_permit_list_remove_roundtrip(self):
+        rc, out = self.cli('permit', '192.168.50.60', '1')
+        self.assertEqual(rc, 0, 'permit must succeed, not exit 2')
+        self.assertTrue(json.loads(out)['ok'])
+        rc, out = self.cli('list')
+        self.assertEqual(rc, 0)
+        self.assertIn('192.168.50.60', json.loads(out)['allowed'])
+        rc, out = self.cli('permit', '192.168.50.60', '0')
+        self.assertEqual(rc, 0)
+        self.assertFalse(json.loads(out)['enabled'])
+        rc, out = self.cli('list')
+        self.assertNotIn('192.168.50.60', json.loads(out)['allowed'])
+
+    def test_remove_record(self):
+        # Seed a record directly into the state file, then remove via the CLI.
+        state = {'192.168.50.60': {'printer.lan/A': '192.168.50.60'}}
+        Path(self.env['MOCI_DNS_PUBLISH_STATE']).write_text(json.dumps(state))
+        rc, out = self.cli('remove', 'printer.lan')
+        self.assertEqual(rc, 0, 'remove must succeed, not exit 2')
+        self.assertTrue(json.loads(out)['ok'])
+        rc, out = self.cli('list')
+        self.assertEqual(json.loads(out)['records'], [])
+
+    def test_permit_rejects_bad_ip(self):
+        rc, out = self.cli('permit', 'not-an-ip', '1')
+        self.assertEqual(rc, 0)
+        self.assertIn('error', json.loads(out))
 
 
 if __name__ == '__main__':
