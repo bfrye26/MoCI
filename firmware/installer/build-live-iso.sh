@@ -67,11 +67,13 @@ cd "$WORK"
 # The host is Ubuntu, but the live installer must use Debian repositories.
 # Explicit mode and mirrors prevent live-build from inheriting the Ubuntu
 # archive (archive.ubuntu.com/ubuntu/dists/bookworm does not exist).
-# UEFI-only installer: do not invoke the Syslinux/ISOLINUX BIOS bootloader.
-# Ubuntu's live-build may fail assembling Syslinux when its files are absent.
-# The target router is UEFI, so use GRUB EFI exclusively.
+# Dual-boot installer: Syslinux/ISOLINUX for legacy BIOS/CSM and GRUB EFI for
+# UEFI. A UEFI-only ISO dropped to "grub rescue> … i386-pc/normal.mod not found"
+# on test hardware that boots in BIOS mode. This runs under native Debian
+# live-build (in the bookworm chroot) with isolinux/syslinux installed, so the
+# BIOS bootloader assembles correctly.
 lb config --mode debian --distribution bookworm --architectures amd64 --binary-images iso-hybrid \
-  --bootloaders grub-efi \
+  --bootloaders syslinux,grub-efi \
   --mirror-bootstrap https://deb.debian.org/debian \
   --mirror-chroot https://deb.debian.org/debian \
   --mirror-binary https://deb.debian.org/debian \
@@ -126,5 +128,5 @@ chmod 644 config/includes.chroot/etc/profile.d/99-moci-installer.sh
 lb build
 iso=$(find . -maxdepth 1 -type f -name '*.iso' -print -quit)
 [ -n "$iso" ] || { echo "live-build did not produce an ISO" >&2; exit 1; }
-cp "$iso" "$OUTDIR/MoCI-x86-64-UEFI-Installer-UNTESTED.iso"
-(cd "$OUTDIR" && sha256sum MoCI-x86-64-UEFI-Installer-UNTESTED.iso > SHA256SUMS)
+cp "$iso" "$OUTDIR/MoCI-x86-64-Installer.iso"
+(cd "$OUTDIR" && sha256sum MoCI-x86-64-Installer.iso > SHA256SUMS)
