@@ -14,6 +14,13 @@ const dockerACL = JSON.parse(read('integrations/docker-manager/moci-app-docker/f
 
 const nativeRoutes = {
   dashboard: 'dashboard',
+  wan: 'wan',
+  'published-ports': 'published-ports',
+  devices: 'devices',
+  wifi: 'wifi',
+  qos: 'qos',
+  tls: 'tls',
+  networks: 'networks',
   network: 'network',
   system: 'system',
   advanced: 'advanced',
@@ -33,8 +40,17 @@ for (const [route, module] of Object.entries(nativeRoutes)) {
     'Missing router registration for '+route);
   assert(builder.includes("'moci/js/modules/"+moduleFile+".js'"),
     'Frontend build omits '+module);
-  assert(makefile.includes('./dist/moci/js/modules/'+moduleFile+'.js'),
-    'Firmware package omits '+module);
+}
+// The firmware must install EVERY built module and the self-hosted fonts. A
+// stale explicit install list once dropped wan/devices/qos/published-ports/
+// app-integrations/wifi/networks/tls and the font, blanking those pages.
+assert(makefile.includes('./dist/moci/js/modules/*.js'),
+  'Firmware package must install all built modules via wildcard');
+assert(makefile.includes('./dist/moci/fonts/*'),
+  'Firmware package must install the self-hosted fonts');
+for (const sub of ['upnp','app-integrations']) {
+  assert(builder.includes("'moci/js/modules/"+sub+".js'"),
+    'Frontend build omits sub-module '+sub);
 }
 const themes = ['obsidian','cloud','ocean','terminal','amethyst','copper'];
 for (const theme of themes) {

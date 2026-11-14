@@ -41,17 +41,13 @@ define Package/moci/install
 	$(INSTALL_DATA) ./dist/moci/js/core.js $(1)/www/moci/js/
 
 	$(INSTALL_DIR) $(1)/www/moci/js/modules
-	$(INSTALL_DATA) ./dist/moci/js/modules/dashboard.js $(1)/www/moci/js/modules/
-	$(INSTALL_DATA) ./dist/moci/js/modules/network.js $(1)/www/moci/js/modules/
-	$(INSTALL_DATA) ./dist/moci/js/modules/upnp.js $(1)/www/moci/js/modules/
-	$(INSTALL_DATA) ./dist/moci/js/modules/system.js $(1)/www/moci/js/modules/
-	$(INSTALL_DATA) ./dist/moci/js/modules/addons.js $(1)/www/moci/js/modules/
-	$(INSTALL_DATA) ./dist/moci/js/modules/advanced.js $(1)/www/moci/js/modules/
-	$(INSTALL_DATA) ./dist/moci/js/modules/profiles.js $(1)/www/moci/js/modules/
-	$(INSTALL_DATA) ./dist/moci/js/modules/wifi-schedules.js $(1)/www/moci/js/modules/
-	$(INSTALL_DATA) ./dist/moci/js/modules/wifi-profiles.js $(1)/www/moci/js/modules/
-	$(INSTALL_DATA) ./dist/moci/js/modules/vpn-policies.js $(1)/www/moci/js/modules/
-	$(INSTALL_DATA) ./dist/moci/js/modules/ethernet-profiles.js $(1)/www/moci/js/modules/
+	# Install every built module (wildcard) so new pages are never left out of
+	# the firmware image. An explicit list previously dropped wan/devices/qos/
+	# published-ports/app-integrations/wifi/networks/tls, blanking those pages.
+	$(INSTALL_DATA) ./dist/moci/js/modules/*.js $(1)/www/moci/js/modules/
+
+	$(INSTALL_DIR) $(1)/www/moci/fonts
+	$(INSTALL_DATA) ./dist/moci/fonts/* $(1)/www/moci/fonts/
 
 	$(INSTALL_DIR) $(1)/www/moci/js/addons
 
