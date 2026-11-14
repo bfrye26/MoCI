@@ -2,8 +2,8 @@
   "id": "docker",
   "entry": "addon.js",
   "name": "Applications",
-  "version": "0.10.0-rc.2",
-  "description": "Native Docker, Compose and homelab catalogue",
+  "version": "0.11.1-rc.5",
+  "description": "Docker, Compose, automatic LAN firewall and reviewed application recipes",
   "author": {
     "name": "MoCI Docker contributors"
   },

@@ -7,8 +7,42 @@ export default class DashboardModule {
 		this.lastCpuStats = null;
 		this.bandwidthCanvas = null;
 		this.bandwidthCtx = null;
+		this.setupQuickActions();
 
 		this.core.registerRoute('/dashboard', () => this.load());
+	}
+
+	setupQuickActions() {
+		for (const [id, action] of Object.entries({
+			'reboot-btn': 'reboot',
+			'restart-network-btn': 'network',
+			'restart-firewall-btn': 'firewall'
+		})) {
+			const button = document.getElementById(id);
+			button?.addEventListener('click', () => this.runQuickAction(action, button));
+		}
+	}
+
+	async runQuickAction(action, button) {
+		if (button.disabled) return;
+		if (action === 'reboot' && !confirm('Reboot the system?')) return;
+		button.disabled = true;
+		try {
+			if (action === 'reboot') {
+				const [status] = await this.core.ubusCall('system', 'reboot', {});
+				if (status !== 0) throw new Error('Reboot request was rejected');
+				this.core.showToast('Reboot requested. Reconnect after the router starts.', 'success');
+				setTimeout(() => this.core.logout(), 2000);
+			} else {
+				const [status, result] = await this.core.serviceReload(action);
+				if (status !== 0 || result?.code !== 0) throw new Error('Service reload was not confirmed');
+				this.core.showToast(`${action === 'network' ? 'Network' : 'Firewall'} reloaded`, 'success');
+			}
+		} catch (err) {
+			this.core.showToast(`Could not confirm ${action}: ${err.message}. Check router connectivity before retrying.`, 'error');
+		} finally {
+			button.disabled = false;
+		}
 	}
 
 	async fetchSystemInfo() {
@@ -304,11 +338,29 @@ export default class DashboardModule {
 		if (!canvas) return;
 		this.bandwidthCanvas = canvas;
 		this.bandwidthCtx = canvas.getContext('2d');
-		const dpr=Math.min(window.devicePixelRatio||1,2);
-		const width=Math.max(canvas.offsetWidth,320);
-		canvas.width=Math.round(width*dpr);
-		canvas.height=Math.round(200*dpr);
-		this.bandwidthCtx.setTransform(dpr,0,0,dpr,0,0);
+		this.sizeBandwidthCanvas();
+		// Re-fit when the content width changes (sidebar collapse, window resize).
+		const refit = () => this.sizeBandwidthCanvas();
+		if (typeof ResizeObserver !== 'undefined' && canvas.parentElement) {
+			this._graphResizeObserver = new ResizeObserver(refit);
+			this._graphResizeObserver.observe(canvas.parentElement);
+		}
+		window.addEventListener('resize', refit);
+	}
+
+	sizeBandwidthCanvas() {
+		const canvas = this.bandwidthCanvas;
+		if (!canvas || !this.bandwidthCtx) return;
+		const dpr = Math.min(window.devicePixelRatio || 1, 2);
+		const width = Math.max(canvas.offsetWidth, 280);
+		const targetW = Math.round(width * dpr);
+		const targetH = Math.round(200 * dpr);
+		if (canvas.width !== targetW || canvas.height !== targetH) {
+			canvas.width = targetW;
+			canvas.height = targetH;
+		}
+		this.bandwidthCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+		this.updateBandwidthGraph();
 	}
 
 	drawSeries(data, max, stepX, padding, height, fillColor, strokeColor) {
@@ -374,3 +426,4 @@ export default class DashboardModule {
 		this.drawSeries(upData, max, stepX, padding, height, 'rgba(109,136,174,0.07)', secondary);
 	}
 }
+

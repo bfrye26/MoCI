@@ -48,16 +48,29 @@ export default class EthernetProfilesModule{
   }
   allReservedPorts(){
     const reserved=new Set();
+    let lanPorts=[];
     for(const item of Object.values(this.network)){
-      if(item?.['.type']==='device'&&item.type==='bridge'){
-        const names=Array.isArray(item.ports)?item.ports:String(item.ports||'').split(/\s+/);
-        for(const port of names)reserved.add(port);
+      if(item?.['.type']==='device'&&item.type==='bridge'&&item.name==='br-lan'){
+        lanPorts=Array.isArray(item.ports)?item.ports:String(item.ports||'').split(/\s+/).filter(Boolean);
       }
+      // WAN uplinks and ports already owned by a profile stay reserved.
       if(item?.['.type']==='interface'&&NIC.test(item.device||'')){
         reserved.add(item.device);
       }
     }
+    // Other LAN-bridge ports may be reclaimed into an isolated port profile, but
+    // always keep at least one port in br-lan so management stays reachable.
+    if(lanPorts.length===1)reserved.add(lanPorts[0]);
     return reserved;
+  }
+  async removeFromBridge(dev){
+    for(const [section,item] of Object.entries(this.network)){
+      if(item?.['.type']==='device'&&item.type==='bridge'&&item.name==='br-lan'){
+        const ports=(Array.isArray(item.ports)?item.ports:String(item.ports||'').split(/\s+/)).filter(p=>p&&p!==dev);
+        await this.set('network',section,{ports});
+        return;
+      }
+    }
   }
   async set(config,section,values){return this.uci('set',{config,section,values});}
   async add(config,type,name){return this.uci('add',{config,type,name});}
@@ -75,7 +88,7 @@ export default class EthernetProfilesModule{
   }
   render(){
     const root=this.root;root.replaceChildren();
-    root.append(this.el('p','Give an unassigned physical Ethernet port its own private subnet, DHCP service and isolated firewall zone. Existing WAN and management LAN connections cannot be reassigned by this wizard.','profiles-description'));
+    root.append(this.el('p','Give a physical Ethernet port its own private subnet, DHCP service and isolated firewall zone. The WAN uplink is reserved, and the last remaining LAN port stays in the management bridge; any other LAN port can be reclaimed into a profile (it is removed from the LAN bridge).','profiles-description'));
     const reserved=this.allReservedPorts();
     const free=this.ports.filter(port=>!reserved.has(port));
     const owned=Object.entries(this.network).filter(([name,value])=>
@@ -91,9 +104,9 @@ export default class EthernetProfilesModule{
     const internet=this.el('input');internet.type='checkbox';
     const internetLabel=this.el('label',undefined,'profiles-check');
     internetLabel.append(internet,this.el('span','Allow internet access via WAN (default: isolated)'));
-    form.append(this.labeled('Profile name',name),this.labeled('Unused physical Ethernet port',port),
+    form.append(this.labeled('Profile name',name),this.labeled('Physical Ethernet port',port),
       this.labeled('LAN gateway IPv4 (/24)',ip),internetLabel);
-    form.append(this.el('p','Check the physical port and cable before saving. The administrator’s LAN port and the WAN uplink are excluded. Each profile gets 192.168.x.100–249 DHCP addresses in its selected /24 subnet.','profiles-description'));
+    form.append(this.el('p','Check the physical port and cable before saving. The WAN uplink and the last management LAN port are reserved. Each profile gets 192.168.x.100–249 DHCP addresses in its selected /24 subnet.','profiles-description'));
     const button=this.el('button','CREATE PORT PROFILE','action-btn');
     button.type='submit';button.disabled=!free.length;form.append(button);
     form.addEventListener('submit',async event=>{
@@ -112,9 +125,13 @@ export default class EthernetProfilesModule{
       const conflict=Object.values(this.network).some(v=>v?.['.type']==='interface'&&
         typeof v.ipaddr==='string'&&v.ipaddr.split('.').slice(0,3).join('.')===addr.split('.').slice(0,3).join('.'));
       if(conflict){this.core.showToast('Subnet overlaps another interface','error');return;}
-      if(!window.confirm('Assign '+dev+' to '+logical+' at '+addr+'/24 with DHCP and '+(internet.checked?'WAN forwarding':'no WAN forwarding')+'? This changes routing and firewall rules.'))return;
+      const inLan=Object.values(this.network).some(v=>v?.['.type']==='device'&&v.type==='bridge'&&v.name==='br-lan'&&
+        (Array.isArray(v.ports)?v.ports:String(v.ports||'').split(/\s+/)).includes(dev));
+      const lanNote=inLan?'\n\n'+dev+' is currently a LAN port: it will be removed from the LAN bridge. If it is the port you are connected through, you will be disconnected and the change will roll back automatically.':'';
+      if(!window.confirm('Assign '+dev+' to '+logical+' at '+addr+'/24 with DHCP and '+(internet.checked?'WAN forwarding':'no WAN forwarding')+'? This changes routing and firewall rules.'+lanNote))return;
       this.busy=true;button.disabled=true;
       try{
+        if(inLan)await this.removeFromBridge(dev);
         await this.add('network','interface',logical);
         await this.set('network',logical,{proto:'static',device:dev,ipaddr:addr,netmask:'255.255.255.0',moci_port_profile:'1'});
         await this.add('dhcp','dhcp',logical);
@@ -138,7 +155,7 @@ export default class EthernetProfilesModule{
       finally{this.busy=false;button.disabled=false;}
     });
     root.append(this.el('h3','Assign unused Ethernet port'),form);
-    if(!free.length)root.append(this.el('p','No unused Ethernet NIC is available. Attach additional Ethernet interfaces to this x86 router. The WAN and management ports are reserved for safety.','profiles-description'));
+    if(!free.length)root.append(this.el('p','No Ethernet port is available to assign. The WAN uplink and the last management LAN port are reserved for safety; add more physical ports to create additional profiles.','profiles-description'));
     root.append(this.el('h3','Managed Ethernet port profiles'));
     if(!owned.length)root.append(this.el('p','No per-port profiles configured.','profiles-description'));
     for(const [section,value] of owned){
@@ -170,3 +187,4 @@ export default class EthernetProfilesModule{
     }
   }
 }
+

@@ -1,0 +1,15 @@
+#!/bin/sh /etc/rc.common
+# Keep the LAN-only firewall rules aligned with MoCI-managed Compose networks.
+# The loop handles Docker start/restart, network recreation and application
+# stop/remove without requiring users to run firewall commands.
+START=96
+STOP=10
+USE_PROCD=1
+
+start_service() {
+  procd_open_instance
+  procd_set_param command /bin/sh -c 'while :; do /usr/sbin/moci-docker-firewall sync >/dev/null 2>&1; sleep 45; done'
+  procd_set_param respawn 3600 5 0
+  procd_close_instance
+}
+

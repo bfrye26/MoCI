@@ -1,0 +1,7 @@
+#!/bin/sh
+# Only recognised MoCI GPT/ext4 layouts qualify. Other layouts are never changed.
+/usr/libexec/moci-grow-root --apply >> /tmp/moci-grow-root.log 2>&1 || {
+    logger -t moci-storage 'Root growth did not complete; inspect /tmp/moci-grow-root.log'
+    exit 1
+}
+exit 0

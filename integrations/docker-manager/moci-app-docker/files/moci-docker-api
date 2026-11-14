@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import urllib.parse
+import urllib.request
 
 DOCKER_SOCKET='/var/run/docker.sock'
 ROOT='/etc/moci-docker'
@@ -41,7 +42,7 @@ def public_image_tag(value):
         return first in APPROVED_REGISTRIES and len(parts)>=2
     return True
 IDENT=re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$|^[a-f0-9]{12,64}$')
-READ_METHODS=['status','containers','stacks','images','volumes','networks','storage','logs','container_stats','catalog','managed_stacks','diagnostics']
+READ_METHODS=['status','containers','stacks','images','volumes','networks','storage','logs','container_stats','catalog','managed_stacks','diagnostics','app_fetch','app_info','pihole_blocking','adguard_login','adguard_blocking']
 WRITE_METHODS=['stack_config','deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action','set_deployments']
 # Deployments are opt-in: secure default for a router control plane.
 # The root administrator must explicitly create this local-only enable file.
@@ -134,15 +135,22 @@ def catalog():
     pinned=pins()
     templates=template_specs()
     deploy_enabled=writes_enabled()
+    runtime={entry['name']:entry for entry in managed_stacks().get('managed_stacks',[])}
     apps=[]
     for app in data['apps'][:100]:
         appid=app.get('id')
         if not isinstance(appid,str) or not NAME.fullmatch(appid): continue
         image=pinned.get(appid)
         template=templates.get(appid)
+        trusted_risk=(app.get('risk') in ('review',None) or
+                      (app.get('risk')=='sensitive-data' and
+                       isinstance(template,dict) and
+                       template.get('reviewed_risk')=='sensitive-data') or
+                      (app.get('risk')=='router-critical' and
+                       isinstance(template,dict) and
+                       template.get('reviewed_risk')=='router-critical'))
         reviewed=(isinstance(template,dict) and app.get('template_available') is True
-                  and app.get('risk') in ('review',None)
-                  and template.get('repository')==app.get('repository')
+                  and trusted_risk and template.get('repository')==app.get('repository')
                   and isinstance(template.get('image'),str))
         approved_image=bool(reviewed and image and image in approved
                             and image.split('@',1)[0]==app.get('repository'))
@@ -156,12 +164,11 @@ def catalog():
         elif approved_image: state='ready'
         elif reviewed: state='prepare'
         else: state='manual'
-        url=None
-        if reviewed and installed:
-            raw_url=template.get('path')
-            if isinstance(raw_url,str) and re.fullmatch(r'http://ROUTER_IP:[0-9]{4,5}/?',raw_url):
-                try:url=raw_url.replace('ROUTER_IP',lan_ip())
-                except ValueError:pass
+        # Never show an installed app as openable based on its Compose
+        # file alone. Docker must report an actually running managed stack.
+        # This is still a local runtime indication, not a LAN HTTP probe.
+        stack=runtime.get(appid) or {}
+        url=stack.get('url') if reviewed and installed and stack.get('state')=='running' else None
         if not deploy_enabled:
             reason='Enable local Docker management to deploy applications'
         elif reviewed and not approved_image:
@@ -190,6 +197,30 @@ def catalog():
                                  'tmpfs':template.get('tmpfs',[])}
         apps.append(summary)
     return {'catalog':apps,'total':len(apps),'read_only':not deploy_enabled}
+
+def docker_lan_firewall_status():
+    """Read-only visibility into LAN forwarding automation.
+
+    A published Docker port is not evidence that an external LAN client
+    can reach it. Never claim a successful browser connectivity check here.
+    """
+    helper='/usr/sbin/moci-docker-firewall'
+    if not os.path.isfile(helper):
+        return {'state':'missing',
+                'detail':'Docker LAN firewall automation is not installed. New Compose apps may be unreachable from LAN clients.'}
+    try:
+        zone=subprocess.run(['/sbin/uci','-q','get','firewall.moci_docker_zone.name'],
+                            capture_output=True,text=True,timeout=4,check=False)
+        if zone.returncode!=0 or zone.stdout.strip()!='moci_docker':
+            legacy=subprocess.run(['/sbin/uci','-q','get','firewall.moci_docker_web_test'],
+                                  capture_output=True,text=True,timeout=4,check=False)
+            return {'state':'manual' if legacy.returncode==0 else 'not_applied',
+                    'detail':'The firewall reconciler has no active MoCI Docker zone. Existing manual test rules do not automatically cover new apps.'}
+        return {'state':'configured',
+                'detail':'MoCI Docker firewall zone is configured. Verify individual port rules and LAN reachability before relying on Open App.'}
+    except (OSError,subprocess.TimeoutExpired):
+        return {'state':'unknown',
+                'detail':'Could not inspect the Docker LAN firewall. Use Docker Diagnostics or the router console.'}
 
 def managed_stacks():
     """Return live Docker state for stacks created by MoCI.
@@ -277,7 +308,268 @@ def managed_stacks():
                        'running_containers':running,'total_containers':total,
                        'url':url,'url_kind':url_kind,
                        'published_ports':sorted(ports)})
-    return {'managed_stacks':result}
+    return {'managed_stacks':result,'lan_firewall':docker_lan_firewall_status()}
+
+
+# Native in-UI integrations for select managed apps. app_fetch proxies only these
+# apps' own published LAN endpoints and only the listed path prefixes — never an
+# arbitrary URL (no SSRF). The browser renders the result inside the MoCI UI.
+APP_INTEGRATIONS={
+    'pihole':{'paths':('/admin/api.php','/api/'),'label':'Pi-hole'},
+    'adguard-home':{'paths':('/control/',),'label':'AdGuard Home'},
+    'uptime-kuma':{'paths':('/api/','/metrics'),'label':'Uptime Kuma'},
+}
+def app_fetch(args):
+    app=args.get('app');path=args.get('path')
+    if not isinstance(app,str) or app not in APP_INTEGRATIONS:
+        raise ValueError('Application has no native integration')
+    if not isinstance(path,str) or not path.startswith('/') or '..' in path or '\\' in path or '//' in path:
+        raise ValueError('Invalid integration path')
+    if not any(path.startswith(p) for p in APP_INTEGRATIONS[app]['paths']):
+        raise ValueError('Integration path not permitted')
+    stacks=managed_stacks().get('managed_stacks',[])
+    stack=next((s for s in stacks if s.get('name')==app),None)
+    if not stack or not stack.get('running') or not stack.get('published_ports'):
+        raise ValueError('Application is not running')
+    ip=lan_ip()
+    port=stack['published_ports'][0]
+    if app=='pihole':
+        return {'app':app,'status':200,'body':json.dumps(pihole_summary(ip,port))}
+    if app=='adguard-home':
+        return {'app':app,'status':200,'body':json.dumps(adguard_summary(ip,port))}
+    url='http://'+ip+':'+str(port)+path
+    req=urllib.request.Request(url,headers={'User-Agent':'MoCI-Integration'})
+    try:
+        with urllib.request.urlopen(req,timeout=8) as res:
+            status=res.status
+            body=res.read(MAX_REPLY+1)
+    except (OSError,ValueError) as exc:
+        raise ValueError('Integration endpoint unreachable') from exc
+    if len(body)>MAX_REPLY:
+        raise ValueError('Integration response too large')
+    return {'app':app,'status':status,'body':body.decode('utf-8','replace')}
+
+
+def pihole_summary(ip,port):
+    # Pi-hole v6 exposes an authenticated /api. Authenticate with the generated
+    # application password (stored server-side in the managed Compose file), then
+    # read the summary and normalise it to the fields the MoCI panel renders.
+    base='http://'+ip+':'+str(port)
+    password=None
+    try:
+        with open(STACKS+'/pihole/compose.json',encoding='utf-8') as f:
+            compose=json.load(f)
+        password=compose['services']['app']['environment'].get('FTLCONF_webserver_api_password')
+    except (OSError,ValueError,KeyError,TypeError):
+        password=None
+    if not isinstance(password,str) or not password:
+        raise ValueError('Pi-hole application password unavailable')
+    auth=urllib.request.Request(base+'/api/auth',
+        data=json.dumps({'password':password}).encode('utf-8'),
+        headers={'Content-Type':'application/json','User-Agent':'MoCI-Integration'})
+    try:
+        with urllib.request.urlopen(auth,timeout=8) as res:
+            session=json.loads(res.read(MAX_REPLY+1))
+    except (OSError,ValueError) as exc:
+        raise ValueError('Pi-hole authentication failed') from exc
+    sid=(session.get('session') or {}).get('sid')
+    if not sid:
+        raise ValueError('Pi-hole did not return a session')
+    req=urllib.request.Request(base+'/api/stats/summary',
+        headers={'X-FTL-SID':sid,'User-Agent':'MoCI-Integration'})
+    try:
+        with urllib.request.urlopen(req,timeout=8) as res:
+            stats=json.loads(res.read(MAX_REPLY+1))
+    except (OSError,ValueError) as exc:
+        raise ValueError('Pi-hole stats unavailable') from exc
+    queries=stats.get('queries') or {}
+    gravity=stats.get('gravity') or {}
+    return {
+        'status':'enabled' if (stats.get('blocking') or {}).get('enabled',True) else 'disabled',
+        'dns_queries_today':queries.get('total',0),
+        'ads_blocked_today':queries.get('blocked',0),
+        'ads_percentage_today':queries.get('percent_blocked',0),
+        'domains_being_blocked':gravity.get('domains_being_blocked',0),
+        'unique_domains':queries.get('unique_domains',0),
+        'unique_clients':queries.get('unique_clients',0)
+    }
+
+
+def pihole_blocking(args):
+    enable=args.get('enable')
+    if type(enable) is not bool:
+        raise ValueError('Invalid blocking request')
+    stacks=managed_stacks().get('managed_stacks',[])
+    stack=next((s for s in stacks if s.get('name')=='pihole'),None)
+    if not stack or not stack.get('running') or not stack.get('published_ports'):
+        raise ValueError('Pi-hole is not running')
+    ip=lan_ip();port=stack['published_ports'][0]
+    base='http://'+ip+':'+str(port)
+    try:
+        with open(STACKS+'/pihole/compose.json',encoding='utf-8') as f:
+            compose=json.load(f)
+        password=compose['services']['app']['environment'].get('FTLCONF_webserver_api_password')
+    except (OSError,ValueError,KeyError,TypeError):
+        password=None
+    if not isinstance(password,str) or not password:
+        raise ValueError('Pi-hole application password unavailable')
+    auth=urllib.request.Request(base+'/api/auth',
+        data=json.dumps({'password':password}).encode('utf-8'),
+        headers={'Content-Type':'application/json','User-Agent':'MoCI-Integration'})
+    try:
+        with urllib.request.urlopen(auth,timeout=8) as res:
+            sid=(json.loads(res.read(MAX_REPLY+1)).get('session') or {}).get('sid')
+    except (OSError,ValueError) as exc:
+        raise ValueError('Pi-hole authentication failed') from exc
+    if not sid:
+        raise ValueError('Pi-hole did not return a session')
+    req=urllib.request.Request(base+'/api/dns/blocking',
+        data=json.dumps({'blocking':enable}).encode('utf-8'),
+        headers={'Content-Type':'application/json','X-FTL-SID':sid,'User-Agent':'MoCI-Integration'})
+    try:
+        with urllib.request.urlopen(req,timeout=8) as res:
+            result=json.loads(res.read(MAX_REPLY+1))
+    except (OSError,ValueError) as exc:
+        raise ValueError('Pi-hole blocking change failed') from exc
+    return {'blocking':result.get('blocking',enable)}
+
+
+def adguard_credentials():
+    # AdGuard Home's login is chosen by the user in its setup wizard (unlike
+    # Pi-hole's generated password). The Haven panel stores it server-side only
+    # (0600, never returned to the browser) once the user connects their login.
+    try:
+        with open(STACKS+'/adguard-home/credentials.json',encoding='utf-8') as f:
+            creds=json.load(f)
+    except (OSError,ValueError):
+        return None
+    name=creds.get('name');password=creds.get('password')
+    if not isinstance(name,str) or not name or not isinstance(password,str) or not password:
+        return None
+    return {'name':name,'password':password}
+
+
+def adguard_session(ip,port,creds):
+    base='http://'+ip+':'+str(port)
+    req=urllib.request.Request(base+'/control/login',
+        data=json.dumps({'name':creds['name'],'password':creds['password']}).encode('utf-8'),
+        headers={'Content-Type':'application/json','User-Agent':'MoCI-Integration'})
+    try:
+        with urllib.request.urlopen(req,timeout=8) as res:
+            cookie=res.headers.get('Set-Cookie') or ''
+    except (OSError,ValueError) as exc:
+        raise ValueError('AdGuard Home rejected those credentials') from exc
+    match=re.search(r'agh_session=([^;]+)',cookie)
+    if not match:
+        raise ValueError('AdGuard Home did not return a session')
+    return base,'agh_session='+match.group(1)
+
+
+def adguard_summary(ip,port):
+    creds=adguard_credentials()
+    if not creds:
+        raise ValueError('AdGuard Home login required')
+    base,cookie=adguard_session(ip,port,creds)
+    def get(path):
+        req=urllib.request.Request(base+path,headers={'Cookie':cookie,'User-Agent':'MoCI-Integration'})
+        try:
+            with urllib.request.urlopen(req,timeout=8) as res:
+                return json.loads(res.read(MAX_REPLY+1))
+        except (OSError,ValueError) as exc:
+            raise ValueError('AdGuard Home stats unavailable') from exc
+    status=get('/control/status')
+    stats=get('/control/stats')
+    total=stats.get('num_dns_queries',0) or 0
+    blocked=stats.get('num_blocked_filtering',0) or 0
+    return {
+        'status':'enabled' if status.get('protection_enabled',True) else 'disabled',
+        'version':status.get('version',''),
+        'dns_queries_today':total,
+        'ads_blocked_today':blocked,
+        'ads_percentage_today':round(blocked*100.0/total,1) if total else 0,
+        'avg_processing_time':stats.get('avg_processing_time',0),
+        'unique_clients':len(stats.get('top_clients') or []),
+        'top_queried':stats.get('top_queried_domains') or [],
+        'top_blocked':stats.get('top_blocked_domains') or []
+    }
+
+
+def adguard_login(args):
+    name=args.get('name');password=args.get('password')
+    if not isinstance(name,str) or not name.strip() or len(name)>100:
+        raise ValueError('Invalid AdGuard Home username')
+    if not isinstance(password,str) or not password or len(password)>200:
+        raise ValueError('Invalid AdGuard Home password')
+    stacks=managed_stacks().get('managed_stacks',[])
+    stack=next((s for s in stacks if s.get('name')=='adguard-home'),None)
+    if not stack or not stack.get('running') or not stack.get('published_ports'):
+        raise ValueError('AdGuard Home is not running')
+    ip=lan_ip();port=stack['published_ports'][0]
+    creds={'name':name.strip(),'password':password}
+    # Verify the login against the live container before persisting anything.
+    adguard_session(ip,port,creds)
+    root=STACKS+'/adguard-home'
+    os.makedirs(root,mode=0o700,exist_ok=True)
+    path=root+'/credentials.json'
+    if os.path.islink(path):raise ValueError('Unsafe credentials path')
+    fd,tmp=tempfile.mkstemp(dir=root,prefix='.creds-')
+    try:
+        with os.fdopen(fd,'w',encoding='utf-8') as f:
+            os.fchmod(f.fileno(),0o600)
+            json.dump(creds,f);f.flush();os.fsync(f.fileno())
+        os.replace(tmp,path)
+    finally:
+        if os.path.exists(tmp):os.unlink(tmp)
+    return {'connected':True}
+
+
+def adguard_blocking(args):
+    enable=args.get('enable')
+    if type(enable) is not bool:
+        raise ValueError('Invalid protection request')
+    creds=adguard_credentials()
+    if not creds:
+        raise ValueError('AdGuard Home login required')
+    stacks=managed_stacks().get('managed_stacks',[])
+    stack=next((s for s in stacks if s.get('name')=='adguard-home'),None)
+    if not stack or not stack.get('running') or not stack.get('published_ports'):
+        raise ValueError('AdGuard Home is not running')
+    ip=lan_ip();port=stack['published_ports'][0]
+    base,cookie=adguard_session(ip,port,creds)
+    req=urllib.request.Request(base+'/control/protection',
+        data=json.dumps({'enabled':enable}).encode('utf-8'),
+        headers={'Content-Type':'application/json','Cookie':cookie,'User-Agent':'MoCI-Integration'})
+    try:
+        with urllib.request.urlopen(req,timeout=8) as res:
+            res.read(MAX_REPLY+1)
+    except (OSError,ValueError) as exc:
+        raise ValueError('AdGuard Home protection change failed') from exc
+    return {'protection_enabled':enable}
+
+
+def app_info(args):
+    app=args.get('app')
+    if not isinstance(app,str) or app not in APP_INTEGRATIONS:
+        raise ValueError('Application has no native integration')
+    containers=docker('GET','/containers/json?all=1')
+    target=None
+    for c in containers if isinstance(containers,list) else []:
+        labels=c.get('Labels') or {}
+        if labels.get('com.moci.managed')=='true' and labels.get('com.docker.compose.project')=='moci-'+app and c.get('State')=='running':
+            target=c;break
+    if not target:
+        raise ValueError('Application is not running')
+    info=docker('GET','/containers/'+ident(target['Id'])+'/json')
+    ip=None
+    networks=(info.get('NetworkSettings') or {}).get('Networks') or {}
+    for net in networks.values():
+        if isinstance(net,dict) and net.get('IPAddress'):
+            ip=net['IPAddress'];break
+    ports=[]
+    for item in target.get('Ports') or []:
+        if isinstance(item,dict) and item.get('PublicPort'):
+            ports.append(item['PublicPort'])
+    return {'app':app,'container_ip':ip,'published_ports':sorted(set(ports))}
 
 
 def spec_validate(spec, app_id=None, advanced=False):
@@ -352,7 +644,7 @@ def spec_validate(spec, app_id=None, advanced=False):
             raise ValueError('Writable containers and custom users require advanced deployment confirmation')
         managed={'labels':{'com.moci.managed':'true'},'image':image,'ports':ports,'volumes':volumes,
                  'read_only':requested_read_only,'user':requested_user,'cap_drop':['ALL'],
-                 'security_opt':['no-new-privileges:true'],'pids_limit':128,
+                 'security_opt':['no-new-privileges=true'],'pids_limit':128,
                  'restart':'unless-stopped','mem_limit':requested_memory,
                  'environment':{key:str(value).lower() if isinstance(value,bool) else str(value)
                                 for key,value in environment.items()}}
@@ -365,15 +657,43 @@ def spec_validate(spec, app_id=None, advanced=False):
             approved_ports=[lan_ip()+':'+x for x in approved_template.get('ports',[])]
             if sorted(ports)!=sorted(approved_ports) or sorted(volumes)!=sorted(approved_template.get('volumes',[])):
                 raise ValueError('Application service differs from approved template')
+            # A reviewed app profile is a server-owned exact recipe, not
+            # a way for the caller to smuggle extra environment or commands.
+            expected_environment={
+                k:(v.replace('ROUTER_IP',lan_ip()) if isinstance(v,str) else str(v))
+                for k,v in approved_template.get('environment',{}).items()}
+            expected_secrets={
+                'gotify':'GOTIFY_DEFAULTUSER_PASS',
+                'grafana':'GF_SECURITY_ADMIN_PASSWORD',
+                'homarr':'SECRET_ENCRYPTION_KEY',
+                'n8n':'N8N_ENCRYPTION_KEY',
+                'pihole':'FTLCONF_webserver_api_password'
+            }
+            secret_env=approved_template.get('initial_password_env',
+                        approved_template.get('generated_secret_env'))
+            if secret_env is not None:
+                if expected_secrets.get(app_id)!=secret_env:
+                    raise ValueError('Unapproved generated secret profile')
+                secret_value=managed['environment'].get(secret_env,'')
+                if not re.fullmatch(r'[0-9a-f]{48,128}',secret_value):
+                    raise ValueError('Invalid generated application secret')
+                expected_environment[secret_env]=secret_value
+            if managed['environment']!=expected_environment:
+                raise ValueError('Application environment differs from reviewed template')
+            if managed.get('command')!=approved_template.get('command'):
+                raise ValueError('Application command differs from reviewed template')
+            if requested_memory!=approved_template.get('mem_limit','512m'):
+                raise ValueError('Application memory setting differs from reviewed template')
             approved_tmpfs=approved_template.get('tmpfs',[])
             if approved_tmpfs:
-                # Only the reviewed IT Tools image is allowed the Nginx scratch
-                # mounts; never expose arbitrary tmpfs paths through Compose RPC.
+                # Only reviewed stateless Nginx images (IT Tools, CyberChef)
+                # are allowed these exact scratch mounts; never expose
+                # arbitrary tmpfs paths through Compose RPC.
                 expected=[
                     '/var/cache/nginx:uid=65534,gid=65534,mode=1777,size=16m',
                     '/var/run:uid=65534,gid=65534,mode=1777,size=4m',
                     '/tmp:uid=65534,gid=65534,mode=1777,size=16m']
-                if app_id!='it-tools' or approved_tmpfs!=expected:
+                if app_id not in ('it-tools','cyberchef') or approved_tmpfs!=expected:
                     raise ValueError('Unapproved application scratch storage')
                 managed['tmpfs']=approved_tmpfs
             if approved_template.get('needs_write_access') is True:
@@ -383,10 +703,11 @@ def spec_validate(spec, app_id=None, advanced=False):
                 managed.pop('user')
                 profile_user=approved_template.get('run_as_user')
                 if profile_user is not None:
-                    # The OpenSpeedTest upstream image edits root-owned /etc/nginx
-                    # config on start, and crond needs a fixed capability set.
-                    # Root UID is allowed for THIS reviewed app only.
-                    if app_id=='openspeedtest' and profile_user=='0:0':
+                    # Some reviewed upstream images edit root-owned /etc/nginx
+                    # configuration on start (OpenSpeedTest also runs crond;
+                    # Homarr rewrites its nginx.conf and redis setup).
+                    # Root UID is allowed for these reviewed apps only.
+                    if app_id in ('openspeedtest','homarr','pihole','adguard-home','vaultwarden','home-assistant','plex','duplicati') and profile_user=='0:0':
                         managed['user']='0:0'
                     elif isinstance(profile_user,str) and re.fullmatch(r'[1-9][0-9]{0,4}:[1-9][0-9]{0,4}',profile_user):
                         managed['user']=profile_user
@@ -396,14 +717,31 @@ def spec_validate(spec, app_id=None, advanced=False):
             if profile_caps:
                 # No arbitrary capability additions for custom Compose;
                 # immutable image digest and exact approved app template required.
-                limited=['CHOWN','DAC_OVERRIDE','FOWNER','SETGID','SETUID']
-                if app_id!='openspeedtest' or profile_caps!=limited or managed.get('user')!='0:0' or managed.get('read_only') is not False:
+                reviewed_caps={'openspeedtest':['CHOWN','DAC_OVERRIDE','FOWNER','SETGID','SETUID'],
+                               'homarr':['CHOWN','DAC_OVERRIDE'],
+                               'pihole':['CHOWN','DAC_OVERRIDE','FOWNER','SETGID','SETUID','NET_BIND_SERVICE','NET_RAW','SYS_NICE','KILL'],
+                               'adguard-home':['CHOWN','DAC_OVERRIDE','FOWNER','SETGID','SETUID','NET_BIND_SERVICE','NET_RAW'],
+                               'vaultwarden':['CHOWN','DAC_OVERRIDE','FOWNER','SETGID','SETUID','NET_BIND_SERVICE'],
+                               'home-assistant':['CHOWN','DAC_OVERRIDE','FOWNER','SETGID','SETUID','NET_RAW'],
+                               'plex':['CHOWN','DAC_OVERRIDE','FOWNER','SETGID','SETUID'],
+                               'duplicati':['CHOWN','DAC_OVERRIDE','FOWNER','SETGID','SETUID']}
+                if app_id not in reviewed_caps or profile_caps!=reviewed_caps[app_id] or managed.get('user')!='0:0' or managed.get('read_only') is not False:
                     raise ValueError('Unapproved application capabilities')
                 managed['cap_add']=profile_caps
+            # Reviewed slow-start applications ship a health probe that turns
+            # unhealthy before their first-boot migration finishes. Only the
+            # timing may be relaxed, never the probe command from the image.
+            reviewed_health={'homarr':{'interval':'15s','timeout':'5s',
+                                       'retries':20,'start_period':'300s'}}
+            profile_health=approved_template.get('healthcheck')
+            if profile_health:
+                if app_id not in reviewed_health or profile_health!=reviewed_health[app_id]:
+                    raise ValueError('Unapproved application health profile')
+                managed['healthcheck']=profile_health
         safe[name]=managed
     return {'services':safe,'volumes':{key:{} for key in sorted(named_volumes)}}
 
-def compose(name,arguments):
+def compose(name,arguments,timeout=180):
     base=STACKS+'/'+name
     # OpenWrt ships Compose both as Docker CLI plugin and standalone symlink.
     # Prefer the plugin and fall back to the standalone executable.
@@ -414,7 +752,7 @@ def compose(name,arguments):
         raise ValueError('Docker Compose is not installed in the firmware')
     result=subprocess.run(command+['--project-name','moci-'+name,
         '--file',base+'/compose.json']+arguments,
-        stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=180,
+        stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=timeout,
         env={'PATH':'/usr/bin:/bin','DOCKER_HOST':'unix:///var/run/docker.sock'},
         check=False)
     if result.returncode:
@@ -423,45 +761,138 @@ def compose(name,arguments):
     return result.stdout[:4096].decode('utf-8','replace')
 
 def initialize_approved_volume(app_id,spec):
-    """Initialize only a reviewed named-volume mount for a fixed app image.
+    """Initialize bounded, named volumes owned by a verified application.
 
-    Runs a one-shot root process without network or host mounts, with only
-    CAP_CHOWN. The application itself never receives root permissions.
+    Use the exact approved image, no network, no additional host access,
+    and only CAP_CHOWN. No recursive modification of existing application data.
+    Only images with /bin/sh are eligible; scratch/distroless apps must use
+    a separately reviewed bootstrap workflow.
     """
     template=template_specs().get(app_id,{})
-    initializer=template.get('volume_initializer')
-    if not initializer:
-        return
-    if not isinstance(initializer,dict) or set(initializer)!={'path','uid','gid'}:
-        raise ValueError('Invalid approved volume initializer')
-    uid=initializer['uid'];gid=initializer['gid'];path=initializer['path']
-    if any(not isinstance(value,int) or isinstance(value,bool) or not 1<=value<=65534 for value in (uid,gid)):
-        raise ValueError('Invalid volume owner')
-    if not isinstance(path,str) or not re.fullmatch(r'/[A-Za-z0-9_-]+(?:/[A-Za-z0-9_.-]+)*',path):
-        raise ValueError('Invalid volume initialization mount')
+    initializers=template.get('volume_initializers',[])
+    if template.get('volume_initializer'):
+        if initializers:
+            raise ValueError('Conflicting volume initialization profiles')
+        initializers=[template['volume_initializer']]
+    if not isinstance(initializers,list) or len(initializers)>4:
+        raise ValueError('Invalid volume initialization profiles')
     service=spec['services'].get('app')
     if not isinstance(service,dict):
         raise ValueError('Approved app must use the app service')
-    named=[v.split(':',1)[0] for v in service['volumes'] if v.split(':',1)[1]==path]
-    if len(named)!=1:
-        raise ValueError('Approved mount was not found in app')
-    volume='moci-'+app_id+'_'+named[0]
-    if not re.fullmatch(r'[a-z][a-z0-9_-]{0,100}',volume):
-        raise ValueError('Invalid Docker volume name')
-    subprocess.run(['/usr/bin/docker','volume','create','--label','com.moci.managed=true',volume],
-       stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,timeout=15,check=True)
-    # Never pass untrusted shell fragments. Owner and path are positional args.
-    init=['/usr/bin/docker','run','--rm','--network','none','--read-only',
-          '--user','0:0','--cap-drop','ALL','--cap-add','CHOWN',
-          '--security-opt','no-new-privileges:true','--pids-limit','64',
-          '--memory','128m','--mount',
-          'type=volume,source='+volume+',target='+path,
+    used=set()
+    for initializer in initializers:
+        if not isinstance(initializer,dict) or not {'path','uid','gid'} <= set(initializer) <= {'path','uid','gid','dirs'}:
+            raise ValueError('Invalid approved volume initializer')
+        uid=initializer['uid'];gid=initializer['gid'];path=initializer['path']
+        if any(not isinstance(v,int) or isinstance(v,bool) or not 1<=v<=65534 for v in (uid,gid)):
+            raise ValueError('Invalid volume owner')
+        if not isinstance(path,str) or not re.fullmatch(r'/[A-Za-z0-9_-]+(?:/[A-Za-z0-9_.-]+)*',path):
+            raise ValueError('Invalid volume initialization mount')
+        # Reviewed applications may require one or two existing subdirectories
+        # (for example a database directory) inside their data volume. Names
+        # are strictly validated literals; creation is idempotent and never
+        # modifies files inside directories that already exist.
+        subdirs=initializer.get('dirs',[])
+        if not isinstance(subdirs,list) or len(subdirs)>2 or any(
+                not isinstance(d,str) or not re.fullmatch(r'[A-Za-z0-9_.-]{1,32}',d) for d in subdirs):
+            raise ValueError('Invalid approved volume directories')
+        if path in used:raise ValueError('Duplicate volume initialization mount')
+        used.add(path)
+        named=[v.split(':',1)[0] for v in service['volumes'] if v.split(':',1)[1]==path]
+        if len(named)!=1:raise ValueError('Approved volume mount was not found')
+        volume='moci-'+app_id+'_'+named[0]
+        if not re.fullmatch(r'[a-z][a-z0-9_-]{0,100}',volume):
+            raise ValueError('Invalid Docker volume name')
+        subprocess.run(['/usr/bin/docker','volume','create','--label','com.moci.managed=true',volume],
+            stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,timeout=15,check=True)
+        # A freshly mounted empty volume inherits the image directory's
+        # ownership (root) via copy-on-first-mount, and Docker repeats that
+        # reset on every mount while the volume has no entries. Create the
+        # reviewed subdirectories first (euid 0 owns the mounted directory, so
+        # plain mkdir needs no capabilities), then transfer ownership of the
+        # directory inodes only. The volume is non-empty afterwards, so later
+        # mounts no longer reset anything. Existing application files are
+        # never modified.
+        setup=['/usr/bin/docker','run','--rm','--network','none','--read-only',
+            '--user','0:0','--cap-drop','ALL','--cap-add','CHOWN',
+            '--security-opt','no-new-privileges=true','--pids-limit','64',
+            '--memory','128m','--mount',
+            'type=volume,source='+volume+',target='+path,
+            '--entrypoint','/bin/sh',service['image'],'-c',
+            'owner="$1"; root="$2"; shift 2; '
+            'for d in "$@"; do mkdir -p "$d" || exit 1; done; '
+            'chown "$owner" "$root" || exit 1; '
+            'for d in "$@"; do chown "$owner" "$d" || exit 1; done',
+            'moci-volume-init',str(uid)+':'+str(gid),path]\
+            +[path+'/'+d for d in subdirs]
+        result=subprocess.run(setup,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,
+                              timeout=45,check=False)
+        if result.returncode:
+            raise ValueError('Approved volume initialization failed for '+app_id)
+    # Seed only fixed, reviewed configuration files into an approved named
+    # volume after its UID/GID has been initialized. Existing files are never
+    # overwritten during upgrades or reinstalls.
+    seed_files=template.get('seed_files',[])
+    if not isinstance(seed_files,list) or len(seed_files)>4:
+        raise ValueError('Invalid approved configuration seeds')
+    used_paths=set()
+    for seed in seed_files:
+        if not isinstance(seed,dict) or set(seed)!={'path','content'}:
+            raise ValueError('Invalid approved configuration seed')
+        target=seed['path']
+        content=seed['content']
+        if not isinstance(target,str) or not re.fullmatch(
+             r'/[A-Za-z0-9_-]+(?:/[A-Za-z0-9_.-]+)*',target) or '..' in target.split('/'):
+            raise ValueError('Unsafe configuration filename')
+        if target in used_paths:raise ValueError('Duplicate configuration seed')
+        used_paths.add(target)
+        if not isinstance(content,str) or not 1<=len(content.encode('utf-8'))<=4096 or '\x00' in content:
+            raise ValueError('Invalid static configuration content')
+        mount=None
+        for volume in service['volumes']:
+            volume_name,volpath=volume.split(':',1)
+            if target.startswith(volpath.rstrip('/')+'/') and '/' not in target[len(volpath.rstrip('/'))+1:]:
+                mount=(volume_name,volpath)
+                break
+        if mount is None:raise ValueError('Seed file outside approved data volume')
+        owner=next((init for init in initializers if init['path']==mount[1]),None)
+        if owner is None:raise ValueError('Seed file volume owner is unapproved')
+        volume='moci-'+app_id+'_'+mount[0]
+        if not re.fullmatch(r'[a-z][a-z0-9_-]{0,100}',volume):
+            raise ValueError('Invalid seed volume name')
+        subprocess.run(['/usr/bin/docker','volume','create','--label',
+             'com.moci.managed=true',volume],
+             stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,timeout=15,check=True)
+        # No host filesystem mount or shell interpolation of configuration.
+        # The reviewed literal text is passed as an argv parameter.
+        command=['/usr/bin/docker','run','--rm','--network','none','--read-only',
+          '--user',str(owner['uid'])+':'+str(owner['gid']),
+          '--cap-drop','ALL','--security-opt','no-new-privileges=true',
+          '--pids-limit','32','--memory','128m','--mount',
+          'type=volume,source='+volume+',target='+mount[1],
           '--entrypoint','/bin/sh',service['image'],'-c',
-          'chown "$1" "$2"','moci-volume-init',str(uid)+':'+str(gid),path]
-    result=subprocess.run(init,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,
-                          timeout=45,check=False)
-    if result.returncode:
-        raise ValueError('Approved volume initialization failed')
+          'test -e "$1" || { umask 022; printf "%s" "$2" > "$1"; }',
+          'moci-seed-config',target,content]
+        result=subprocess.run(command,stdout=subprocess.DEVNULL,
+                 stderr=subprocess.PIPE,timeout=45,check=False)
+        if result.returncode:
+            raise ValueError('Approved configuration seed failed for '+app_id)
+
+def sync_docker_firewall():
+    """Update only managed Compose firewall rules, preserving LAN/WAN policy."""
+    path='/usr/sbin/moci-docker-firewall'
+    if not os.path.isfile(path):
+        return {'ready':False,'message':'Docker firewall synchronization helper missing'}
+    try:
+        result=subprocess.run([path,'sync'],capture_output=True,text=True,
+                              timeout=30,check=False)
+        if result.returncode:
+            return {'ready':False,'message':'Docker LAN firewall check failed'}
+        detail=json.loads(result.stdout)
+        return {'ready':True,'bridges':detail.get('bridges',0),
+                'rules':detail.get('rules',0)}
+    except (OSError,ValueError,subprocess.TimeoutExpired):
+        return {'ready':False,'message':'Docker LAN firewall synchronization unavailable'}
 
 def deploy(name,raw,app_id=None,advanced=False):
     if not isinstance(name,str) or not NAME.fullmatch(name) or not isinstance(raw,str) or len(raw.encode())>MAX_SPEC:
@@ -474,7 +905,10 @@ def deploy(name,raw,app_id=None,advanced=False):
         fcntl.flock(lock,fcntl.LOCK_EX)
         path=root+'/compose.json'
         if os.path.islink(path): raise ValueError('Unsafe stack path')
-        before=open(path,'rb').read(MAX_SPEC+1) if os.path.exists(path) else None
+        before=None
+        if os.path.exists(path):
+            with open(path,'rb') as previous:
+                before=previous.read(MAX_SPEC+1)
         fd,tmp=tempfile.mkstemp(dir=root,prefix='.pending-')
         try:
             with os.fdopen(fd,'wb') as f:
@@ -483,7 +917,12 @@ def deploy(name,raw,app_id=None,advanced=False):
             try:
                 if app_id:
                     initialize_approved_volume(app_id,validated)
-                compose(name,['up','-d','--wait','--remove-orphans'])
+                # Reviewed slow-start apps get a longer wait window; their
+                # health profile already failed fast on first boot.
+                wait_timeout=480 if (app_id and template_specs().get(
+                    app_id,{}).get('healthcheck')) else 180
+                compose(name,['up','-d','--wait','--remove-orphans'],
+                        timeout=wait_timeout)
             except Exception as failure:
                 # A failed `up` may leave newly created containers running.
                 # Roll back the on-disk spec AND reconcile the Docker project.
@@ -512,7 +951,7 @@ def deploy(name,raw,app_id=None,advanced=False):
                 raise failure
         finally:
             if os.path.exists(tmp): os.unlink(tmp)
-    return {'deployed':True,'name':name}
+    return {'deployed':True,'name':name,'firewall':sync_docker_firewall()}
 
 def docker_json(method,path,payload=None):
     if method not in ('POST','DELETE'):
@@ -635,6 +1074,9 @@ def diagnostics():
         report('LAN interface',False,'No private br-lan IPv4 address')
     report('Deployment approval',writes_enabled(),
            'Explicitly enabled' if writes_enabled() else 'Read-only by default')
+    report('Docker LAN firewall reconciler',
+           os.path.isfile('/usr/sbin/moci-docker-firewall'),
+           'Automatic LAN-only forwarding available' if os.path.isfile('/usr/sbin/moci-docker-firewall') else 'Missing auto-firewall helper')
     return {'diagnostics':checks,'ready':all(x['ok'] for x in checks
             if x['name'] not in ('Deployment approval','Stacks directory'))}
 
@@ -714,7 +1156,7 @@ def run(method,args):
             raise ValueError('Invalid application ID')
         # CLI accepts only root-owned, reviewed templates; never arbitrary tags from browsers.
         command=subprocess.run(['/usr/sbin/moci-docker-policy','prepare',app_id],
-                  capture_output=True,text=True,timeout=125,check=False)
+                  capture_output=True,text=True,timeout=320,check=False)
         if command.returncode:
             raise ValueError('Application preparation failed; consult router logs')
         return {'prepared':True,'id':app_id}
@@ -723,7 +1165,7 @@ def run(method,args):
         if not isinstance(tag,str) or len(tag)>150 or not public_image_tag(tag):
             raise ValueError('Invalid image tag')
         result=subprocess.run(['/usr/sbin/moci-docker-policy','prepare-custom',tag],
-            stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=175,check=False)
+            stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=320,check=False)
         if result.returncode:
             raise ValueError('Image preparation failed; verify registry access and image tag')
         match=re.search(r'Approved immutable digest:\s*([A-Za-z0-9._/-]+@sha256:[0-9a-f]{64})',result.stdout)
@@ -747,6 +1189,11 @@ def run(method,args):
             return {'available':False,'message':'Docker Engine unavailable','read_only':True}
     if method=='catalog':return catalog()
     if method=='managed_stacks':return managed_stacks()
+    if method=='app_fetch':return app_fetch(args)
+    if method=='app_info':return app_info(args)
+    if method=='pihole_blocking':return pihole_blocking(args)
+    if method=='adguard_login':return adguard_login(args)
+    if method=='adguard_blocking':return adguard_blocking(args)
     if method=='stack_config':
         name=args.get('name')
         if not isinstance(name,str) or not NAME.fullmatch(name):
@@ -813,6 +1260,8 @@ def run(method,args):
         selected=next((a for a in listing if a['id']==app_id),None)
         if not selected or not selected['ready']:
             raise ValueError('Application requires approval before installation')
+        if selected['risk']=='sensitive-data' and args.get('confirmation')!='INSTALL SENSITIVE APP':
+            raise ValueError('Sensitive application deployment requires explicit administrator acknowledgement')
         image=pins()[app_id]
         template=template_specs().get(app_id)
         if not isinstance(template,dict) or template.get('repository')!=image.split('@',1)[0]:
@@ -832,26 +1281,36 @@ def run(method,args):
         for key in ('environment','command','mem_limit'):
             if key in template:
                 service[key]=template[key]
+        # Generate and retain installation secrets entirely server-side. The
+        # browser cannot select an encryption key or reset an existing one.
         initial_secret=None
-        secret_env=template.get('initial_password_env')
+        secret_env=template.get('initial_password_env',template.get('generated_secret_env'))
         if secret_env is not None:
-            # Permit only explicitly reviewed credential variables; no arbitrary
-            # shell commands or free-form image-supplied secret names.
-            if app_id!='gotify' or secret_env!='GOTIFY_DEFAULTUSER_PASS':
-                raise ValueError('Unapproved initial credential profile')
+            audited={'gotify':'GOTIFY_DEFAULTUSER_PASS',
+                     'grafana':'GF_SECURITY_ADMIN_PASSWORD',
+                     'homarr':'SECRET_ENCRYPTION_KEY',
+                     'n8n':'N8N_ENCRYPTION_KEY',
+                     'pihole':'FTLCONF_webserver_api_password'}
+            if audited.get(app_id)!=secret_env:
+                raise ValueError('Unapproved generated application secret')
             previous=STACKS+'/'+app_id+'/compose.json'
-            password=None
+            old_secret=None
             if os.path.isfile(previous) and not os.path.islink(previous):
                 try:
-                    existing=json.load(open(previous,encoding='utf-8'))
-                    password=existing['services']['app']['environment'].get(secret_env)
+                    with open(previous,encoding='utf-8') as f:
+                        prior=json.load(f)
+                    old_secret=prior['services']['app']['environment'].get(secret_env)
                 except (OSError,ValueError,KeyError,TypeError,AttributeError):
-                    password=None
-            if not isinstance(password,str) or len(password)<20:
-                password=os.urandom(24).hex()
-                initial_secret=password
-            env=service.setdefault('environment',{})
-            env[secret_env]=password
+                    old_secret=None
+            if not isinstance(old_secret,str) or not re.fullmatch(r'[0-9a-f]{48,128}',old_secret):
+                old_secret=os.urandom(32).hex()
+                if template.get('initial_password_env'):initial_secret=old_secret
+            service.setdefault('environment',{})[secret_env]=old_secret
+        if isinstance(service.get('environment'),dict):
+            service['environment']={
+                key:value.replace('ROUTER_IP',ip) if isinstance(value,str) else value
+                for key,value in service['environment'].items()}
+
         result=deploy(app_id,json.dumps({'services':{'app':service}}),app_id=app_id)
         if initial_secret:
             result['initial_credentials']={'username':'admin','password':initial_secret}
@@ -873,11 +1332,11 @@ def run(method,args):
         else:
             compose(name,{'start':['up','-d','--wait'],'stop':['stop']}[action])
         return {'ok':True,'name':name,'action':action,
-                'data_preserved':action=='remove'}
+                'data_preserved':action=='remove','firewall':sync_docker_firewall()}
     raise ValueError('Unknown method')
 
 METHODS={'set_deployments':{'enabled':'bool','confirmation':'str'}}
-METHODS.update({k:({} if k not in ('logs','container_stats','stack_config','deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action') else {'logs':{'id':'str'},'container_stats':{'id':'str'},'stack_config':{'name':'str'},'deploy':{'name':'str','spec':'str','confirmation':'str'},'prepare_app':{'id':'str'},'prepare_custom':{'image':'str'},'install_catalog':{'id':'str'},'stack_action':{'name':'str','action':'str'},'container_action':{'id':'str','action':'str'},'volume_action':{'name':'str','action':'str'},'network_action':{'name':'str','action':'str'},'image_action':{'id':'str','action':'str'}}[k]) for k in READ_METHODS+WRITE_METHODS if k!='set_deployments'})
+METHODS.update({k:({} if k not in ('logs','container_stats','stack_config','deploy','prepare_app','prepare_custom','install_catalog','stack_action','container_action','volume_action','network_action','image_action','app_fetch','app_info','pihole_blocking','adguard_login','adguard_blocking') else {'logs':{'id':'str'},'container_stats':{'id':'str'},'stack_config':{'name':'str'},'deploy':{'name':'str','spec':'str','confirmation':'str'},'prepare_app':{'id':'str'},'prepare_custom':{'image':'str'},'install_catalog':{'id':'str'},'stack_action':{'name':'str','action':'str'},'container_action':{'id':'str','action':'str'},'volume_action':{'name':'str','action':'str'},'network_action':{'name':'str','action':'str'},'image_action':{'id':'str','action':'str'},'app_fetch':{'app':'str','path':'str'},'app_info':{'app':'str'},'pihole_blocking':{'enable':'bool'},'adguard_login':{'name':'str','password':'str'},'adguard_blocking':{'enable':'bool'}}[k]) for k in READ_METHODS+WRITE_METHODS if k!='set_deployments'})
 if __name__=='__main__':
     if len(sys.argv)==2 and sys.argv[1]=='list':
         print(json.dumps(METHODS))

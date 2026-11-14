@@ -27,6 +27,9 @@
         "/etc/hosts": [
           "read"
         ],
+        "/etc/moci-release": [
+          "read"
+        ],
         "/tmp/firmware.bin": [
           "read"
         ],
@@ -77,6 +80,54 @@
         ],
         "/usr/libexec/moci-pkg-call search-general *": [
           "exec"
+        ],
+        "/var/run/miniupnpd.leases": [
+          "read"
+        ],
+        "/usr/libexec/moci-service-inspect list": [
+          "exec"
+        ],
+        "/usr/libexec/moci-service-inspect present": [
+          "exec"
+        ],
+        "/usr/libexec/moci-service-inspect inspect *": [
+          "exec"
+        ],
+        "/usr/libexec/moci-service-inspect summary": [
+          "exec"
+        ],
+        "/usr/libexec/nlbwmon-action periods": [
+          "exec"
+        ],
+        "/usr/libexec/nlbwmon-action download *": [
+          "exec"
+        ],
+        "/usr/share/nlbwmon/protocols": [
+          "read"
+        ],
+        "/usr/sbin/mwan3 status": [
+          "exec"
+        ],
+        "/usr/bin/find /tmp/rrd *": [
+          "exec"
+        ],
+        "/usr/bin/rrdtool fetch *": [
+          "exec"
+        ],
+        "/sbin/block info": [
+          "exec"
+        ],
+        "/proc/mounts": [
+          "read"
+        ],
+        "/etc/init.d/adblock status": [
+          "exec"
+        ],
+        "/usr/sbin/tailscale status --json": [
+          "exec"
+        ],
+        "/usr/sbin/tailscale ip *": [
+          "exec"
         ]
       },
       "ubus": {
@@ -88,6 +139,7 @@
         ],
         "uci": [
           "get",
+          "changes",
           "configs"
         ],
         "file": [
@@ -100,7 +152,9 @@
         "moci": [
           "getDHCPLeases",
           "getPorts",
-          "getBridges"
+          "getBridges",
+          "wgStatus",
+          "dnsPublishList"
         ],
         "service": [
           "list"
@@ -137,7 +191,11 @@
         "irqbalance",
         "openvpn",
         "unbound",
-        "https-dns-proxy"
+        "https-dns-proxy",
+        "upnpd",
+        "adblock",
+        "tailscale",
+        "ttyd"
       ]
     },
     "write": {
@@ -169,8 +227,27 @@
         "/etc/dropbear/authorized_keys": [
           "write"
         ],
+        "/etc/uhttpd.crt": [
+          "write",
+          "read"
+        ],
+        "/etc/uhttpd.key": [
+          "write"
+        ],
         "/tmp/firmware.bin": [
           "write"
+        ],
+        "/tmp/firmware.bin.sig": [
+          "write"
+        ],
+        "/usr/libexec/moci-verify-image /tmp/firmware.bin": [
+          "exec"
+        ],
+        "/usr/libexec/moci-verify-image /tmp/firmware.bin /tmp/firmware.bin.sig": [
+          "exec"
+        ],
+        "/bin/rm -f /tmp/firmware.bin.sig": [
+          "exec"
         ],
         "/etc/init.d/* reload": [
           "exec"
@@ -179,6 +256,12 @@
           "exec"
         ],
         "/etc/init.d/* stop": [
+          "exec"
+        ],
+        "/etc/init.d/* enable": [
+          "exec"
+        ],
+        "/etc/init.d/* disable": [
           "exec"
         ],
         "/sbin/sysupgrade --create-backup /tmp/backup.tar.gz": [
@@ -207,6 +290,42 @@
         ],
         "/usr/libexec/moci-pkg-call remove-general *": [
           "exec"
+        ],
+        "/etc/init.d/miniupnpd restart": [
+          "exec"
+        ],
+        "/etc/init.d/sqm restart": [
+          "exec"
+        ],
+        "/etc/init.d/sqm reload": [
+          "exec"
+        ],
+        "/usr/bin/openssl x509 *": [
+          "exec"
+        ],
+        "/etc/init.d/uhttpd restart": [
+          "exec"
+        ],
+        "/etc/init.d/acme renew": [
+          "exec"
+        ],
+        "/usr/sbin/tailscale up *": [
+          "exec"
+        ],
+        "/usr/sbin/tailscale down": [
+          "exec"
+        ],
+        "/usr/sbin/tailscale logout": [
+          "exec"
+        ],
+        "/sbin/block mount": [
+          "exec"
+        ],
+        "/sbin/block umount": [
+          "exec"
+        ],
+        "/usr/libexec/nlbwmon-action commit": [
+          "exec"
         ]
       },
       "ubus": {
@@ -216,7 +335,9 @@
           "delete",
           "commit",
           "apply",
-          "confirm"
+          "confirm",
+          "rollback",
+          "revert"
         ],
         "file": [
           "write",
@@ -231,7 +352,9 @@
         ],
         "moci": [
           "setPassword",
-          "wgGenKey"
+          "wgGenKey",
+          "dnsPublishPermission",
+          "dnsPublishRemove"
         ]
       },
       "uci": [
@@ -266,8 +389,13 @@
         "irqbalance",
         "openvpn",
         "unbound",
-        "https-dns-proxy"
+        "https-dns-proxy",
+        "upnpd",
+        "adblock",
+        "tailscale",
+        "ttyd"
       ]
     }
   }
 }
+

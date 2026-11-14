@@ -1,0 +1,4 @@
+#!/bin/sh
+# First-boot migration only; configured UPS/custom Docker settings are preserved.
+/usr/libexec/moci-runtime-defaults --apply || exit 1
+exit 0

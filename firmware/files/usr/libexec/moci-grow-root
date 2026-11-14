@@ -1,0 +1,197 @@
+#!/usr/bin/python3
+"""Grow only MoCI's recognised UEFI root partition into unused trailing space."""
+import argparse
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import time
+import uuid
+
+LINUX='0fc63daf-8483-4772-8e79-3d69d8477de4'
+BIOS='21686148-6449-6e6f-744e-656564454649'
+
+
+def command(args, input=None, timeout=30):
+    result=subprocess.run(args,input=input,capture_output=True,text=True,timeout=timeout)
+    if result.returncode:
+        raise RuntimeError(f'{args[0]} failed ({result.returncode}): '+result.stdout[-1500:]+result.stderr[-1000:])
+    return result.stdout
+
+
+def partition_node(disk,number):
+    return disk+('p' if disk[-1].isdigit() else '')+str(number)
+
+
+def growth_plan(table,disk_bytes,root_node):
+    disk=table['device']
+    if table.get('label')!='gpt' or table.get('sectorsize')!=512 or table.get('unit')!='sectors':
+        raise RuntimeError('Only the stock 512-byte-sector GPT layout is supported')
+    parts=table.get('partitions',[])
+    expected={partition_node(disk,1),partition_node(disk,2),partition_node(disk,128)}
+    if len(parts)!=3 or {part['node'] for part in parts}!=expected or root_node!=partition_node(disk,2):
+        raise RuntimeError('Custom/data partition layout detected; no automatic growth')
+    by_node={part['node']:part for part in parts}
+    boot,root,bios=(by_node[partition_node(disk,n)] for n in (1,2,128))
+    if (boot['start'],boot['size'],boot['type'].lower())!=(512,32768,LINUX) or (bios['start'],bios['size'],bios['type'].lower())!=(34,478,BIOS):
+        raise RuntimeError('Boot layout is not the recognised MoCI UEFI layout')
+    if root['start']!=33280 or root['type'].lower()!=LINUX or root['size']<=0:
+        raise RuntimeError('Root partition geometry is not recognised')
+    sectors=disk_bytes//512
+    if disk_bytes%512 or root['start']+root['size']>sectors-33:
+        raise RuntimeError('Invalid disk or root partition bounds')
+    # Leave the backup GPT at the end; align the root end to 1 MiB.
+    maximum=((sectors-33)//2048)*2048-root['start']
+    size=max(root['size'],maximum)
+    return {'disk':disk,'root':root_node,'number':2,'start':root['start'],
+            'before_sectors':root['size'],'after_sectors':size,'grow_partition':size>root['size']+2048}
+
+
+def assert_preserved(before,after,root_node,size):
+    for key in ('label','id','device','unit','sectorsize'):
+        if before.get(key)!=after.get(key): raise RuntimeError('Disk identity changed during growth')
+    old={part['node']:dict(part) for part in before['partitions']}
+    new={part['node']:dict(part) for part in after['partitions']}
+    if set(old)!=set(new): raise RuntimeError('Partition set changed during growth')
+    for node,entry in old.items():
+        if node==root_node: entry['size']=size
+        if entry!=new[node]: raise RuntimeError('Unexpected partition metadata change: '+node)
+
+
+def write_partition_table(disk,start,size):
+    # This changes the size only. It does not move data, format or recreate GPT.
+    command(['sfdisk','--lock=yes','--no-reread','--no-tell-kernel','--relocate','gpt-bak-std',disk])
+    command(['sfdisk','--lock=yes','--no-reread','--no-tell-kernel','-N','2',disk],input=f'start={start}, size={size}\n')
+
+
+def root_device():
+    selected=None
+    for line in Path('/proc/self/mountinfo').read_text().splitlines():
+        fields=line.split(); separator=fields.index('-')
+        if fields[4]=='/': selected=(fields[2],fields[separator+1],fields[5])
+    if not selected or selected[1]!='ext4' or 'rw' not in selected[2].split(','):
+        raise RuntimeError('Root must be a directly mounted writable ext4 filesystem')
+    sysdev=(Path('/sys/dev/block')/selected[0]).resolve(strict=True)
+    root,disk=sysdev.name,sysdev.parent.name
+    if not re.fullmatch(r'(sd[a-z]+|vd[a-z]+|nvme[0-9]+n[0-9]+)',disk) or (sysdev/'partition').read_text().strip()!='2':
+        raise RuntimeError('Root is not a supported direct disk partition')
+    sectors=int((Path('/sys/class/block')/disk/'size').read_text())
+    return '/dev/'+disk,'/dev/'+root,sectors*512
+
+
+def storage_diagnostics(disk,root):
+    """Read metadata only. Never retry resize or run a repair on mounted root."""
+    result={}
+    probes={
+        'partition_table':['sfdisk','--json',disk],
+        'filesystem_header':['dumpe2fs','-h',root],
+        'kernel_messages':['dmesg'],
+    }
+    for name,args in probes.items():
+        try:
+            probe=subprocess.run(args,capture_output=True,text=True,timeout=30)
+            output=probe.stdout
+            if name=='kernel_messages':
+                output='\n'.join(line for line in output.splitlines() if re.search(r'ext4|resize|sda.*capacity',line,re.I))[-12000:]
+            result[name]={'exit_code':probe.returncode,'stdout':output[-16000:],'stderr':probe.stderr[-1000:]}
+        except Exception as error:
+            result[name]={'error':str(error)}
+    result['root_mounts']=[line for line in Path('/proc/self/mountinfo').read_text().splitlines() if line.split()[4]=='/']
+    result['kernel_partition_bytes']=int((Path('/sys/class/block')/Path(root).name/'size').read_text())*512
+    return result
+
+
+def main():
+    parser=argparse.ArgumentParser()
+    mode=parser.add_mutually_exclusive_group()
+    mode.add_argument('--apply',action='store_true')
+    mode.add_argument('--diagnose-only',action='store_true')
+    parser.add_argument('--expect-hardware-uuid')
+    parser.add_argument('--output')
+    args=parser.parse_args()
+    os.umask(0o077)
+    output=Path(args.output) if args.output else None
+    report={'schema':1,'success':False,'release_ready':False,'applied':False}
+    try:
+        if args.expect_hardware_uuid:
+            expected=uuid.UUID(args.expect_hardware_uuid)
+            actual=uuid.UUID(Path('/sys/class/dmi/id/product_uuid').read_text().strip())
+            if actual not in (expected,uuid.UUID(bytes=expected.bytes_le)):
+                raise RuntimeError('Target is not the expected disposable VM')
+        if not re.search(r'^MOCI_VERSION=(0\.11\.|1\.)',Path('/etc/moci-release').read_text(),re.M):
+            raise RuntimeError('MoCI release marker is missing')
+        if args.diagnose_only:
+            disk,root,_=root_device()
+            filesystem=os.statvfs('/')
+            report.update(success=True,diagnostic_only=True,disk=disk,root=root,
+                          filesystem_bytes=filesystem.f_blocks*filesystem.f_frsize,
+                          diagnostics=storage_diagnostics(disk,root))
+            return 0
+        if Path('/etc/config/moci_storage').is_file() and command(['uci','-q','get','moci_storage.root.grow']).strip()!='1':
+            report.update(success=True,skipped='Root growth disabled in moci_storage.root.grow')
+            return 0
+        for tool in ('sfdisk','partx','resize2fs'):
+            if not shutil.which(tool): raise RuntimeError('Required tool missing: '+tool)
+        disk,root,disk_bytes=root_device()
+        before=json.loads(command(['sfdisk','--json',disk]))['partitiontable']
+        plan=growth_plan(before,disk_bytes,root)
+        filesystem=os.statvfs('/')
+        report.update(plan=plan,filesystem_before_bytes=filesystem.f_blocks*filesystem.f_frsize)
+        if not args.apply:
+            report['success']=True
+            return 0
+        if not plan['grow_partition'] and report['filesystem_before_bytes']>=plan['before_sectors']*512*0.95:
+            report.update(success=True,filesystem_after_bytes=report['filesystem_before_bytes'])
+            return 0
+        import fcntl
+        Path('/var/lock').mkdir(parents=True,exist_ok=True)
+        with open('/var/lock/moci-grow-root.lock','w') as lock:
+            fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            # Re-read under the lock so a stale plan can never be written.
+            if json.loads(command(['sfdisk','--json',disk]))['partitiontable']!=before:
+                raise RuntimeError('Partition table changed after inspection')
+            if output is None:
+                output=Path('/root')/('moci-storage-backup-'+time.strftime('%Y%m%dT%H%M%SZ')+'-'+uuid.uuid4().hex[:8])
+            output.mkdir(parents=True,exist_ok=True,mode=0o700)
+            (output/'partition-table.sfdisk').write_text(command(['sfdisk','--dump',disk]))
+            (output/'partition-table.json').write_text(json.dumps(before,indent=2)+'\n')
+            # Preserve both GPT locations and boot sectors before any write.
+            with open(disk,'rb',buffering=0) as source:
+                (output/'disk-head.bin').write_bytes(source.read(1024*1024))
+                source.seek(max(0,disk_bytes-1024*1024))
+                (output/'disk-tail.bin').write_bytes(source.read(1024*1024))
+            if plan['grow_partition']:
+                write_partition_table(disk,plan['start'],plan['after_sectors'])
+                report['partition_table_written']=True
+                after=json.loads(command(['sfdisk','--json',disk]))['partitiontable']
+                assert_preserved(before,after,root,plan['after_sectors'])
+                command(['partx','--update','--nr','2',disk])
+            kernel_bytes=int((Path('/sys/class/block')/Path(root).name/'size').read_text())*512
+            report['kernel_partition_bytes']=kernel_bytes
+            expected_bytes=(plan['after_sectors'] if plan['grow_partition'] else plan['before_sectors'])*512
+            if kernel_bytes!=expected_bytes:
+                raise RuntimeError('Kernel partition size was not updated; filesystem growth was not attempted')
+            command(['resize2fs',root],timeout=180)
+            filesystem=os.statvfs('/')
+            report['filesystem_after_bytes']=filesystem.f_blocks*filesystem.f_frsize
+            if report['filesystem_after_bytes']<max(report['filesystem_before_bytes'],kernel_bytes*0.95):
+                raise RuntimeError('Filesystem did not expand to the expected size')
+            report.update(success=True,applied=True,backup_directory=str(output))
+    except Exception as error:
+        report['error']=str(error)
+        if 'root' in locals():
+            filesystem=os.statvfs('/')
+            report['filesystem_after_bytes']=filesystem.f_blocks*filesystem.f_frsize
+            report['diagnostics']=storage_diagnostics(disk,root)
+    finally:
+        if output is not None:
+            output.mkdir(parents=True,exist_ok=True,mode=0o700)
+            (output/'storage-report.json').write_text(json.dumps(report,indent=2)+'\n')
+        print(json.dumps(report,indent=2))
+    return 0 if report['success'] else 1
+
+
+if __name__=='__main__':
+    raise SystemExit(main())

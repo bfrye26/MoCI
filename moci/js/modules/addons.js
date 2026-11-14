@@ -579,3 +579,4 @@ export default class AddonsModule {
 		this._registryCleanup = null;
 	}
 }
+

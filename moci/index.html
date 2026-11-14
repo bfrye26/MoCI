@@ -3,24 +3,32 @@
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<title>OpenWrt Control</title>
+		<title>Haven — Home Router OS</title>
 		<link
 			rel="icon"
 			type="image/svg+xml"
-			href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='480 400 250 280'%3E%3Cpath d='M608 668L497.149 604L497.149 476L608 412L718.851 476L718.851 604L608 668Z' fill='%23E2E2E5'/%3E%3C/svg%3E"
+			href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2.5 27.5 7v9.2c0 7.6-5 12.4-11.5 14.3C9.5 28.6 4.5 23.8 4.5 16.2V7L16 2.5Z' fill='%233880ff'/%3E%3Cpath d='M10.4 16.9 16 12.1l5.6 4.8M12.3 15.7v6.1h7.4v-6.1' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"
 		/>
 		<link rel="manifest" href="manifest.json" />
 		<meta name="theme-color" content="#000000" />
 		<meta name="apple-mobile-web-app-capable" content="yes" />
 		<meta name="apple-mobile-web-app-status-bar-style" content="black" />
 		<link rel="apple-touch-icon" href="icons/icon-192.png" />
-		<link rel="stylesheet" href="app.css" />
+		<link rel="stylesheet" href="app.css?v=1.0.0r4" />
 	</head>
 	<body>
 		<div id="app">
 			<div id="login-view" class="view hidden">
 				<div class="login-card">
-					<h1>OPENWRT</h1>
+					<div class="login-brand">
+						<svg viewBox="0 0 32 32" class="login-logo" aria-hidden="true">
+							<path d="M16 2.5 27.5 7v9.2c0 7.6-5 12.4-11.5 14.3C9.5 28.6 4.5 23.8 4.5 16.2V7L16 2.5Z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/>
+							<path d="M10.4 16.9 16 12.1l5.6 4.8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+							<path d="M12.3 15.7v6.1h7.4v-6.1" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+						</svg>
+						<h1>Haven</h1>
+						<p class="login-tagline">Your home network, protected.</p>
+					</div>
 					<form id="login-form">
 						<input type="text" id="username" placeholder="Username" autocomplete="username" />
 						<input type="password" id="password" placeholder="Password" autocomplete="current-password" />
@@ -32,97 +40,177 @@
 			</div>
 
 			<div id="main-view" class="view hidden">
-				<header class="header">
-					<div class="logo">
-						<svg width="24" height="24" viewBox="480 290 660 500" class="logo-icon">
-							<path
-								d="M608 668L497.149 604L497.149 476L608 412L718.851 476L718.851 604L608 668Z"
-								fill="currentColor"
-							/>
-							<path
-								d="M704.237 313.365L874.101 412.45L852.85 448.882L682.986 349.797L704.237 313.365Z"
-								fill="currentColor"
-							/>
-							<path
-								d="M875.093 411.707L878.06 673.57L835.886 674.048L832.918 412.185L875.093 411.707Z"
-								fill="currentColor"
-							/>
-							<path
-								d="M856.809 636.725L696.557 730.203L717.808 766.635L878.06 673.157L856.809 636.725Z"
-								fill="currentColor"
-							/>
-							<path
-								d="M883.714 313.365L1053.58 412.45L1032.33 448.882L862.463 349.797L883.714 313.365Z"
-								fill="currentColor"
-							/>
-							<path
-								d="M1054.57 411.707L1057.54 673.57L1015.36 674.048L1012.4 412.185L1054.57 411.707Z"
-								fill="currentColor"
-							/>
-							<path
-								d="M1036.29 636.725L876.034 730.203L897.285 766.635L1057.54 673.157L1036.29 636.725Z"
-								fill="currentColor"
-							/>
-						</svg>
-						<span>OPENWRT</span>
-					</div>
-					<button class="menu-toggle" aria-label="Toggle menu" aria-expanded="false">
-						<span></span><span></span><span></span>
-					</button>
-					<nav class="nav" aria-label="Main navigation">
-						<a href="#/dashboard" class="active">DASHBOARD</a>
-						<a href="#/network">NETWORK</a>
-						<a href="#/profiles">SECURITY</a>
-						<a href="#/system">SYSTEM</a>
-						<details class="nav-more">
-							<summary>TOOLS</summary>
-							<div class="nav-more-menu">
-								<span class="nav-menu-heading">NETWORK &amp; WI-FI</span>
-								<a href="#/schedules">WI-FI SCHEDULES</a>
-								<a href="#/wifi-profiles">WI-FI PASSWORDS</a>
-								<a href="#/ethernet-profiles">ETHERNET PROFILES</a>
-								<a href="#/advanced/group/network">NETWORK SERVICES</a>
-								<span class="nav-menu-heading">INTERNET &amp; SECURITY</span>
-								<a href="#/vpn-policies">VPN POLICIES</a>
-								<a href="#/advanced/group/routing">ROUTING &amp; FAILOVER</a>
-								<a href="#/advanced/group/security">SECURITY SERVICES</a>
-								<span class="nav-menu-heading">MONITORING &amp; SERVICES</span>
-								<a href="#/advanced/group/monitoring">MONITORING</a>
-								<a href="#/advanced/group/services">STORAGE &amp; SERVICES</a>
-								<span class="nav-menu-heading">ADMINISTRATION</span>
-								<a href="#/advanced/group/system">SYSTEM TOOLS</a>
-								<a href="#/advanced">ALL CONFIGURATION TOOLS</a>
-								<a href="#/addons" data-feature="addons">ADD-ONS</a>
-							</div>
-						</details>
-					</nav>
-					<label class="theme-picker" for="moci-theme-select">
-						<span>THEME</span>
-						<select id="moci-theme-select" aria-label="Appearance theme">
-							<option value="obsidian">Obsidian Dark</option>
-							<option value="cloud">Cloud Light</option>
-							<option value="ocean">Ocean Blue</option>
-							<option value="terminal">Terminal Green</option>
-							<option value="amethyst">Amethyst</option>
-							<option value="copper">Graphite Copper</option>
-						</select>
-					</label>
-					<button id="moci-help-toggle" class="moci-help-button" type="button" aria-expanded="false" aria-controls="moci-help-panel">HELP</button>
-					<button id="logout-btn" class="logout-btn">LOGOUT</button>
-				</header>
-
-				<main class="content">
-					<aside id="moci-help-panel" class="moci-help-panel hidden" aria-label="Contextual router help">
-						<div class="moci-help-heading">
-							<h3 id="moci-help-title">Help</h3>
-							<button type="button" id="moci-help-close" aria-label="Close help">CLOSE</button>
+				<div class="app-shell" id="app-shell">
+					<div class="scrim" id="sidebar-scrim"></div>
+					<aside class="sidebar" id="moci-sidebar" aria-label="Main navigation">
+						<div class="sidebar-brand">
+							<svg viewBox="0 0 32 32" class="logo-icon" aria-hidden="true">
+								<path d="M16 2.5 27.5 7v9.2c0 7.6-5 12.4-11.5 14.3C9.5 28.6 4.5 23.8 4.5 16.2V7L16 2.5Z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/>
+								<path d="M10.4 16.9 16 12.1l5.6 4.8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+								<path d="M12.3 15.7v6.1h7.4v-6.1" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+							</svg>
+							<span class="brand-text"><span class="brand-name">Haven</span><span class="brand-tag">OpenWrt</span></span>
 						</div>
-						<p id="moci-help-description"></p>
-						<ul id="moci-help-topics"></ul>
-						<a id="moci-help-reference" href="https://openwrt.org/docs/start" target="_blank" rel="noopener noreferrer">OpenWrt documentation</a>
+						<nav class="sidebar-nav" aria-label="Router areas">
+							<a class="nav-item" href="#/dashboard"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 14l4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg></span><span class="nav-label">Dashboard</span></a>
+							<div class="nav-group">
+								<span class="nav-group-label">Internet</span>
+								<a class="nav-item" href="#/wan"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a13.5 13.5 0 0 1 0 18a13.5 13.5 0 0 1 0-18"/></svg></span><span class="nav-label">WAN Settings</span></a>
+								<a class="nav-item" href="#/published-ports"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M8 7h9v9"/></svg></span><span class="nav-label">Published Ports</span></a>
+								<a class="nav-item" href="#/vpn-policies"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span><span class="nav-label">VPN &amp; Failover</span></a>
+							</div>
+							<div class="nav-group">
+								<span class="nav-group-label">Network</span>
+								<a class="nav-item" href="#/network/dhcp"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="16" y="16" width="6" height="6" rx="1"/><path d="M12 8v3"/><path d="M5 16v-2h14v2"/></svg></span><span class="nav-label">LAN, DHCP &amp; DNS</span></a>
+							<a class="nav-item" href="#/devices"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span><span class="nav-label">Devices</span></a>
+								<a class="nav-item" href="#/network/firewall"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></span><span class="nav-label">Firewall</span></a>
+							<a class="nav-item" href="#/qos"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 14l4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg></span><span class="nav-label">Traffic &amp; QoS</span></a>
+							<a class="nav-item" href="#/bandwidth" data-feature="bandwidth"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-8M2 20h20"/></svg></span><span class="nav-label">Bandwidth</span></a>
+							<a class="nav-item" href="#/multiwan" data-feature="multiwan"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v6a6 6 0 0 0 6 6 6 6 0 0 0 6-6V3"/><path d="M12 15v6"/></svg></span><span class="nav-label">Multi-WAN</span></a>
+								<a class="nav-item" href="#/schedules"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></span><span class="nav-label">Wi-Fi Schedules</span></a>
+							</div>
+							<div class="nav-group">
+								<span class="nav-group-label">Security Profiles</span>
+								<a class="nav-item" href="#/profiles"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/><path d="M9 12l2 2 4-4"/></svg></span><span class="nav-label">Profiles</span></a>
+							<a class="nav-item" href="#/networks"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M6 9v3a3 3 0 0 0 3 3h6"/><path d="M18 15v-3a3 3 0 0 0-3-3H9"/></svg></span><span class="nav-label">Guest &amp; IoT Networks</span></a>
+							<a class="nav-item" href="#/adblock" data-feature="adblock"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/><path d="M8 12h8"/></svg></span><span class="nav-label">Ad Blocking</span></a>
+							<a class="nav-item" href="#/tailscale" data-feature="tailscale"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M6.5 7.5L11 16M17.5 7.5L13 16M7 6h10"/></svg></span><span class="nav-label">Tailscale VPN</span></a>
+							</div>
+							<div class="nav-group">
+								<span class="nav-group-label">Points of entry</span>
+								<a class="nav-item" href="#/wifi"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/></svg></span><span class="nav-label">Wi-Fi</span></a>
+							<a class="nav-item" href="#/ethernet-profiles"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="11" rx="2"/><path d="M7 7v4M12 7v4M17 7v4"/></svg></span><span class="nav-label">Ethernet</span></a>
+								<a class="nav-item" href="#/wifi-profiles"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/></svg></span><span class="nav-label">Wi-Fi Passwords</span></a>
+							</div>
+							<div class="nav-group" id="apps-nav-group">
+								<span class="nav-group-label">Apps</span>
+								<a class="nav-item" href="#/docker" data-addon="docker" data-feature="addons"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/></svg></span><span class="nav-label">App Store</span></a>
+								<a class="nav-item" href="#/addons" data-feature="addons"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M12 8v8M8 12h8"/></svg></span><span class="nav-label">Add-ons</span></a>
+							</div>
+							<div class="nav-group">
+								<span class="nav-group-label">System</span>
+								<a class="nav-item" href="#/system"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/><path d="M1 14h6M9 8h6M17 16h6"/></svg></span><span class="nav-label">System</span></a>
+								<a class="nav-item" href="#/features"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="10" rx="5"/><circle cx="16" cy="12" r="3"/></svg></span><span class="nav-label">Features</span></a>
+								<a class="nav-item" href="#/terminal" data-feature="terminal"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 9l3 3-3 3M12 15h6"/></svg></span><span class="nav-label">Web Terminal</span></a>
+								<a class="nav-item" href="#/statistics" data-feature="statistics"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg></span><span class="nav-label">Statistics</span></a>
+								<a class="nav-item" href="#/nas" data-feature="nas"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="13" width="20" height="7" rx="2"/><path d="M4 13l2-8h12l2 8"/><path d="M6 16.5h.01M10 16.5h.01"/></svg></span><span class="nav-label">NAS / Sharing</span></a>
+							<a class="nav-item" href="#/tls"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/><circle cx="12" cy="16" r="1"/></svg></span><span class="nav-label">HTTPS / Certificate</span></a>
+								<a class="nav-item" href="#/advanced"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6-6-6"/><path d="M12 19h8"/></svg></span><span class="nav-label">Advanced Config</span></a>
+							</div>
+						</nav>
+						<div class="sidebar-footer">
+							<button class="sidebar-collapse" id="sidebar-collapse" type="button" aria-label="Collapse sidebar">
+								<span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 17l-5-5 5-5"/><path d="M18 17l-5-5 5-5"/></svg></span>
+								<span class="nav-label">Collapse</span>
+							</button>
+						</div>
 					</aside>
+					<div class="app-main">
+						<header class="topbar">
+							<button class="menu-toggle" id="menu-toggle" aria-label="Open menu" aria-expanded="false"><span></span><span></span><span></span></button>
+							<div class="topbar-search">
+								<span class="search-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg></span>
+								<input id="moci-search" type="search" placeholder="Search settings and pages…  (Ctrl+K)" autocomplete="off" aria-label="Search settings and pages" />
+								<div class="search-results hidden" id="search-results" role="listbox" aria-label="Search results"></div>
+							</div>
+							<div class="topbar-actions">
+								<button id="moci-help-toggle" class="topbar-help" type="button" aria-expanded="false" aria-controls="moci-help-panel">
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 4"/><path d="M12 17.5h.01"/></svg>
+									<span class="help-label">Help</span>
+								</button>
+								<label class="theme-picker" for="moci-theme-select">
+									<span>Theme</span>
+									<select id="moci-theme-select" aria-label="Appearance theme">
+										<option value="obsidian">Obsidian Dark</option>
+										<option value="cloud">Cloud Light</option>
+										<option value="ocean">Ocean Blue</option>
+										<option value="terminal">Terminal Green</option>
+										<option value="amethyst">Amethyst</option>
+										<option value="copper">Graphite Copper</option>
+									</select>
+								</label>
+								<button id="logout-btn" class="logout-btn">LOGOUT</button>
+							</div>
+						</header>
+						<div class="app-body">
+							<main class="content">
 
-					<div id="dashboard-page" class="page">
+						<div id="wan-page" class="page hidden">
+							<h2>Internet (WAN)</h2>
+							<div id="wan-content"></div>
+						</div>
+
+						<div id="published-ports-page" class="page hidden">
+							<h2>Published Ports</h2>
+							<div id="published-ports-content" class="upnp-workspace"></div>
+						</div>
+
+						<div id="devices-page" class="page hidden">
+							<h2>Devices</h2>
+							<div id="devices-content"></div>
+						</div>
+
+						<div id="wifi-page" class="page hidden">
+							<h2>Wi-Fi</h2>
+							<div id="wifi-content"></div>
+						</div>
+
+						<div id="qos-page" class="page hidden">
+							<h2>Traffic &amp; QoS</h2>
+							<div id="qos-content"></div>
+						</div>
+
+						<div id="tls-page" class="page hidden">
+							<h2>HTTPS &amp; Certificate</h2>
+							<div id="tls-content"></div>
+						</div>
+
+						<div id="networks-page" class="page hidden">
+							<h2>Guest &amp; IoT Networks</h2>
+							<div id="networks-content"></div>
+						</div>
+
+						<div id="features-page" class="page hidden">
+							<h2>Features &amp; Add-ons</h2>
+							<div id="features-content"></div>
+						</div>
+
+						<div id="bandwidth-page" class="page hidden">
+							<h2>Bandwidth Monitor</h2>
+							<div id="bandwidth-content"></div>
+						</div>
+
+						<div id="multiwan-page" class="page hidden">
+							<h2>Multi-WAN &amp; Failover</h2>
+							<div id="multiwan-content"></div>
+						</div>
+
+						<div id="adblock-page" class="page hidden">
+							<h2>Ad Blocking</h2>
+							<div id="adblock-content"></div>
+						</div>
+
+						<div id="tailscale-page" class="page hidden">
+							<h2>Tailscale VPN</h2>
+							<div id="tailscale-content"></div>
+						</div>
+
+						<div id="terminal-page" class="page hidden">
+							<h2>Web Terminal</h2>
+							<div id="terminal-content"></div>
+						</div>
+
+						<div id="statistics-page" class="page hidden">
+							<h2>Statistics</h2>
+							<div id="statistics-content"></div>
+						</div>
+
+						<div id="nas-page" class="page hidden">
+							<h2>NAS &amp; File Sharing</h2>
+							<div id="nas-content"></div>
+						</div>
+
+						<div id="dashboard-page" class="page">
 						<div class="hero-card" id="wan-status-hero">
 							<div class="hero-status">
 								<div class="hero-indicator">●</div>
@@ -259,6 +347,7 @@
 							<button class="tab-btn" data-tab="routes">ROUTES</button>
 							<button class="tab-btn" data-tab="wireless">WIRELESS</button>
 							<button class="tab-btn" data-tab="firewall">FIREWALL</button>
+							<button class="tab-btn" data-tab="upnp">UPnP &amp; PORT MAPPING</button>
 							<button class="tab-btn" data-tab="dhcp" data-feature="dhcp">DHCP</button>
 							<button class="tab-btn" data-tab="dns">DNS & HOSTS</button>
 							<button class="tab-btn" data-tab="ddns">DDNS</button>
@@ -1248,6 +1337,7 @@
 							</div>
 						</div>
 
+						<div class="tab-content hidden" id="tab-upnp"><div id="upnp-workspace" class="upnp-workspace" aria-live="polite"></div></div>
 						<div class="tab-content hidden" id="tab-dhcp" data-feature="dhcp">
 							<div class="stat-card">
 								<div class="section-title">DHCP LEASES</div>
@@ -1412,6 +1502,7 @@
 									</tbody>
 								</table>
 							</div>
+							<div class="stat-card" id="dns-published-section" style="margin-top: 24px"></div>
 						</div>
 
 						<div class="tab-content hidden" id="tab-ddns">
@@ -2206,13 +2297,17 @@
 
 						<div class="tab-content hidden" id="tab-startup">
 							<div class="stat-card">
-								<div class="section-title">SYSTEM SERVICES</div>
+								<div class="system-services-heading">
+									<div class="section-title">SYSTEM SERVICES</div>
+									<button class="action-btn" type="button" id="refresh-startup-btn">REFRESH SERVICE STATUS</button>
+								</div>
+								<p class="service-help">Status distinguishes background daemons, short-lived boot tasks and application-level services. Starts at boot indicates the init script is enabled, not that the app is configured or running. Open Details for logs and reasons a service remains inactive.</p>
 								<table class="data-table" id="services-table">
 									<thead>
 										<tr>
 											<th>SERVICE</th>
 											<th>STATUS</th>
-											<th>ENABLED</th>
+											<th>STARTS AT BOOT</th>
 											<th>ACTIONS</th>
 										</tr>
 									</thead>
@@ -2340,6 +2435,7 @@
 						</div>
 
 						<div class="tab-content hidden" id="tab-upgrade">
+							<div class="stat-card" id="upgrade-current-version" style="margin-bottom: 20px"></div>
 							<div class="stat-card">
 								<div class="section-title">FIRMWARE UPGRADE</div>
 								<div
@@ -2362,8 +2458,8 @@
 								</div>
 
 								<div class="form-group">
-									<label class="form-label">SELECT FIRMWARE IMAGE (.bin)</label>
-									<input type="file" id="firmware-file" accept=".bin" style="display: none" />
+									<label class="form-label">SELECT FIRMWARE IMAGE (.bin, .img, .img.gz)</label>
+									<input type="file" id="firmware-file" accept=".bin,.img,.gz,.itb,.trx" style="display: none" />
 									<div
 										id="file-upload-area"
 										style="
@@ -2385,7 +2481,7 @@
 											Click to select firmware file
 										</div>
 										<div style="color: var(--steel-muted); font-size: 12px">
-											or drag and drop .bin file here
+											or drag and drop a firmware image here. Installer ISO files are not upgrade images.
 										</div>
 									</div>
 								</div>
@@ -2405,6 +2501,14 @@
 										id="firmware-details"
 										style="font-family: monospace; font-size: 12px; color: var(--steel-light)"
 									></div>
+								</div>
+
+								<div class="form-group" style="margin-top: 24px">
+									<label class="form-label" for="firmware-sig-file">SIGNATURE FILE (.sig, optional but recommended)</label>
+									<input type="file" id="firmware-sig-file" accept=".sig" class="form-input" />
+									<div id="firmware-sig-name" style="color: var(--steel-muted); font-size: 12px; margin-top: 6px">
+										No signature selected (image will be treated as unsigned).
+									</div>
 								</div>
 
 								<div class="form-group" style="margin-top: 24px">
@@ -2574,14 +2678,28 @@
 							</div>
 						</div>
 					</div>
-				</main>
+							</main>
+							<aside id="moci-help-panel" class="moci-help-panel hidden" aria-label="Contextual router help">
+								<div class="moci-help-heading">
+									<h3 id="moci-help-title">Help</h3>
+									<button type="button" id="moci-help-close" aria-label="Close help">CLOSE</button>
+								</div>
+								<p id="moci-help-description"></p>
+								<ul id="moci-help-topics"></ul>
+								<div id="moci-help-fields" class="moci-help-fields hidden"></div>
+								<a id="moci-help-reference" href="https://openwrt.org/docs/start" target="_blank" rel="noopener noreferrer">OpenWrt documentation</a>
+							</aside>
+						</div>
+					</div>
+				</div>
 			</div>
 		</div>
 
 		<script type="module">
-			import { OpenWrtCore } from './js/core.js';
+			import { OpenWrtCore } from './js/core.js?v=1.0.0r4';
 			window.app = new OpenWrtCore();
 			window.app.init();
 		</script>
 	</body>
 </html>
+

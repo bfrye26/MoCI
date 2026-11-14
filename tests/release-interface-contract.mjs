@@ -14,6 +14,13 @@ const dockerACL = JSON.parse(read('integrations/docker-manager/moci-app-docker/f
 
 const nativeRoutes = {
   dashboard: 'dashboard',
+  wan: 'wan',
+  'published-ports': 'published-ports',
+  devices: 'devices',
+  wifi: 'wifi',
+  qos: 'qos',
+  tls: 'tls',
+  networks: 'networks',
   network: 'network',
   system: 'system',
   advanced: 'advanced',
@@ -23,6 +30,14 @@ const nativeRoutes = {
   'ethernet-profiles': 'ethernet-profiles',
   'vpn-policies': 'vpn-policies',
   addons: 'addons',
+  features: 'features',
+  bandwidth: 'bandwidth',
+  multiwan: 'multiwan',
+  adblock: 'adblock',
+  tailscale: 'tailscale',
+  terminal: 'terminal',
+  statistics: 'statistics',
+  nas: 'nas',
 };
 for (const [route, module] of Object.entries(nativeRoutes)) {
   const moduleFile=route==='schedules'?'wifi-schedules':module;
@@ -33,8 +48,17 @@ for (const [route, module] of Object.entries(nativeRoutes)) {
     'Missing router registration for '+route);
   assert(builder.includes("'moci/js/modules/"+moduleFile+".js'"),
     'Frontend build omits '+module);
-  assert(makefile.includes('./dist/moci/js/modules/'+moduleFile+'.js'),
-    'Firmware package omits '+module);
+}
+// The firmware must install EVERY built module and the self-hosted fonts. A
+// stale explicit install list once dropped wan/devices/qos/published-ports/
+// app-integrations/wifi/networks/tls and the font, blanking those pages.
+assert(makefile.includes('./dist/moci/js/modules/*.js'),
+  'Firmware package must install all built modules via wildcard');
+assert(makefile.includes('./dist/moci/fonts/*'),
+  'Firmware package must install the self-hosted fonts');
+for (const sub of ['upnp','app-integrations']) {
+  assert(builder.includes("'moci/js/modules/"+sub+".js'"),
+    'Frontend build omits sub-module '+sub);
 }
 const themes = ['obsidian','cloud','ocean','terminal','amethyst','copper'];
 for (const theme of themes) {
@@ -44,7 +68,8 @@ for (const theme of themes) {
 const configNames = [
  'network','wireless','firewall','dhcp','system','mwan3','pbr','banip',
  'acme','ddns','sqm','dropbear','uhttpd','lldpd','nlbwmon',
- 'luci_statistics','snmpd','nut','samba4','fstab','moci_wifi_schedule'
+ 'luci_statistics','snmpd','nut','samba4','fstab','moci_wifi_schedule',
+ 'adblock','tailscale','ttyd'
 ];
 for (const config of configNames) {
   assert(uciACL.moci.read.uci.includes(config), 'Missing read ACL: '+config);
@@ -52,7 +77,8 @@ for (const config of configNames) {
 }
 for (const packageName of [
  'moci','moci-app-docker','dockerd','docker-compose','uhttpd-mod-ubus',
- 'luci-ssl','wpad-mbedtls','luci-app-mwan3','luci-app-banip','luci-app-acme'
+ 'luci-ssl','wpad-mbedtls','luci-app-mwan3','luci-app-banip','luci-app-acme',
+ 'adblock','luci-app-adblock','tailscale','ttyd','luci-app-ttyd'
 ]) {
   assert(firmware.includes('CONFIG_PACKAGE_'+packageName+'=y'),
     'Firmware does not request '+packageName);
@@ -93,3 +119,4 @@ for(const [id,t] of Object.entries(templates.templates)){
 console.log('MoCI release contract passed: '+Object.keys(nativeRoutes).length+
   ' native routes, '+themes.length+' themes, '+configNames.length+
   ' UCI configs, '+Object.keys(templates.templates).length+' app profiles.');
+

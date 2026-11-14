@@ -93,3 +93,4 @@ class DockerContract(unittest.TestCase):
             self.assertNotIn('subprocess.Popen(',body)
 
 if __name__=='__main__':unittest.main()
+

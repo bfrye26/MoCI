@@ -1,0 +1,33 @@
+#!/bin/sh
+# Verify a Haven firmware image signature before installation.
+# Usage: moci-verify-image <image-path> [signature-path]
+# Paths are locked to the staged upload locations; prints {verified,reason} JSON.
+PUB=/etc/moci/moci-image.pub
+IMG="$1"
+SIG="$2"
+
+case "$IMG" in
+	/tmp/firmware.bin) : ;;
+	*) printf '{ "verified": false, "reason": "unexpected image path" }\n'; exit 0 ;;
+esac
+[ -f "$IMG" ] || { printf '{ "verified": false, "reason": "image missing" }\n'; exit 0; }
+
+if [ -z "$SIG" ]; then
+	printf '{ "verified": false, "reason": "unsigned" }\n'
+	exit 0
+fi
+case "$SIG" in
+	/tmp/firmware.bin.sig) : ;;
+	*) printf '{ "verified": false, "reason": "unexpected signature path" }\n'; exit 0 ;;
+esac
+[ -f "$SIG" ] || { printf '{ "verified": false, "reason": "signature missing" }\n'; exit 0; }
+[ -f "$PUB" ] || { printf '{ "verified": false, "reason": "no public key installed" }\n'; exit 0; }
+
+USIGN="$(command -v usign || true)"
+[ -n "$USIGN" ] || { printf '{ "verified": false, "reason": "usign unavailable" }\n'; exit 0; }
+
+if "$USIGN" -V -p "$PUB" -m "$IMG" -x "$SIG" >/dev/null 2>&1; then
+	printf '{ "verified": true, "reason": "signature valid" }\n'
+else
+	printf '{ "verified": false, "reason": "invalid signature" }\n'
+fi

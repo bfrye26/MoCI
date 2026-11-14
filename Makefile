@@ -1,8 +1,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=moci
-PKG_VERSION:=0.11.0
-PKG_RELEASE:=1
+PKG_VERSION:=1.0.0
+PKG_RELEASE:=2
 
 PKG_MAINTAINER:=HudsonGraeme
 PKG_LICENSE:=MIT
@@ -41,25 +41,34 @@ define Package/moci/install
 	$(INSTALL_DATA) ./dist/moci/js/core.js $(1)/www/moci/js/
 
 	$(INSTALL_DIR) $(1)/www/moci/js/modules
-	$(INSTALL_DATA) ./dist/moci/js/modules/dashboard.js $(1)/www/moci/js/modules/
-	$(INSTALL_DATA) ./dist/moci/js/modules/network.js $(1)/www/moci/js/modules/
-	$(INSTALL_DATA) ./dist/moci/js/modules/system.js $(1)/www/moci/js/modules/
-	$(INSTALL_DATA) ./dist/moci/js/modules/addons.js $(1)/www/moci/js/modules/
-	$(INSTALL_DATA) ./dist/moci/js/modules/advanced.js $(1)/www/moci/js/modules/
-	$(INSTALL_DATA) ./dist/moci/js/modules/profiles.js $(1)/www/moci/js/modules/
-	$(INSTALL_DATA) ./dist/moci/js/modules/wifi-schedules.js $(1)/www/moci/js/modules/
-	$(INSTALL_DATA) ./dist/moci/js/modules/wifi-profiles.js $(1)/www/moci/js/modules/
-	$(INSTALL_DATA) ./dist/moci/js/modules/vpn-policies.js $(1)/www/moci/js/modules/
-	$(INSTALL_DATA) ./dist/moci/js/modules/ethernet-profiles.js $(1)/www/moci/js/modules/
+	# Install every built module (wildcard) so new pages are never left out of
+	# the firmware image. An explicit list previously dropped wan/devices/qos/
+	# published-ports/app-integrations/wifi/networks/tls, blanking those pages.
+	$(INSTALL_DATA) ./dist/moci/js/modules/*.js $(1)/www/moci/js/modules/
+
+	$(INSTALL_DIR) $(1)/www/moci/fonts
+	$(INSTALL_DATA) ./dist/moci/fonts/* $(1)/www/moci/fonts/
 
 	$(INSTALL_DIR) $(1)/www/moci/js/addons
 
 	$(INSTALL_DIR) $(1)/usr/libexec
 	$(INSTALL_BIN) ./files/moci-pkg-call $(1)/usr/libexec/moci-pkg-call
+	$(INSTALL_BIN) ./files/moci-service-inspect $(1)/usr/libexec/moci-service-inspect
+	$(INSTALL_BIN) ./files/moci-hardware-check $(1)/usr/libexec/moci-hardware-check
+	$(INSTALL_BIN) ./files/moci-verify-image $(1)/usr/libexec/moci-verify-image
+	$(INSTALL_DIR) $(1)/etc/moci
+	$(INSTALL_DATA) ./files/moci-image.pub $(1)/etc/moci/moci-image.pub
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_BIN) ./files/moci-wifi-scheduler $(1)/usr/sbin/moci-wifi-scheduler
+	$(INSTALL_BIN) ./files/moci-dns-publish $(1)/usr/sbin/moci-dns-publish
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/init-moci-wifi-scheduler $(1)/etc/init.d/moci-wifi-scheduler
+	$(INSTALL_BIN) ./files/init-moci-dns-publish $(1)/etc/init.d/moci-dns-publish
+	$(INSTALL_DIR) $(1)/etc/moci-dns-publish
+
+	# Add-ons ship off: stop/disable their services on first boot unless enabled.
+	$(INSTALL_DIR) $(1)/etc/uci-defaults
+	$(INSTALL_BIN) ./files/moci-addon-defaults $(1)/etc/uci-defaults/99-moci-addon-defaults
 
 	$(INSTALL_DIR) $(1)/usr/libexec/rpcd
 	$(INSTALL_BIN) ./files/rpcd-moci $(1)/usr/libexec/rpcd/moci
@@ -97,6 +106,8 @@ define Package/moci/postinst
 	/etc/init.d/rpcd restart
 	/etc/init.d/moci-wifi-scheduler enable 2>/dev/null || :
 	/etc/init.d/moci-wifi-scheduler start 2>/dev/null || :
+	/etc/init.d/moci-dns-publish enable 2>/dev/null || :
+	/etc/init.d/moci-dns-publish start 2>/dev/null || :
 	if [ -f /etc/init.d/lighttpd ]; then
 		/etc/init.d/lighttpd restart
 		echo "MoCI installed (lighttpd). Access at http://[router-ip]/moci/"

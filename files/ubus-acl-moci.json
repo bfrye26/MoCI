@@ -8,7 +8,8 @@
 		"network.wireless": { "methods": [ "status" ] },
 		"uci": { "methods": [ "get", "set", "add", "delete", "commit", "apply", "confirm" ] },
 		"file": { "methods": [ "read", "write", "exec" ] },
-		"moci": { "methods": [ "setPassword", "getDHCPLeases", "getPorts", "getBridges", "wgGenKey" ] },
+		"moci": { "methods": [ "setPassword", "getDHCPLeases", "getPorts", "getBridges", "wgGenKey", "wgStatus", "dnsPublishList", "dnsPublishPermission", "dnsPublishRemove" ] },
 		"service": { "methods": [ "list" ] }
 	}
 }
+

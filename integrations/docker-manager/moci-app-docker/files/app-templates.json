@@ -56,6 +56,39 @@
         "SETUID"
       ]
     },
+    "pihole": {
+      "image": "pihole/pihole:latest",
+      "repository": "pihole/pihole",
+      "ports": [
+        "8053:80"
+      ],
+      "volumes": [
+        "pihole-data:/etc/pihole",
+        "pihole-dnsmasq:/etc/dnsmasq.d"
+      ],
+      "description": "Network-wide DNS ad-blocking. One-click install runs Pi-hole with a generated admin password; the web admin is on LAN port 8053. Router-critical: installing it does not change your DNS \u2014 use the Pi-hole integration to opt in to network DNS, and keep a fallback in mind.",
+      "path": "http://ROUTER_IP:8053/",
+      "needs_write_access": true,
+      "run_as_user": "0:0",
+      "cap_add": [
+        "CHOWN",
+        "DAC_OVERRIDE",
+        "FOWNER",
+        "SETGID",
+        "SETUID",
+        "NET_BIND_SERVICE",
+        "NET_RAW",
+        "SYS_NICE",
+        "KILL"
+      ],
+      "initial_password_env": "FTLCONF_webserver_api_password",
+      "mem_limit": "512m",
+      "reviewed_risk": "router-critical",
+      "environment": {
+        "TZ": "UTC",
+        "DNSMASQ_USER": "root"
+      }
+    },
     "cyberchef": {
       "image": "mpepping/cyberchef:latest",
       "repository": "mpepping/cyberchef",
@@ -63,9 +96,14 @@
         "8000:8000"
       ],
       "volumes": [],
-      "description": "Stateless CyberChef web utilities on LAN TCP 8000.",
+      "description": "CyberChef web utilities on LAN TCP 8000. Nginx runs without host privileges and uses tightly scoped in-memory writable directories; the container root filesystem remains read-only.",
       "path": "http://ROUTER_IP:8000/",
-      "needs_write_access": false
+      "needs_write_access": false,
+      "tmpfs": [
+        "/var/cache/nginx:uid=65534,gid=65534,mode=1777,size=16m",
+        "/var/run:uid=65534,gid=65534,mode=1777,size=4m",
+        "/tmp:uid=65534,gid=65534,mode=1777,size=16m"
+      ]
     },
     "gotify": {
       "image": "gotify/server:2",
@@ -83,6 +121,704 @@
       "mem_limit": "384m",
       "environment": {
         "GOTIFY_SERVER_PORT": "8080"
+      }
+    },
+    "memos": {
+      "image": "neosmemo/memos:stable",
+      "repository": "neosmemo/memos",
+      "ports": [
+        "5230:5230"
+      ],
+      "volumes": [
+        "memos-data:/var/opt/memos"
+      ],
+      "description": "Private-by-default Memos with SQLite on a persistent named volume. The first user completes setup in the web UI.",
+      "path": "http://ROUTER_IP:5230/",
+      "needs_write_access": true,
+      "volume_initializer": {
+        "path": "/var/opt/memos",
+        "uid": 10001,
+        "gid": 10001
+      },
+      "run_as_user": "10001:10001",
+      "environment": {
+        "MEMOS_PORT": "5230",
+        "MEMOS_DRIVER": "sqlite"
+      }
+    },
+    "beszel": {
+      "image": "henrygd/beszel:latest",
+      "repository": "henrygd/beszel",
+      "ports": [
+        "8090:8090"
+      ],
+      "volumes": [
+        "beszel-data:/beszel_data"
+      ],
+      "description": "Beszel monitoring hub only. Additional agents and host/Docker monitoring permissions are configured separately. First visit sets up the hub account.",
+      "path": "http://ROUTER_IP:8090/",
+      "needs_write_access": true,
+      "mem_limit": "512m"
+    },
+    "grafana": {
+      "image": "grafana/grafana:latest",
+      "repository": "grafana/grafana",
+      "ports": [
+        "3010:3000"
+      ],
+      "volumes": [
+        "grafana-data:/var/lib/grafana"
+      ],
+      "description": "Grafana analytics on LAN TCP 3010 with persistent storage. Initial administrator password is generated once during installation; store it securely.",
+      "path": "http://ROUTER_IP:3010/",
+      "needs_write_access": true,
+      "run_as_user": "472:472",
+      "volume_initializer": {
+        "path": "/var/lib/grafana",
+        "uid": 472,
+        "gid": 472
+      },
+      "mem_limit": "768m",
+      "initial_password_env": "GF_SECURITY_ADMIN_PASSWORD",
+      "environment": {
+        "GF_USERS_ALLOW_SIGN_UP": "false",
+        "GF_AUTH_ANONYMOUS_ENABLED": "false"
+      }
+    },
+    "audiobookshelf": {
+      "repository": "ghcr.io/advplyr/audiobookshelf",
+      "image": "ghcr.io/advplyr/audiobookshelf:latest",
+      "ports": [
+        "13378:80"
+      ],
+      "volumes": [
+        "abs-config:/config",
+        "abs-metadata:/metadata",
+        "abs-audiobooks:/audiobooks",
+        "abs-podcasts:/podcasts"
+      ],
+      "description": "Audiobookshelf server and first-user setup. Data, book and podcast libraries live in four dedicated Docker volumes; upload or copy media into those volumes separately.",
+      "path": "http://ROUTER_IP:13378/",
+      "needs_write_access": true,
+      "run_as_user": "1000:1000",
+      "volume_initializers": [
+        {
+          "path": "/config",
+          "uid": 1000,
+          "gid": 1000
+        },
+        {
+          "path": "/metadata",
+          "uid": 1000,
+          "gid": 1000
+        },
+        {
+          "path": "/audiobooks",
+          "uid": 1000,
+          "gid": 1000
+        },
+        {
+          "path": "/podcasts",
+          "uid": 1000,
+          "gid": 1000
+        }
+      ],
+      "mem_limit": "768m",
+      "environment": {
+        "TZ": "Etc/UTC"
+      }
+    },
+    "changedetection": {
+      "repository": "ghcr.io/dgtlmoon/changedetection.io",
+      "image": "ghcr.io/dgtlmoon/changedetection.io:latest",
+      "ports": [
+        "5000:5000"
+      ],
+      "volumes": [
+        "changedetection-data:/datastore"
+      ],
+      "description": "Changedetection.io with persistent datastore and basic fetcher. LAN users can create monitored URLs; configure application authentication before granting access to untrusted clients.",
+      "path": "http://ROUTER_IP:5000/",
+      "needs_write_access": true,
+      "run_as_user": "1000:1000",
+      "volume_initializer": {
+        "path": "/datastore",
+        "uid": 1000,
+        "gid": 1000
+      },
+      "mem_limit": "768m",
+      "environment": {
+        "PORT": "5000"
+      }
+    },
+    "gitea": {
+      "repository": "docker.gitea.com/gitea",
+      "image": "docker.gitea.com/gitea:28.3.0-rootless",
+      "ports": [
+        "3101:3000"
+      ],
+      "volumes": [
+        "gitea-data:/var/lib/gitea",
+        "gitea-config:/etc/gitea"
+      ],
+      "description": "Rootless Gitea with SQLite and persistent named volumes. Web installer and administrator account setup are completed on first visit. SSH repository access is not exposed by default.",
+      "path": "http://ROUTER_IP:3101/",
+      "needs_write_access": true,
+      "run_as_user": "1000:1000",
+      "volume_initializers": [
+        {
+          "path": "/var/lib/gitea",
+          "uid": 1000,
+          "gid": 1000
+        },
+        {
+          "path": "/etc/gitea",
+          "uid": 1000,
+          "gid": 1000
+        }
+      ],
+      "mem_limit": "768m"
+    },
+    "homarr": {
+      "repository": "ghcr.io/homarr-labs/homarr",
+      "image": "ghcr.io/homarr-labs/homarr:latest",
+      "ports": [
+        "7575:7575"
+      ],
+      "volumes": [
+        "homarr-appdata:/appdata"
+      ],
+      "description": "Homarr dashboard without Docker socket access. The upstream startup script rewrites root-owned nginx configuration, so this reviewed profile starts as root with only DAC_OVERRIDE, a writable rootfs and a pre-created database directory. MoCI generates and preserves the application encryption key; complete initial account setup in the web UI.",
+      "path": "http://ROUTER_IP:7575/",
+      "needs_write_access": true,
+      "run_as_user": "0:0",
+      "cap_add": [
+        "CHOWN",
+        "DAC_OVERRIDE"
+      ],
+      "healthcheck": {
+        "interval": "15s",
+        "timeout": "5s",
+        "retries": 20,
+        "start_period": "300s"
+      },
+      "volume_initializer": {
+        "path": "/appdata",
+        "uid": 1000,
+        "gid": 1000,
+        "dirs": [
+          "db"
+        ]
+      },
+      "mem_limit": "768m",
+      "generated_secret_env": "SECRET_ENCRYPTION_KEY"
+    },
+    "homepage": {
+      "repository": "ghcr.io/gethomepage/homepage",
+      "image": "ghcr.io/gethomepage/homepage:latest",
+      "ports": [
+        "3333:3000"
+      ],
+      "volumes": [
+        "homepage-config:/app/config"
+      ],
+      "description": "Homepage dashboard with its allowed HTTP host set to this router's actual LAN address. No Docker socket is mounted; configured widgets must be added separately.",
+      "path": "http://ROUTER_IP:3333/",
+      "needs_write_access": true,
+      "run_as_user": "1000:1000",
+      "volume_initializer": {
+        "path": "/app/config",
+        "uid": 1000,
+        "gid": 1000
+      },
+      "mem_limit": "512m",
+      "environment": {
+        "HOMEPAGE_ALLOWED_HOSTS": "ROUTER_IP:3333",
+        "PUID": "1000",
+        "PGID": "1000"
+      }
+    },
+    "jellyfin": {
+      "repository": "jellyfin/jellyfin",
+      "image": "jellyfin/jellyfin:latest",
+      "ports": [
+        "8096:8096"
+      ],
+      "volumes": [
+        "jellyfin-config:/config",
+        "jellyfin-cache:/cache",
+        "jellyfin-media:/media"
+      ],
+      "description": "Jellyfin on LAN TCP 8096 with dedicated configuration, cache and empty media volumes. Complete its first-run wizard; transfer media into the managed volume to add libraries. No GPU access or UDP discovery.",
+      "path": "http://ROUTER_IP:8096/",
+      "needs_write_access": true,
+      "run_as_user": "1000:1000",
+      "volume_initializers": [
+        {
+          "path": "/config",
+          "uid": 1000,
+          "gid": 1000
+        },
+        {
+          "path": "/cache",
+          "uid": 1000,
+          "gid": 1000
+        },
+        {
+          "path": "/media",
+          "uid": 1000,
+          "gid": 1000
+        }
+      ],
+      "mem_limit": "1024m"
+    },
+    "prometheus": {
+      "repository": "prom/prometheus",
+      "image": "prom/prometheus:latest",
+      "ports": [
+        "9090:9090"
+      ],
+      "volumes": [
+        "prometheus-data:/prometheus"
+      ],
+      "description": "Prometheus time-series server with its bundled default configuration. Exposes local monitoring UI on the trusted router LAN; scrape jobs are configured separately.",
+      "path": "http://ROUTER_IP:9090/",
+      "needs_write_access": false,
+      "mem_limit": "768m",
+      "volume_initializer": {
+        "path": "/prometheus",
+        "uid": 65534,
+        "gid": 65534
+      }
+    },
+    "tautulli": {
+      "repository": "lscr.io/linuxserver/tautulli",
+      "image": "lscr.io/linuxserver/tautulli:latest",
+      "ports": [
+        "8181:8181"
+      ],
+      "volumes": [
+        "tautulli-config:/config"
+      ],
+      "description": "Tautulli web manager on LAN TCP 8181, with persistent settings. Plex server integration and Plex logging paths are configured after installation. This candidate requires runtime testing for LinuxServer non-root startup.",
+      "path": "http://ROUTER_IP:8181/",
+      "needs_write_access": true,
+      "run_as_user": "1000:1000",
+      "volume_initializer": {
+        "path": "/config",
+        "uid": 1000,
+        "gid": 1000
+      },
+      "environment": {
+        "PUID": "1000",
+        "PGID": "1000",
+        "TZ": "Etc/UTC"
+      },
+      "mem_limit": "512m"
+    },
+    "filebrowser": {
+      "repository": "filebrowser/filebrowser",
+      "image": "filebrowser/filebrowser:latest",
+      "ports": [
+        "8086:80"
+      ],
+      "volumes": [
+        "filebrowser-files:/srv",
+        "filebrowser-database:/database",
+        "filebrowser-config:/config"
+      ],
+      "description": "File Browser with three private managed volumes for files, configuration and its user database. The image creates a first-run admin password, which should be retrieved from its Docker logs and immediately stored securely. No host filesystem access.",
+      "path": "http://ROUTER_IP:8086/",
+      "needs_write_access": true,
+      "run_as_user": "1000:1000",
+      "volume_initializers": [
+        {
+          "path": "/srv",
+          "uid": 1000,
+          "gid": 1000
+        },
+        {
+          "path": "/database",
+          "uid": 1000,
+          "gid": 1000
+        },
+        {
+          "path": "/config",
+          "uid": 1000,
+          "gid": 1000
+        }
+      ],
+      "mem_limit": "384m",
+      "reviewed_risk": "sensitive-data"
+    },
+    "sftpgo": {
+      "repository": "drakkan/sftpgo",
+      "image": "drakkan/sftpgo:latest",
+      "ports": [
+        "8125:8080",
+        "2022:2022"
+      ],
+      "volumes": [
+        "sftpgo-data:/srv/sftpgo",
+        "sftpgo-state:/var/lib/sftpgo"
+      ],
+      "description": "SFTPGo managed file-transfer server: LAN web interface TCP 8125 and SFTP TCP 2022. No WAN exposure. First administrator account is created in the web UI; default permissions apply to named private volumes only.",
+      "path": "http://ROUTER_IP:8125/",
+      "needs_write_access": true,
+      "run_as_user": "1000:1000",
+      "volume_initializers": [
+        {
+          "path": "/srv/sftpgo",
+          "uid": 1000,
+          "gid": 1000
+        },
+        {
+          "path": "/var/lib/sftpgo",
+          "uid": 1000,
+          "gid": 1000
+        }
+      ],
+      "mem_limit": "512m",
+      "reviewed_risk": "sensitive-data"
+    },
+    "n8n": {
+      "repository": "docker.n8n.io/n8nio/n8n",
+      "image": "docker.n8n.io/n8nio/n8n:latest",
+      "ports": [
+        "5678:5678"
+      ],
+      "volumes": [
+        "n8n-data:/home/node/.n8n"
+      ],
+      "description": "n8n automation editor with SQLite and persistent encrypted credentials. The encryption key is generated and retained by MoCI. On the isolated trusted LAN, secure cookies are disabled for plain HTTP. Configure HTTPS and proper authentication before using real credentials or production webhooks.",
+      "path": "http://ROUTER_IP:5678/",
+      "needs_write_access": true,
+      "run_as_user": "1000:1000",
+      "volume_initializer": {
+        "path": "/home/node/.n8n",
+        "uid": 1000,
+        "gid": 1000
+      },
+      "mem_limit": "1024m",
+      "environment": {
+        "N8N_SECURE_COOKIE": "false",
+        "N8N_HOST": "ROUTER_IP",
+        "N8N_PORT": "5678",
+        "N8N_PROTOCOL": "http",
+        "N8N_DIAGNOSTICS_ENABLED": "false",
+        "N8N_PERSONALIZATION_ENABLED": "false"
+      },
+      "generated_secret_env": "N8N_ENCRYPTION_KEY",
+      "reviewed_risk": "sensitive-data"
+    },
+    "ntfy": {
+      "repository": "binwiederhier/ntfy",
+      "image": "binwiederhier/ntfy:latest",
+      "ports": [
+        "8093:80"
+      ],
+      "volumes": [
+        "ntfy-data:/var/lib/ntfy"
+      ],
+      "description": "ntfy local notification server over LAN TCP 8093, with persistent SQLite cache. Starts with read/write access for trusted LAN users only. Set authentication and user access rules before using it for private or untrusted notifications.",
+      "path": "http://ROUTER_IP:8093/",
+      "needs_write_access": true,
+      "volume_initializer": {
+        "path": "/var/lib/ntfy",
+        "uid": 1000,
+        "gid": 1000
+      },
+      "run_as_user": "1000:1000",
+      "mem_limit": "384m",
+      "command": [
+        "serve"
+      ],
+      "environment": {
+        "NTFY_BASE_URL": "http://ROUTER_IP:8093",
+        "NTFY_LISTEN_HTTP": ":80",
+        "NTFY_CACHE_FILE": "/var/lib/ntfy/cache.db",
+        "NTFY_AUTH_DEFAULT_ACCESS": "read-write"
+      }
+    },
+    "glance": {
+      "repository": "glanceapp/glance",
+      "image": "glanceapp/glance:latest",
+      "ports": [
+        "8088:8080"
+      ],
+      "volumes": [
+        "glance-config:/app/config"
+      ],
+      "description": "Glance dashboard with automatically seeded minimal YAML configuration and no Docker socket, host networking or privileged access. Edit glance.yml later to add widgets.",
+      "path": "http://ROUTER_IP:8088/",
+      "needs_write_access": true,
+      "run_as_user": "1000:1000",
+      "mem_limit": "256m",
+      "volume_initializer": {
+        "path": "/app/config",
+        "uid": 1000,
+        "gid": 1000
+      },
+      "seed_files": [
+        {
+          "path": "/app/config/glance.yml",
+          "content": "pages:\n  - name: Home\n    columns:\n      - size: full\n        widgets:\n          - type: search\n"
+        }
+      ]
+    },
+    "dashy": {
+      "repository": "lissy93/dashy",
+      "image": "lissy93/dashy:latest",
+      "ports": [
+        "4000:8080"
+      ],
+      "volumes": [
+        "dashy-data:/app/user-data"
+      ],
+      "description": "Dashy start-page editor with automatically seeded conf.yml and persistent settings. It starts with a sample documentation link and no Docker socket access.",
+      "path": "http://ROUTER_IP:4000/",
+      "needs_write_access": true,
+      "run_as_user": "1000:1000",
+      "mem_limit": "768m",
+      "volume_initializer": {
+        "path": "/app/user-data",
+        "uid": 1000,
+        "gid": 1000
+      },
+      "seed_files": [
+        {
+          "path": "/app/user-data/conf.yml",
+          "content": "pageInfo:\n  title: MoCI Dashy\n  description: Router application dashboard\nappConfig:\n  theme: colorful\nsections:\n  - name: Getting Started\n    items:\n      - title: Dashy Documentation\n        url: https://dashy.to/docs/\n"
+        }
+      ],
+      "environment": {
+        "NODE_ENV": "production"
+      }
+    },
+    "filestash": {
+      "repository": "machines/filestash",
+      "image": "machines/filestash:latest",
+      "ports": [
+        "8334:8334"
+      ],
+      "volumes": [
+        "filestash-state:/app/data/state"
+      ],
+      "needs_write_access": true,
+      "mem_limit": "512m",
+      "reviewed_risk": "sensitive-data",
+      "description": "Private file-protocol frontend on LAN port 8334 with persistent state. First visit requires a new administrator password and backend/storage configuration. This lightweight recipe does not include optional Collabora/WOPI; no router host files are mounted.",
+      "path": "http://ROUTER_IP:8334/"
+    },
+    "backrest": {
+      "repository": "garethgeorge/backrest",
+      "image": "garethgeorge/backrest:latest",
+      "ports": [
+        "9898:9898"
+      ],
+      "volumes": [
+        "backrest-data:/data",
+        "backrest-config:/config",
+        "backrest-cache:/cache",
+        "backrest-repos:/repos"
+      ],
+      "needs_write_access": true,
+      "mem_limit": "768m",
+      "reviewed_risk": "sensitive-data",
+      "environment": {
+        "BACKREST_DATA": "/data",
+        "BACKREST_CONFIG": "/config/config.json",
+        "XDG_CACHE_HOME": "/cache",
+        "TZ": "Etc/UTC"
+      },
+      "description": "Restic backup orchestration with private managed data/config/cache and repository volumes; GUI at LAN port 9898. Only the managed /repos volume is writable as a backup target. The app cannot access router host paths or NAS shares without separate audited storage setup. Create administrator access on first launch.",
+      "path": "http://ROUTER_IP:9898/"
+    },
+    "adguard-home": {
+      "image": "adguard/adguardhome:latest",
+      "repository": "adguard/adguardhome",
+      "ports": [
+        "3003:3000"
+      ],
+      "volumes": [
+        "adguard-work:/opt/adguardhome/work",
+        "adguard-conf:/opt/adguardhome/conf"
+      ],
+      "description": "Network-wide DNS ad-blocking and parental controls. One-click install runs AdGuard Home; finish the setup wizard on LAN port 3003, then use the AdGuard integration to make it your network DNS. Router-critical: installing does not change your DNS until you opt in.",
+      "path": "http://ROUTER_IP:3003/",
+      "needs_write_access": true,
+      "run_as_user": "0:0",
+      "cap_add": [
+        "CHOWN",
+        "DAC_OVERRIDE",
+        "FOWNER",
+        "SETGID",
+        "SETUID",
+        "NET_BIND_SERVICE",
+        "NET_RAW"
+      ],
+      "mem_limit": "512m",
+      "reviewed_risk": "router-critical"
+    },
+    "vaultwarden": {
+      "image": "vaultwarden/server:latest",
+      "repository": "vaultwarden/server",
+      "ports": [
+        "8085:80"
+      ],
+      "volumes": [
+        "vaultwarden-data:/data"
+      ],
+      "description": "Lightweight Bitwarden-compatible password manager for your whole household. Web vault on LAN port 8085; create the first account on first visit. Keep the admin token and backups private.",
+      "path": "http://ROUTER_IP:8085/",
+      "needs_write_access": true,
+      "run_as_user": "0:0",
+      "cap_add": [
+        "CHOWN",
+        "DAC_OVERRIDE",
+        "FOWNER",
+        "SETGID",
+        "SETUID",
+        "NET_BIND_SERVICE"
+      ],
+      "mem_limit": "512m"
+    },
+    "syncthing": {
+      "image": "syncthing/syncthing:latest",
+      "repository": "syncthing/syncthing",
+      "ports": [
+        "8384:8384"
+      ],
+      "volumes": [
+        "syncthing-data:/var/syncthing"
+      ],
+      "description": "Continuous peer-to-peer file sync across your devices with no cloud. Web UI on LAN port 8384. Add folders and pair devices from the UI; data stays on the managed volume.",
+      "path": "http://ROUTER_IP:8384/",
+      "needs_write_access": true,
+      "run_as_user": "1000:1000",
+      "volume_initializer": {
+        "path": "/var/syncthing",
+        "uid": 1000,
+        "gid": 1000
+      },
+      "mem_limit": "512m"
+    },
+    "home-assistant": {
+      "image": "ghcr.io/home-assistant/home-assistant:stable",
+      "repository": "ghcr.io/home-assistant/home-assistant",
+      "ports": [
+        "8123:8123"
+      ],
+      "volumes": [
+        "homeassistant-config:/config"
+      ],
+      "description": "Open-source smart-home hub to automate lights, sensors and IoT devices on your isolated networks. Web UI on LAN port 8123; complete the onboarding on first visit.",
+      "path": "http://ROUTER_IP:8123/",
+      "needs_write_access": true,
+      "run_as_user": "0:0",
+      "cap_add": [
+        "CHOWN",
+        "DAC_OVERRIDE",
+        "FOWNER",
+        "SETGID",
+        "SETUID",
+        "NET_RAW"
+      ],
+      "mem_limit": "1024m"
+    },
+    "plex": {
+      "image": "lscr.io/linuxserver/plex:latest",
+      "repository": "lscr.io/linuxserver/plex",
+      "ports": [
+        "32400:32400"
+      ],
+      "volumes": [
+        "plex-config:/config",
+        "plex-media:/media"
+      ],
+      "description": "Stream your own movies, shows and music to every device. Web UI on LAN port 32400; sign in and point libraries at the managed media volume. Transcoding stays on the router CPU.",
+      "path": "http://ROUTER_IP:32400/web",
+      "needs_write_access": true,
+      "run_as_user": "0:0",
+      "cap_add": [
+        "CHOWN",
+        "DAC_OVERRIDE",
+        "FOWNER",
+        "SETGID",
+        "SETUID"
+      ],
+      "mem_limit": "1024m",
+      "environment": {
+        "PUID": "0",
+        "PGID": "0"
+      }
+    },
+    "wiki-js": {
+      "image": "requarks/wiki:latest",
+      "repository": "requarks/wiki",
+      "ports": [
+        "3004:3000"
+      ],
+      "volumes": [
+        "wikijs-data:/wiki/data/content"
+      ],
+      "description": "Modern wiki for household or team documentation, backed by SQLite. Web UI on LAN port 3004; create the administrator account on first visit.",
+      "path": "http://ROUTER_IP:3004/",
+      "needs_write_access": true,
+      "run_as_user": "1000:1000",
+      "volume_initializer": {
+        "path": "/wiki/data/content",
+        "uid": 1000,
+        "gid": 1000
+      },
+      "mem_limit": "512m"
+    },
+    "vikunja": {
+      "image": "vikunja/vikunja:latest",
+      "repository": "vikunja/vikunja",
+      "ports": [
+        "3456:3456"
+      ],
+      "volumes": [
+        "vikunja-files:/app/vikunja/files"
+      ],
+      "description": "Self-hosted to-do lists and task management with SQLite. Web UI on LAN port 3456; register the first account on first visit.",
+      "path": "http://ROUTER_IP:3456/",
+      "needs_write_access": true,
+      "run_as_user": "1000:1000",
+      "volume_initializer": {
+        "path": "/app/vikunja/files",
+        "uid": 1000,
+        "gid": 1000
+      },
+      "mem_limit": "512m"
+    },
+    "duplicati": {
+      "image": "lscr.io/linuxserver/duplicati:latest",
+      "repository": "lscr.io/linuxserver/duplicati",
+      "ports": [
+        "8200:8200"
+      ],
+      "volumes": [
+        "duplicati-config:/config",
+        "duplicati-backups:/backups"
+      ],
+      "description": "Encrypted, scheduled backups of your router config and app data to local or cloud targets. Web UI on LAN port 8200. Sensitive-data: protect the backup passphrase and destination credentials.",
+      "path": "http://ROUTER_IP:8200/",
+      "needs_write_access": true,
+      "run_as_user": "0:0",
+      "cap_add": [
+        "CHOWN",
+        "DAC_OVERRIDE",
+        "FOWNER",
+        "SETGID",
+        "SETUID"
+      ],
+      "mem_limit": "512m",
+      "reviewed_risk": "sensitive-data",
+      "environment": {
+        "PUID": "0",
+        "PGID": "0"
       }
     }
   }

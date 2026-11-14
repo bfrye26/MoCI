@@ -4,6 +4,20 @@
 const SLUG=/^[a-z][a-z0-9]{1,19}$/;
 const ACTIVE=/^[a-z][a-z0-9_]{0,29}$/;
 const UCI_TIMEOUT=65000;
+// StartWRT-style presets. Each pre-fills the WAN/DNS/curfew policy for a new
+// profile; everything stays editable and applies in one rollback-safe change.
+const PRESETS={
+  admin:{label:'Admin',slug:'admin',internet:true,lan:true,dns:'',quiet:null,
+    desc:'Full access: internet plus the main LAN. Use for your own trusted devices.'},
+  children:{label:'Children',slug:'children',internet:true,lan:false,dns:'1.1.1.3',quiet:{start:'22:00',end:'07:00',days:[0,1,2,3,4,5,6]},
+    desc:'Family-filtered DNS (1.1.1.3) and an overnight internet curfew (22:00–07:00). Isolated from the main LAN.'},
+  guest:{label:'Guest',slug:'guest',internet:true,lan:false,dns:'',quiet:null,
+    desc:'Internet only, isolated from your main computers. Ideal for visitors.'},
+  smart:{label:'Smart Devices',slug:'smart',internet:true,lan:false,dns:'',quiet:null,
+    desc:'Internet for IoT gadgets, isolated from your main LAN so they cannot reach your computers.'},
+  custom:{label:'Custom',slug:'',internet:false,lan:false,dns:'',quiet:null,
+    desc:'Start isolated (no internet) and choose exactly what to allow.'}
+};
 export default class SecurityProfilesModule{
   constructor(core){
     this.core=core;
@@ -52,8 +66,15 @@ export default class SecurityProfilesModule{
     const interfaces=Object.entries(this.network)
       .filter(([n,v])=>ACTIVE.test(n)&&v?.['.type']==='interface'&&!['loopback','lan','wan','wan6'].includes(n));
     const form=this.make('form',undefined,'profiles-create');
+    const presetLabel=this.make('label','Preset','advanced-field');
+    const preset=this.make('select');
+    for(const [key,p] of Object.entries(PRESETS)){const opt=this.make('option',p.label);opt.value=key;preset.appendChild(opt);}
+    preset.value='guest';
+    presetLabel.append(preset);form.append(presetLabel);
+    const presetNote=this.make('p',PRESETS.guest.desc,'profiles-description');
+    form.append(presetNote);
     const label=this.make('label','Profile name','advanced-field');
-    const name=this.make('input');name.type='text';name.required=true;name.minLength=2;name.maxLength=20;name.pattern='[a-z][a-z0-9]{1,19}';name.placeholder='guest';
+    const name=this.make('input');name.type='text';name.required=true;name.minLength=2;name.maxLength=20;name.pattern='[a-z][a-z0-9]{1,19}';name.placeholder='guest';name.value='guest';
     label.append(name);form.append(label);
     const interfaceLabel=this.make('label','Existing isolated network interface','advanced-field');
     const select=this.make('select');select.required=true;
@@ -64,16 +85,23 @@ export default class SecurityProfilesModule{
     }
     interfaceLabel.append(select);form.append(interfaceLabel);
     const internet=this.make('label',undefined,'profiles-check');
-    const checkbox=this.make('input');checkbox.type='checkbox';
-    internet.append(checkbox,this.make('span','Permit Internet forwarding through WAN (default: isolated)'));
+    const checkbox=this.make('input');checkbox.type='checkbox';checkbox.checked=true;
+    internet.append(checkbox,this.make('span','WAN / Internet access (allow this profile to reach the internet)'));
     form.appendChild(internet);
+    const syncPreset=()=>{
+      const p=PRESETS[preset.value]||PRESETS.custom;
+      presetNote.textContent=p.desc;
+      checkbox.checked=p.internet;
+      if(p.slug&&(!name.value||Object.values(PRESETS).some(x=>x.slug===name.value)))name.value=p.slug;
+    };
+    preset.addEventListener('change',syncPreset);
     const note=this.make('p','Create the interface, bridge VLAN, IP subnet and DHCP pool first using Network or Advanced. Never assign the management LAN to an isolated profile.','profiles-description');
     form.appendChild(note);
-    const add=this.make('button','CREATE ISOLATED PROFILE','action-btn');
+    const add=this.make('button','CREATE PROFILE','action-btn');
     add.type='submit';
     add.disabled=!interfaces.some(([key])=>!used.has(key));
     form.appendChild(add);
-    form.addEventListener('submit',e=>{e.preventDefault();this.create(name.value,select.value,checkbox.checked);});
+    form.addEventListener('submit',e=>{e.preventDefault();this.create(name.value,select.value,{...(PRESETS[preset.value]||PRESETS.custom),internet:checkbox.checked});});
     root.append(this.make('h3','New security profile'),form);
     const current=this.make('div',undefined,'profiles-list');
     const managed=zones.filter(([n,v])=>n.startsWith('moci_zone_')&&v.name?.startsWith('moci_'));
@@ -186,8 +214,9 @@ export default class SecurityProfilesModule{
     }
     await this.call('uci','confirm',{});
   }
-  async create(name,iface,internet){
+  async create(name,iface,opts){
     if(this.busy)return;
+    const internet=Boolean(opts?.internet),lan=Boolean(opts?.lan),dns=opts?.dns||'',quiet=opts?.quiet||null;
     if(!SLUG.test(name)||!ACTIVE.test(iface)||['lan','wan','wan6','loopback'].includes(iface)){
       this.core.showToast('Invalid profile or interface name','error');return;
     }
@@ -198,7 +227,11 @@ export default class SecurityProfilesModule{
     if(!this.network[iface]||this.network[iface]['.type']!=='interface'){
       this.core.showToast('Network interface does not exist','error');return;
     }
-    if(!window.confirm('Create '+name+' for interface '+iface+'?\nRouter access from this interface will be REJECTED except for DNS and DHCP. Internet access: '+(internet?'Yes':'No')+'\nAn automatic rollback protects connectivity.'))return;
+    if(dns&&!this.privateIPv4(dns)){this.core.showToast('Preset DNS resolver is invalid','error');return;}
+    const extras=[internet?'Internet':'no internet',lan?'LAN access':'isolated from LAN'];
+    if(dns)extras.push('DNS '+dns);
+    if(quiet)extras.push('curfew '+quiet.start+'–'+quiet.end);
+    if(!window.confirm('Create '+name+' for interface '+iface+'?\nRouter access is REJECTED except DNS/DHCP. Policy: '+extras.join(', ')+'.\nAn automatic rollback protects connectivity.'))return;
     this.busy=true;
     try{
       const zoneSection='moci_zone_'+name;
@@ -209,10 +242,48 @@ export default class SecurityProfilesModule{
         await this.add('rule',section);
         await this.set('firewall',section,{name:'MoCI '+name+' '+suffix,src:zone,proto,dest_port:port,target:'ACCEPT'});
       }
+      const destinations=[];
       if(internet){
         const section='moci_'+name+'_wan';
         await this.add('forwarding',section);
         await this.set('firewall',section,{src:zone,dest:'wan'});
+        destinations.push('wan');
+      }
+      if(lan){
+        const section='moci_'+name+'_lan';
+        await this.add('forwarding',section);
+        await this.set('firewall',section,{src:zone,dest:'lan'});
+        destinations.push('lan');
+      }
+      // Preset DNS: advertise a resolver to this profile's DHCP pool.
+      if(dns){
+        const dhcpSection=Object.entries(this.dhcp||{}).find(([id,entry])=>
+          entry['.type']==='dhcp'&&(id===iface||entry.interface===iface));
+        if(dhcpSection){
+          const [dhcpName,dhcpConfig]=dhcpSection;
+          const prev=Array.isArray(dhcpConfig.dhcp_option)?dhcpConfig.dhcp_option:
+            typeof dhcpConfig.dhcp_option==='string'?[dhcpConfig.dhcp_option]:[];
+          const kept=prev.filter(x=>typeof x==='string'&&!x.startsWith('6,'));
+          kept.push('6,'+dns);
+          await this.call('uci','set',{config:'dhcp',section:dhcpName,values:{dhcp_option:kept}});
+        }
+      }
+      // Preset curfew: time-bounded REJECT rules on the profile's forwarding paths.
+      if(quiet&&destinations.length){
+        const names=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+        const weekdayString=list=>list.map(d=>names[d]).join(' ');
+        const ranges=quiet.start<quiet.end
+          ?[[quiet.start+':00',quiet.end+':00',weekdayString(quiet.days)]]
+          :[[quiet.start+':00','23:59:59',weekdayString(quiet.days)],['00:00:00',quiet.end+':00',weekdayString(quiet.days.map(d=>(d+1)%7))]];
+        let count=0;
+        for(const dest of destinations){
+          for(const [from,to,weekdays] of ranges){
+            const id='moci_q_'+name+'_'+count++;
+            await this.add('rule',id);
+            await this.set('firewall',id,{name:'MoCI '+name+' quiet '+count,src:zone,dest,
+              proto:'all',start_time:from,stop_time:to,weekdays,utc_time:'0',target:'REJECT'});
+          }
+        }
       }
       await this.apply();
       this.core.showToast('Profile created','success');await this.show();
@@ -340,7 +411,7 @@ export default class SecurityProfilesModule{
     this.busy=true;
     try{
       const ownedRules=Object.keys(this.firewall).filter(key=>key.startsWith('moci_allow_'+name+'_')||key.startsWith('moci_q_'+name+'_'));
-      for(const key of [section,'moci_'+name+'_dns','moci_'+name+'_dhcp','moci_'+name+'_wan',...ownedRules]){
+      for(const key of [section,'moci_'+name+'_dns','moci_'+name+'_dhcp','moci_'+name+'_wan','moci_'+name+'_lan',...ownedRules]){
         if(this.firewall[key])await this.call('uci','delete',{config:'firewall',section:key});
       }
       await this.apply();
@@ -349,3 +420,4 @@ export default class SecurityProfilesModule{
     finally{this.busy=false;}
   }
 }
+

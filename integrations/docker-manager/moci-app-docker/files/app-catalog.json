@@ -32,7 +32,7 @@
       "profile": "home",
       "complexity": "easy",
       "risk": "review",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "authelia",
@@ -65,7 +65,7 @@
       "profile": "both",
       "complexity": "medium",
       "risk": "sensitive-data",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "beszel",
@@ -73,7 +73,7 @@
       "category": "Monitoring",
       "repository": "henrygd/beszel",
       "description": "Server monitoring",
-      "template_available": false,
+      "template_available": true,
       "profile": "both",
       "complexity": "medium",
       "risk": "review"
@@ -109,7 +109,7 @@
       "profile": "both",
       "complexity": "medium",
       "risk": "review",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "collabora",
@@ -153,7 +153,7 @@
       "profile": "home",
       "complexity": "easy",
       "risk": "review",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "diun",
@@ -197,7 +197,7 @@
       "profile": "both",
       "complexity": "medium",
       "risk": "sensitive-data",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "fail2ban",
@@ -219,7 +219,7 @@
       "profile": "office",
       "complexity": "medium",
       "risk": "sensitive-data",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "filestash",
@@ -230,15 +230,15 @@
       "profile": "office",
       "complexity": "medium",
       "risk": "sensitive-data",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "gitea",
       "name": "Gitea",
       "category": "Development",
-      "repository": "gitea/gitea",
+      "repository": "docker.gitea.com/gitea",
       "description": "Self-hosted Git",
-      "template_available": false,
+      "template_available": true,
       "profile": "office",
       "complexity": "medium",
       "risk": "review"
@@ -252,7 +252,7 @@
       "profile": "home",
       "complexity": "easy",
       "risk": "review",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "gotify",
@@ -271,7 +271,7 @@
       "category": "Monitoring",
       "repository": "grafana/grafana",
       "description": "Dashboards",
-      "template_available": false,
+      "template_available": true,
       "profile": "both",
       "complexity": "medium",
       "risk": "review"
@@ -307,7 +307,7 @@
       "profile": "home",
       "complexity": "medium",
       "risk": "review",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "home-assistant",
@@ -315,21 +315,21 @@
       "category": "Automation",
       "repository": "ghcr.io/home-assistant/home-assistant",
       "description": "Home automation",
-      "template_available": false,
+      "template_available": true,
       "profile": "home",
-      "complexity": "advanced",
+      "complexity": "medium",
       "risk": "review"
     },
     {
       "id": "homepage",
       "name": "Homepage",
       "category": "Dashboards",
-      "repository": "gethomepage/homepage",
+      "repository": "ghcr.io/gethomepage/homepage",
       "description": "Custom dashboard with service widgets",
       "profile": "home",
       "complexity": "easy",
       "risk": "review",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "immich",
@@ -370,7 +370,7 @@
       "category": "Media",
       "repository": "jellyfin/jellyfin",
       "description": "Media streaming",
-      "template_available": false,
+      "template_available": true,
       "profile": "home",
       "complexity": "medium",
       "risk": "review"
@@ -450,7 +450,7 @@
       "profile": "both",
       "complexity": "easy",
       "risk": "review",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "meshcentral",
@@ -483,7 +483,7 @@
       "profile": "office",
       "complexity": "medium",
       "risk": "sensitive-data",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "netdata",
@@ -527,7 +527,7 @@
       "profile": "both",
       "complexity": "easy",
       "risk": "review",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "odoo",
@@ -589,11 +589,11 @@
       "name": "Pi-hole",
       "category": "Networking",
       "repository": "pihole/pihole",
-      "description": "LAN DNS filtering; port 53 conflict possible",
+      "description": "Network-wide DNS ad-blocking with a one-click install and a native in-UI panel",
       "profile": "both",
-      "complexity": "advanced",
+      "complexity": "medium",
       "risk": "router-critical",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "plane",
@@ -615,7 +615,7 @@
       "profile": "home",
       "complexity": "medium",
       "risk": "review",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "portainer",
@@ -634,7 +634,7 @@
       "category": "Monitoring",
       "repository": "prom/prometheus",
       "description": "Metrics",
-      "template_available": false,
+      "template_available": true,
       "profile": "both",
       "complexity": "medium",
       "risk": "review"
@@ -703,7 +703,7 @@
       "profile": "office",
       "complexity": "medium",
       "risk": "sensitive-data",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "syncthing",
@@ -711,7 +711,7 @@
       "category": "Storage",
       "repository": "syncthing/syncthing",
       "description": "File synchronization",
-      "template_available": false,
+      "template_available": true,
       "profile": "both",
       "complexity": "medium",
       "risk": "review"
@@ -725,7 +725,7 @@
       "profile": "home",
       "complexity": "easy",
       "risk": "review",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "uptime-kuma",
@@ -744,7 +744,7 @@
       "category": "Security",
       "repository": "vaultwarden/server",
       "description": "Password management",
-      "template_available": false,
+      "template_available": true,
       "profile": "office",
       "complexity": "medium",
       "risk": "review"
@@ -758,7 +758,7 @@
       "profile": "office",
       "complexity": "medium",
       "risk": "review",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "watchtower",
@@ -791,7 +791,7 @@
       "profile": "office",
       "complexity": "medium",
       "risk": "review",
-      "template_available": false
+      "template_available": true
     },
     {
       "id": "zitadel",

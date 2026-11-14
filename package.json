@@ -1,6 +1,6 @@
 {
 	"name": "moci",
-	"version": "0.2.0",
+	"version": "1.0.0-rc.2",
 	"type": "module",
 	"description": "Modern management interface for OpenWrt routers",
 	"keywords": [
@@ -35,3 +35,4 @@
 		"url": "https://github.com/HudsonGraeme/MoCI"
 	}
 }
+

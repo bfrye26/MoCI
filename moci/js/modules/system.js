@@ -6,6 +6,10 @@ export default class SystemModule {
 		this.cronRaw = '';
 		this.sshKeysRaw = '';
 		this.firmwareFile = null;
+		this.servicePending = new Map();
+		this.serviceFeedback = new Map();
+		this.serviceBootNames = null;
+		this.serviceContext = null;
 
 		this.core.registerRoute('/system', (path, subPaths) => {
 			const pageElement = document.getElementById('system-page');
@@ -40,9 +44,6 @@ export default class SystemModule {
 			'change-password-btn': () => this.changePassword(),
 			'backup-btn': () => this.createBackup(),
 			'reset-btn': () => this.factoryReset(),
-			'reboot-btn': () => this.rebootSystem(),
-			'restart-network-btn': () => this.core.serviceReload('network'),
-			'restart-firewall-btn': () => this.core.serviceReload('firewall'),
 			'add-cron-btn': () => {
 				this.core.resetModal('cron-modal');
 				this.core.openModal('cron-modal');
@@ -55,7 +56,8 @@ export default class SystemModule {
 			},
 			'parse-keys-btn': () => this.parseSSHKeyInput(),
 			'refresh-syslog-btn': () => this.loadLog('syslog'),
-			'refresh-klog-btn': () => this.loadLog('klog')
+			'refresh-klog-btn': () => this.loadLog('klog'),
+			'refresh-startup-btn': () => {this.serviceBootNames=null;this.serviceContext=null;return this.loadStartup();}
 		};
 
 		for (const [id, handler] of Object.entries(buttons)) {
@@ -85,7 +87,7 @@ export default class SystemModule {
 		const delegations = {
 			'cron-table': { edit: id => this.editCronEntry(id), delete: id => this.deleteCronEntry(id) },
 			'ssh-keys-table': { delete: id => this.deleteSSHKey(id) },
-			'services-table': { toggle: id => this.toggleService(id) }
+			'services-table': { toggle: id => this.toggleService(id), inspect: id => this.inspectService(id) }
 		};
 
 		for (const [tableId, handlers] of Object.entries(delegations)) {
@@ -440,57 +442,256 @@ export default class SystemModule {
 		}
 	}
 
+	serviceIsOneShot(name) {
+		return new Set(['acme','firewall','urandom_seed','system','packet_steering','ucitrack','sqm','luci_statistics','nut-cgi']).has(name);
+	}
+
+	serviceIsRunning(info) {
+		// An instance being present means it is registered with procd, not
+		// necessarily that its process is running. Use the verbose status.
+		const instances=info?.instances;
+		if(!instances||typeof instances!=='object')return false;
+		return Object.values(instances).some(instance=>instance?.running===true);
+	}
+
+	serviceAutostart(info,name) {
+		if(this.serviceBootNames instanceof Set)return this.serviceBootNames.has(name)?'ENABLED':'DISABLED';
+		if(typeof info?.autostart==='boolean')return info.autostart?'ENABLED':'DISABLED';
+		return 'UNKNOWN';
+	}
+
+	async loadBootServiceNames(force=false){
+		if(!force && this.serviceBootNames!==null)return;
+		try{
+			const [status,result]=await this.core.ubusCall('file','exec',{
+				command:'/usr/libexec/moci-service-inspect',params:['list']
+			},{timeout:10000});
+			if(status!==0 || result?.code!==0 || typeof result?.stdout!=='string')
+				throw new Error('Service boot-status helper is not available');
+			this.serviceBootNames=new Set(result.stdout.split(/\r?\n/).filter(n=>/^[A-Za-z0-9_-]{1,64}$/.test(n)));
+		}catch{
+			this.serviceBootNames=false;
+		}
+	}
+
+	async loadServiceContext(force=false){
+		if(!force && this.serviceContext!==null && this.serviceContext!==undefined)return this.serviceContext;
+		let values={BANIP_ENABLED:'unknown',BANIP_STATE:'unknown',NUT_DRIVER_CONFIGURED:'unknown'};
+		try{
+			const [status,result]=await this.core.ubusCall('file','exec',{
+				command:'/usr/libexec/moci-service-inspect',params:['summary']
+			},{timeout:15000});
+			if(status!==0||result?.code!==0||typeof result?.stdout!=='string')
+				throw new Error('Unavailable service summary');
+			for(const line of result.stdout.split(/\r?\n/)){
+				const match=/^(BANIP_ENABLED|BANIP_STATE|NUT_DRIVER_CONFIGURED)=(yes|no|active|inactive|disabled|unavailable|unknown)$/.exec(line);
+				if(match)values[match[1]]=match[2];
+			}
+		}catch(error){console.warn('Service application summary unavailable:',error);}
+		this.serviceContext=values;
+		return values;
+	}
+
+	serviceNeedsSetup(name){
+		return (name==='nut-server' && this.serviceContext?.NUT_DRIVER_CONFIGURED==='no') ||
+			(name==='banip' && this.serviceContext?.BANIP_ENABLED==='no');
+	}
+
+	serviceDisplay(name,running,pending,feedback){
+		if(pending)return {variant:'info',label:pending.action==='stop'?'STOPPING…':'STARTING…'};
+		if(running)return {variant:'success',label:'RUNNING'};
+		if(name==='urandom_seed')return feedback?.kind==='completed'
+			?{variant:'success',label:'COMPLETED'}
+			:{variant:'info',label:'BOOT TASK',hint:'Short-lived random seed initialization; no daemon is expected'};
+		if(name==='banip'){
+			if(this.serviceContext?.BANIP_STATE==='active')return {variant:'success',label:'ACTIVE'};
+			if(this.serviceContext?.BANIP_ENABLED==='no')return {
+				variant:'info',label:'APP DISABLED',hint:'Enable BanIP and configure blocklists before starting'};
+		}
+		if(name==='nut-server' && this.serviceContext?.NUT_DRIVER_CONFIGURED==='no')return {
+			variant:'info',label:'SETUP NEEDED',hint:'No UPS driver is configured for this router'};
+		if(feedback?.kind==='failed')return {
+			variant:'error',label:'FAILED',hint:'Start/stop returned an error. Open Details'};
+		if(feedback?.kind==='completed')return {variant:'success',label:'COMPLETED'};
+		if(feedback && feedback.expected!==running)return {
+			variant:'info',label:'UNCONFIRMED',hint:'No persistent process confirmed. Open Details'};
+		if(name==='banip')return {variant:'info',label:'INACTIVE',
+			hint:'Check Details for the BanIP firewall application status'};
+		if(this.serviceIsOneShot(name))return {variant:'info',label:'ON DEMAND'};
+		return {variant:'error',label:'STOPPED'};
+	}
+
+	serviceHint(name){
+		const hints={
+			'ddns':'Dynamic DNS needs at least one enabled, configured provider before it can run.',
+			'gpio_switch':'GPIO switch controls require supported physical GPIO hardware; this VM may not provide it.',
+			'irqbalance':'IRQ balancing may exit when no eligible interrupts or CPU topology is available.',
+			'miniupnpd':'Check Network > UPnP & Port Mapping. Enabled UCI settings do not prove the daemon started.',
+			'moci-wifi-scheduler':'Wi-Fi scheduling needs a configured wireless interface.',
+			'banip':'BanIP manages nftables rules, not just a daemon. Check its application status, enable it and select blocklist feeds before starting.',
+			'nut-server':'NUT Server needs an actual UPS driver and a configured device. The VirtualBox VM may have no UPS to serve.',
+			'urandom_seed':'urandom_seed is a boot-time random seeding task. Exiting after it runs is expected.',
+			'acme':'ACME is an on-demand certificate task, not a continuously running daemon.',
+			'firewall':'Firewall rule application is not a persistent daemon.'
+		};
+		return hints[name]||'A successful init command does not guarantee a persistent daemon. Inspect the service and logs for details.';
+	}
+
+
+	async serviceSnapshot(name=null) {
+		const args={verbose:true};
+		if(name)args.name=name;
+		const [status,result]=await this.core.ubusCall('service','list',args,{timeout:10000});
+		if(status!==0||!result||typeof result!=='object')
+			throw new Error('OpenWrt procd service status is unavailable (ubus '+status+')');
+		return result;
+	}
+
 	async loadStartup() {
-		await this.core.loadResource('services-table', 4, 'services', async () => {
-			const [status, result] = await this.core.ubusCall('service', 'list', {});
-			if (status !== 0 || !result) throw new Error('No data');
-
-			const services = Object.entries(result).map(([name, info]) => ({
-				name,
-				running: info.instances && Object.keys(info.instances).length > 0
-			}));
-
-			this.core.renderTable(
-				'#services-table',
-				services,
-				4,
-				'No services found',
-				s => `<tr>
-				<td>${this.core.escapeHtml(s.name)}</td>
-				<td>${s.running ? this.core.renderBadge('success', 'RUNNING') : this.core.renderBadge('error', 'STOPPED')}</td>
-				<td>${this.core.renderBadge('info', 'N/A')}</td>
-				<td>
-					<div class="action-buttons">
-						<button class="action-btn" data-action="toggle" data-id="${this.core.escapeHtml(s.name)}" style="font-size:11px;padding:4px 8px">
-							${s.running ? 'STOP' : 'START'}
-						</button>
-					</div>
-				</td>
-			</tr>`
-			);
+		await this.core.loadResource('services-table',4,'services',async()=>{
+			await Promise.all([this.loadBootServiceNames(),this.loadServiceContext()]);
+			const result=await this.serviceSnapshot();
+			const services=Object.entries(result).map(([name,info])=>({
+				name,info,running:this.serviceIsRunning(info),pending:this.servicePending.get(name),
+				feedback:this.serviceFeedback.get(name)
+			})).sort((a,b)=>a.name.localeCompare(b.name));
+			this.core.renderTable('#services-table',services,4,'No procd services found',service=>{
+				const {name,running,pending,feedback}=service;
+				if(feedback && feedback.expected===running && feedback.kind!=='completed' && feedback.kind!=='failed')this.serviceFeedback.delete(name);
+				const view=this.serviceDisplay(name,running,pending,feedback);
+				const badge=this.core.renderBadge(view.variant,view.label);
+				const advice=view.hint?
+					`<small class="service-status-note">${this.core.escapeHtml(view.hint)}</small>`:
+					(!running && ['ddns','miniupnpd'].includes(name)?
+					`<small class="service-status-note">${this.core.escapeHtml(this.serviceHint(name))}</small>`:'');
+				const setupRequired=this.serviceNeedsSetup(name);
+				const operation=pending?(pending.action==='stop'?'STOPPING…':'STARTING…'):
+				(name==='banip' && this.serviceContext?.BANIP_STATE==='active'?'STOP':running?'STOP':this.serviceIsOneShot(name)?'RUN':'START');
+				return `<tr>
+					<td>${this.core.escapeHtml(name)}</td>
+					<td>${badge}${advice}</td>
+					<td>${this.core.escapeHtml(this.serviceAutostart(service.info,name))}</td>
+					<td><div class="action-buttons">
+						${setupRequired?'':`<button class="action-btn" type="button" data-action="toggle"
+							data-id="${this.core.escapeHtml(name)}" ${pending?'disabled aria-busy="true"':''}
+							style="font-size:11px;padding:4px 8px">${operation}</button>`}
+						<button class="action-btn" type="button" data-action="inspect"
+							data-id="${this.core.escapeHtml(name)}" style="font-size:11px;padding:4px 8px">DETAILS</button>
+					</div></td>
+				</tr>`;
+			});
 		});
 	}
 
-	async toggleService(name) {
-		if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
-			this.core.showToast('Invalid service name', 'error');
-			return;
+	async inspectService(name) {
+		if(!/^[A-Za-z0-9_-]{1,64}$/.test(name))return;
+		const table=document.getElementById('services-table');
+		const button=[...(table?.querySelectorAll('[data-action="inspect"]')||[])].find(b=>b.dataset.id===name);
+		const row=button?.closest('tr');
+		if(!row)return;
+		const next=row.nextElementSibling;
+		if(next?.classList.contains('service-inspection-row')){
+			next.remove();return;
 		}
-		try {
-			const [status, result] = await this.core.ubusCall('service', 'list', {});
-			const info = result?.[name];
-			const running = info?.instances && Object.keys(info.instances).length > 0;
-			const action = running ? 'stop' : 'start';
+		const details=document.createElement('tr');
+		details.className='service-inspection-row';
+		const cell=document.createElement('td');cell.colSpan=4;
+		const title=document.createElement('strong');title.textContent='Diagnostics: '+name;
+		const output=document.createElement('pre');
+		output.textContent='Checking init status and recent logs…';
+		cell.append(title,output);details.append(cell);
+		row.insertAdjacentElement('afterend',details);
+		try{
+			const [status,result]=await this.core.ubusCall('file','exec',{
+				command:'/usr/libexec/moci-service-inspect',params:['inspect',name]
+			},{timeout:18000});
+			if(status!==0 || result?.code!==0)
+				throw new Error('Diagnostic helper unavailable or denied. Update the MoCI service helper and RPC permissions.');
+			const logs=String(result.stdout||'').slice(0,4200);
+			output.textContent=this.serviceHint(name)+'\n\n'+(logs||'No service diagnostics returned.');
+		}catch(error){
+			output.textContent=this.serviceHint(name)+'\n\nDiagnostics unavailable: '+String(error.message||error);
+		}
+	}
 
-			await this.core.ubusCall('file', 'exec', {
-				command: `/etc/init.d/${name}`,
-				params: [action]
-			});
-			const pastTense = action === 'stop' ? 'stopped' : `${action}ed`;
-			this.core.showToast(`Service ${name} ${pastTense}`, 'success');
-			this.loadStartup();
-		} catch {
-			this.core.showToast(`Failed to toggle service ${name}`, 'error');
+	async waitForApplicationState(name,expected) {
+		if(name!=='banip')return false;
+		for(let attempt=0;attempt<5;attempt++){
+			const context=await this.loadServiceContext(true);
+			if((context.BANIP_STATE==='active')===expected)return true;
+			if(attempt<4)await new Promise(resolve=>setTimeout(resolve,1200));
+		}
+		return false;
+	}
+
+	async waitForServiceState(name,expected) {
+		// A successful init script is not proof the daemon started. Confirm via
+		// procd's verbose process state with a bounded retry window.
+		for(let attempt=0;attempt<8;attempt++){
+			try {
+				const snapshot=await this.serviceSnapshot(name);
+				if(!expected && !snapshot[name])return true;
+				if(snapshot[name] && this.serviceIsRunning(snapshot[name])===expected)return true;
+			} catch(error) {
+				if(attempt===7)throw error;
+			}
+			if(attempt<7)await new Promise(resolve=>setTimeout(resolve,1500));
+		}
+		return false;
+	}
+
+	async toggleService(name) {
+		if(!/^[a-zA-Z0-9_-]{1,64}$/.test(name)){
+			this.core.showToast('Invalid service name','error');return;
+		}
+		if(this.servicePending.has(name))return;
+		let action=null;
+		try {
+			if(name==='banip'||name==='nut-server')await this.loadServiceContext(true);
+			if(this.serviceNeedsSetup(name)){
+				this.core.showToast(name+': '+this.serviceHint(name),'info');
+				return;
+			}
+			const snapshot=await this.serviceSnapshot(name);
+			if(!snapshot[name])throw new Error('Service is no longer registered with procd');
+			const running=this.serviceIsRunning(snapshot[name]);
+			action=name==='banip' && this.serviceContext?.BANIP_STATE==='active'?'stop':running?'stop':'start';
+			const critical=new Set(['network','firewall','rpcd','uhttpd','dropbear','dnsmasq','odhcpd','dockerd','ubus','system']);
+			if(action==='stop' && critical.has(name) &&
+				!window.confirm('Stopping '+name+' may disconnect the router, SSH or internet. Continue?'))return;
+			this.serviceFeedback.delete(name);
+			this.servicePending.set(name,{action});
+			await this.loadStartup();
+			const [status,result]=await this.core.ubusCall('file','exec',{
+				command:'/etc/init.d/'+name,params:[action]
+			},{timeout:30000});
+			if(status!==0)throw new Error('OpenWrt rejected '+action+' ('+status+'). Check administrator permissions.');
+			if(!result || result.code!==0){
+				const reason=String(result?.stderr||result?.stdout||'').trim().slice(0,240);
+				throw new Error(reason||'Init script returned '+String(result?.code??'no exit code'));
+			}
+			if(action==='start' && this.serviceIsOneShot(name)){
+				this.serviceFeedback.set(name,{expected:true,kind:'completed',message:'Init command completed. This job has no persistent procd process.'});
+				this.core.showToast(name+': init command completed (no daemon expected)','success');
+				return;
+			}
+			const verified=name==='banip'
+				?await this.waitForApplicationState('banip',action==='start')
+				:await this.waitForServiceState(name,action==='start');
+			if(verified){
+				this.core.showToast('Service '+name+' '+(action==='start'?'started':'stopped')+' and verified','success');
+			}else{
+				const message='Init script returned successfully, but no running procd process was confirmed. '+this.serviceHint(name);
+				this.serviceFeedback.set(name,{expected:action==='start',message});
+				this.core.showToast(name+': status unconfirmed. Check System Logs.','info');
+			}
+		}catch(error){
+			const message=String(error?.message||'Unknown service control error').slice(0,260);
+			if(action)this.serviceFeedback.set(name,{expected:action==='start',message,kind:'failed'});
+			this.core.showToast('Service '+name+': '+message,'error');
+		}finally{
+			this.servicePending.delete(name);
+			try{await this.loadStartup();}catch(error){console.warn('Could not refresh service status:',error);}
 		}
 	}
 
@@ -844,11 +1045,32 @@ export default class SystemModule {
 			if (fileInput.files.length) this.handleFirmwareFile(fileInput.files[0]);
 		});
 
+		const sigInput = document.getElementById('firmware-sig-file');
+		sigInput?.addEventListener('change', () => {
+			this.firmwareSigFile = sigInput.files.length ? sigInput.files[0] : null;
+			this.firmwareValidatedFile = null;
+			const flashBtn2 = document.getElementById('flash-firmware-btn');
+			if (flashBtn2) flashBtn2.disabled = true;
+			const sigName = document.getElementById('firmware-sig-name');
+			if (sigName) sigName.textContent = this.firmwareSigFile ? this.firmwareSigFile.name : 'No signature selected (image will be treated as unsigned).';
+		});
+
 		validateBtn?.addEventListener('click', () => this.validateFirmware());
 		flashBtn?.addEventListener('click', () => this.flashFirmware());
 	}
 
 	handleFirmwareFile(file) {
+		if (this.firmwareBusy) return;
+		this.firmwareValidatedFile = null;
+		const flashBtn = document.getElementById('flash-firmware-btn');
+		if (flashBtn) flashBtn.disabled = true;
+		if (!file?.size || !/\.(bin|img|img\.gz|itb|trx)$/i.test(file.name)) {
+			this.firmwareFile = null;
+			const validateBtn = document.getElementById('validate-firmware-btn');
+			if (validateBtn) validateBtn.disabled = true;
+			this.core.showToast('Select a firmware image (.bin, .img or .img.gz), not an installer ISO.', 'error');
+			return;
+		}
 		this.firmwareFile = file;
 		const uploadText = document.getElementById('file-upload-text');
 		const info = document.getElementById('firmware-info');
@@ -863,8 +1085,8 @@ export default class SystemModule {
 		if (validateBtn) validateBtn.disabled = false;
 	}
 
-	async uploadFirmwareChunked() {
-		if (!this.firmwareFile) throw new Error('No file selected');
+	async uploadFileChunked(file, path) {
+		if (!file) throw new Error('No file selected');
 		const CHUNK_SIZE = 65536;
 		const reader = new FileReader();
 
@@ -875,11 +1097,11 @@ export default class SystemModule {
 				reader.readAsArrayBuffer(blob);
 			});
 
-		const total = this.firmwareFile.size;
+		const total = file.size;
 		let offset = 0;
 
 		while (offset < total) {
-			const chunk = this.firmwareFile.slice(offset, offset + CHUNK_SIZE);
+			const chunk = file.slice(offset, offset + CHUNK_SIZE);
 			const buffer = await readChunk(chunk);
 			const bytes = new Uint8Array(buffer);
 			const parts = [];
@@ -889,33 +1111,72 @@ export default class SystemModule {
 			}
 			const b64 = btoa(parts.join(''));
 
-			await this.core.ubusCall(
+			const [status] = await this.core.ubusCall(
 				'file',
 				'write',
 				{
-					path: '/tmp/firmware.bin',
+					path,
 					data: b64,
 					base64: true,
 					...(offset > 0 ? { append: true } : {})
 				},
 				{ timeout: 30000 }
 			);
+			if (status !== 0) throw new Error('Firmware upload chunk rejected');
 			offset += CHUNK_SIZE;
 		}
 	}
 
+	async uploadFirmwareChunked() {
+		await this.uploadFileChunked(this.firmwareFile, '/tmp/firmware.bin');
+	}
+
 	async validateFirmware() {
+		if (this.firmwareBusy || !this.firmwareFile) return;
+		this.firmwareBusy = true;
+		this.firmwareValidatedFile = null;
 		const statusEl = document.getElementById('upgrade-status');
 		const progress = document.getElementById('upgrade-progress');
 		const flashBtn = document.getElementById('flash-firmware-btn');
+		const validateBtn = document.getElementById('validate-firmware-btn');
+		if (flashBtn) flashBtn.disabled = true;
+		if (validateBtn) validateBtn.disabled = true;
 
 		if (progress) progress.style.display = 'block';
 		if (statusEl) statusEl.textContent = 'Uploading firmware...';
 
 		try {
 			await this.uploadFirmwareChunked();
-			if (statusEl) statusEl.textContent = 'Validating firmware...';
+			if (statusEl) statusEl.textContent = 'Checking firmware signature...';
 
+			// Verify the detached usign signature when one is supplied. A bad
+			// signature blocks installation; an unsigned image requires an extra
+			// explicit confirmation at flash time.
+			this.firmwareUnsigned = false;
+			let verify = { verified: false, reason: 'unsigned' };
+			if (this.firmwareSigFile) {
+				await this.uploadFileChunked(this.firmwareSigFile, '/tmp/firmware.bin.sig');
+				const [vs, vr] = await this.core.ubusCall('file', 'exec',
+					{ command: '/usr/libexec/moci-verify-image', params: ['/tmp/firmware.bin', '/tmp/firmware.bin.sig'] },
+					{ timeout: 30000 });
+				try { verify = JSON.parse(vr?.stdout || '{}'); } catch { verify = { verified: false, reason: 'invalid signature' }; }
+				if (vs !== 0) verify = { verified: false, reason: 'verification failed' };
+			} else {
+				const [vs, vr] = await this.core.ubusCall('file', 'exec',
+					{ command: '/usr/libexec/moci-verify-image', params: ['/tmp/firmware.bin'] },
+					{ timeout: 30000 });
+				try { verify = JSON.parse(vr?.stdout || '{}'); } catch { verify = { verified: false, reason: 'unsigned' }; }
+			}
+			if (this.firmwareSigFile && !verify.verified) {
+				if (statusEl) statusEl.textContent = 'Signature check failed: ' + (verify.reason || 'invalid signature') + '. Installation blocked.';
+				this.core.showToast('Firmware signature is invalid — installation blocked', 'error');
+				await this.core.ubusCall('file', 'exec', { command: '/bin/rm', params: ['-f', '/tmp/firmware.bin'] });
+				await this.core.ubusCall('file', 'exec', { command: '/bin/rm', params: ['-f', '/tmp/firmware.bin.sig'] }).catch(() => {});
+				return;
+			}
+			this.firmwareUnsigned = !verify.verified;
+
+			if (statusEl) statusEl.textContent = 'Validating firmware...';
 			const [s, r] = await this.core.ubusCall(
 				'file',
 				'exec',
@@ -923,7 +1184,7 @@ export default class SystemModule {
 				{ timeout: 30000 }
 			);
 
-			if (s !== 0 || (r?.code && r.code !== 0)) {
+			if (s !== 0 || r?.code !== 0) {
 				const err = r?.stderr || r?.stdout || 'Validation failed';
 				if (statusEl) statusEl.textContent = 'Validation failed: ' + err;
 				this.core.showToast('Firmware validation failed', 'error');
@@ -931,21 +1192,35 @@ export default class SystemModule {
 				return;
 			}
 
-			if (statusEl) statusEl.textContent = 'Firmware validated successfully. Ready to flash.';
+			const sigNote = verify.verified ? 'Signature verified. ' : (this.firmwareUnsigned ? 'Unsigned image — extra confirmation required. ' : '');
+			if (statusEl) statusEl.textContent = sigNote + 'Firmware validated successfully. Ready to flash.';
+			this.firmwareValidatedFile = this.firmwareFile;
 			if (flashBtn) flashBtn.disabled = false;
-			this.core.showToast('Firmware validated', 'success');
+			this.core.showToast(verify.verified ? 'Firmware validated and signature verified' : 'Firmware validated', 'success');
 		} catch {
 			if (statusEl) statusEl.textContent = 'Upload or validation failed';
 			this.core.showToast('Firmware validation failed', 'error');
 			try {
 				await this.core.ubusCall('file', 'exec', { command: '/bin/rm', params: ['-f', '/tmp/firmware.bin'] });
 			} catch {}
+		} finally {
+			this.firmwareBusy = false;
+			if (validateBtn) validateBtn.disabled = !this.firmwareFile;
 		}
 	}
 
 	async flashFirmware() {
+		if (this.firmwareBusy || !this.firmwareFile || this.firmwareValidatedFile !== this.firmwareFile) {
+			this.core.showToast('Validate the selected firmware image before flashing.', 'error');
+			return;
+		}
+		if (this.firmwareUnsigned && !confirm('This image has no valid Haven signature. Only continue if you built it yourself and trust it. Flash unsigned firmware?')) return;
 		if (!confirm('Flash firmware now? The device will reboot.')) return;
 		if (!confirm('This will replace the firmware. Proceed?')) return;
+		this.firmwareBusy = true;
+		this.firmwareValidatedFile = null;
+		const flashBtn = document.getElementById('flash-firmware-btn');
+		if (flashBtn) flashBtn.disabled = true;
 
 		const statusEl = document.getElementById('upgrade-status');
 		const keepSettings = document.getElementById('keep-settings')?.checked;
@@ -954,18 +1229,71 @@ export default class SystemModule {
 		if (statusEl) statusEl.textContent = 'Flashing firmware... Do not power off the device.';
 
 		try {
-			await this.core.ubusCall(
+			const [status, result] = await this.core.ubusCall(
 				'file',
 				'exec',
 				{ command: '/sbin/sysupgrade', params },
 				{ timeout: 120000, retries: 0 }
 			);
-			if (statusEl) statusEl.textContent = 'Firmware flashed. Device is rebooting...';
-			this.core.showToast('Firmware flashed, device rebooting...', 'success');
+			if (status !== 0 || result?.code !== 0) {
+				if (statusEl) statusEl.textContent = 'Firmware upgrade command failed. Check router logs before retrying.';
+				this.core.showToast('Firmware upgrade command failed', 'error');
+				return;
+			}
+			if (statusEl) statusEl.textContent = 'Upgrade command accepted. Wait for reboot, then verify the installed firmware.';
+			this.core.showToast('Upgrade started. Verify firmware after reboot.', 'info');
 		} catch {
-			if (statusEl) statusEl.textContent = 'Flash initiated. Device should be rebooting...';
+			if (statusEl) statusEl.textContent = 'Connection lost during upgrade. The outcome is unverified. Wait for the router to return and check its firmware before retrying.';
+		} finally {
+			this.firmwareBusy = false;
 		}
 	}
 
-	loadUpgrade() {}
+	async loadUpgrade() {
+		const root = document.getElementById('upgrade-current-version');
+		if (!root) return;
+		root.replaceChildren();
+		const el = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; };
+		let version = 'unknown', status = '';
+		try {
+			const [s, r] = await this.core.ubusCall('file', 'read', { path: '/etc/moci-release' }, { timeout: 10000 });
+			if (s === 0 && r?.data) {
+				const mv = r.data.match(/MOCI_VERSION=(.+)/); if (mv) version = mv[1].trim();
+				const ms = r.data.match(/MOCI_STATUS=(.+)/); if (ms) status = ms[1].trim();
+			}
+		} catch {}
+		root.append(el('div', 'INSTALLED FIRMWARE', 'section-title'));
+		const row = el('div', undefined, 'dev-res-actions');
+		row.append(el('strong', 'Haven ' + version, 'dev-name'), el('span', status || 'release', 'dev-badge static'));
+		root.append(row);
+		root.append(el('p', 'Updates are signed and opt-in — nothing installs automatically. Download the latest release image and its .sig signature, then use the manual upgrade below: Haven verifies the signature before installing (Install now), or you can close this page and update later. A bad signature blocks installation; an unsigned image needs an extra confirmation.', 'page-note'));
+		const links = el('div', undefined, 'dev-modal-actions');
+		const rel = el('a', 'LATEST RELEASES', 'action-btn'); rel.href = 'https://github.com/bfrye26/MoCI/releases'; rel.target = '_blank'; rel.rel = 'noopener';
+		const asu = el('a', 'ONLINE UPDATE (LuCI)', 'action-btn'); asu.href = '/cgi-bin/luci/admin/system/attendedsysupgrade'; asu.target = '_blank'; asu.rel = 'noopener';
+		const check = el('button', 'CHECK FOR UPDATES', 'action-btn'); check.type = 'button';
+		links.append(check, rel, asu);
+		root.append(links);
+		const result = el('div', undefined, 'page-note');
+		root.append(result);
+		check.addEventListener('click', async () => {
+			check.disabled = true; result.textContent = 'Checking for a newer Haven release…';
+			try {
+				const resp = await fetch('https://api.github.com/repos/bfrye26/MoCI/releases/latest', { headers: { 'Accept': 'application/vnd.github+json' } });
+				if (!resp.ok) throw new Error('release check returned ' + resp.status);
+				const data = await resp.json();
+				const latest = String(data.tag_name || '').replace(/^v/, '');
+				result.replaceChildren();
+				if (latest && latest !== version) {
+					result.append(el('strong', 'Update available: Haven ' + latest + ' (installed ' + version + '). ', 'dev-name'));
+					const a = el('a', 'View release', 'action-btn'); a.href = data.html_url || 'https://github.com/bfrye26/MoCI/releases'; a.target = '_blank'; a.rel = 'noopener';
+					result.append(a);
+				} else {
+					result.textContent = 'You are running the latest release (' + version + ').';
+				}
+			} catch (e) {
+				result.textContent = 'Could not check for updates: ' + e.message + '. Use “Latest releases” to browse manually.';
+			} finally { check.disabled = false; }
+		});
+	}
 }
+

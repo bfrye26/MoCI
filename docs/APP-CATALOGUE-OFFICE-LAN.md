@@ -32,3 +32,4 @@ For each app, verify its current upstream maintainers and image distribution, li
 
 ## Firmware readiness
 Catalogue and UI metadata changes are committed to `develop/docker-manager`. The firmware build is experimental. A successful catalogue test does not validate live deployments. Before flashing a production router, pass OpenWrt SDK compilation, dedicated non-root rpcd negative access tests, QEMU UEFI networking tests and spare-hardware validation.
+

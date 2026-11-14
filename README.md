@@ -189,3 +189,4 @@ Chrome 90+ • Firefox 88+ • Safari 14+ • Any modern browser
 ## License
 
 MIT
+

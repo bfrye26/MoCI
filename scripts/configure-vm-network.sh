@@ -35,3 +35,4 @@ ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 root@loc
 echo ""
 echo "Network configured! LuCI should now be accessible at http://localhost:8080"
 rm /tmp/openwrt-network-config.sh
+

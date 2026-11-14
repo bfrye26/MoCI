@@ -1,3 +1,7 @@
+// Bump on every frontend release so browsers fetch fresh modules instead of a
+// stale cached bundle. Kept in sync with the query strings in index.html.
+const ASSET_VER = '1.0.0r4';
+
 export class OpenWrtCore {
 	constructor() {
 		this.sessionId = sessionStorage.getItem('ubus_session');
@@ -12,7 +16,7 @@ export class OpenWrtCore {
 		this.addons = new Map();
 		this.addonManifests = new Map();
 		this.addonRouteMap = new Map();
-		this.helpOpen = false;
+		this.helpOpen = this.getSavedHelpOpen();
 		this.appearanceThemes = new Set(['obsidian', 'cloud', 'ocean', 'terminal', 'amethyst', 'copper']);
 		this.applyTheme(this.getSavedTheme());
 	}
@@ -24,6 +28,10 @@ export class OpenWrtCore {
 		} catch {
 			return 'obsidian';
 		}
+	}
+
+	getSavedHelpOpen() {
+		try { return localStorage.getItem('moci_help_open') === '1'; } catch { return false; }
 	}
 
 	applyTheme(theme) {
@@ -56,6 +64,13 @@ export class OpenWrtCore {
 	getModuleForRoute(basePath) {
 		const routeModuleMap = {
 			dashboard: 'dashboard',
+			wan: 'wan',
+			'published-ports': 'published-ports',
+			devices: 'devices',
+			wifi: 'wifi',
+			qos: 'qos',
+			tls: 'tls',
+			networks: 'networks',
 			network: 'network',
 			system: 'system',
 			advanced: 'advanced',
@@ -64,7 +79,15 @@ export class OpenWrtCore {
 			'wifi-profiles': 'wifi-profiles',
 			'ethernet-profiles': 'ethernet-profiles',
 			'vpn-policies': 'vpn-policies',
-			addons: 'addons'
+			addons: 'addons',
+			features: 'features',
+			bandwidth: 'bandwidth',
+			multiwan: 'multiwan',
+			adblock: 'adblock',
+			tailscale: 'tailscale',
+			terminal: 'terminal',
+			statistics: 'statistics',
+			nas: 'nas'
 		};
 		if (routeModuleMap[basePath]) return routeModuleMap[basePath];
 		const addonId = this.addonRouteMap.get(basePath);
@@ -81,17 +104,28 @@ export class OpenWrtCore {
 		const fullPath = `/${basePath}${subPaths.length ? '/' + subPaths.join('/') : ''}`;
 
 		document.querySelectorAll('.page').forEach(page => page.classList.add('hidden'));
-		document.querySelectorAll('.nav a').forEach(link => link.classList.remove('active'));
+		const navLinks = [...document.querySelectorAll('.sidebar-nav a.nav-item')];
+		navLinks.forEach(link => link.classList.remove('active'));
 
-		const activeLink =
-			document.querySelector(`.nav a[href="#/${basePath}"]`) ||
-			document.querySelector(`.nav a[data-addon][href^="#/${basePath}"]`);
-		if (activeLink) activeLink.classList.add('active');
-		const moreMenu=document.querySelector('.nav-more');
-		if(moreMenu){
-			moreMenu.classList.toggle('active',!!activeLink&&moreMenu.contains(activeLink));
-			moreMenu.open=false;
+		// Highlight the most specific sidebar entry matching the current path.
+		const currentPath = `/${basePath}${subPaths.length ? '/' + subPaths.join('/') : ''}`;
+		let activeLink = null;
+		let bestLen = 0;
+		for (const link of navLinks) {
+			const href = (link.getAttribute('href') || '').replace(/^#/, '');
+			if (!href) continue;
+			if (currentPath === href || currentPath.startsWith(href + '/')) {
+				if (href.length > bestLen) { bestLen = href.length; activeLink = link; }
+			}
 		}
+		if (!activeLink) {
+			activeLink = navLinks.find(l => (l.getAttribute('href') || '').startsWith(`#/${basePath}`)) || null;
+		}
+		if (activeLink) activeLink.classList.add('active');
+
+		// Close the mobile drawer after navigating.
+		document.getElementById('app-shell')?.classList.remove('sidebar-open');
+		document.getElementById('menu-toggle')?.setAttribute('aria-expanded', 'false');
 
 		if (basePath === 'dashboard') {
 			this.startPolling();
@@ -130,7 +164,13 @@ export class OpenWrtCore {
 	applyFeatureFlags() {
 		document.querySelectorAll('[data-feature]').forEach(element => {
 			const feature = element.getAttribute('data-feature');
-			if (!this.isFeatureEnabled(feature)) {
+			const enabled = this.isFeatureEnabled(feature);
+			// Nav entries toggle both ways so a feature switch shows/hides them live.
+			// Tab panels and pages keep their routing/sub-tab visibility: only hide
+			// them when disabled, never force-show (that would reveal inactive tabs).
+			if (element.classList.contains('nav-item')) {
+				element.classList.toggle('hidden', !enabled);
+			} else if (!enabled) {
 				element.classList.add('hidden');
 			}
 		});
@@ -193,7 +233,15 @@ export class OpenWrtCore {
 			storage: '1',
 			leds: '1',
 			firmware: '1',
-			addons: '1'
+			addons: '1',
+			sqm: '0',
+			bandwidth: '0',
+			multiwan: '0',
+			adblock: '0',
+			tailscale: '0',
+			terminal: '0',
+			statistics: '0',
+			nas: '0'
 		};
 	}
 
@@ -204,6 +252,14 @@ export class OpenWrtCore {
 	getModuleMap() {
 		return {
 			dashboard: './modules/dashboard.js',
+			wan: './modules/wan.js',
+			'published-ports': './modules/published-ports.js',
+			devices: './modules/devices.js',
+			wifi: './modules/wifi.js',
+			qos: './modules/qos.js',
+			tls: './modules/tls.js',
+			networks: './modules/networks.js',
+			'app-integrations': './modules/app-integrations.js',
 			network: './modules/network.js',
 			system: './modules/system.js',
 			advanced: './modules/advanced.js',
@@ -212,7 +268,15 @@ export class OpenWrtCore {
 			'wifi-profiles': './modules/wifi-profiles.js',
 			'ethernet-profiles': './modules/ethernet-profiles.js',
 			'vpn-policies': './modules/vpn-policies.js',
-			addons: './modules/addons.js'
+			addons: './modules/addons.js',
+			features: './modules/features.js',
+			bandwidth: './modules/bandwidth.js',
+			multiwan: './modules/multiwan.js',
+			adblock: './modules/adblock.js',
+			tailscale: './modules/tailscale.js',
+			terminal: './modules/terminal.js',
+			statistics: './modules/statistics.js',
+			nas: './modules/nas.js'
 		};
 	}
 
@@ -231,7 +295,7 @@ export class OpenWrtCore {
 		if (!path) return null;
 
 		try {
-			const module = await import(path);
+			const module = await import(path + '?v=' + ASSET_VER);
 			const instance = new module.default(this);
 			this.modules.set(name, instance);
 			return instance;
@@ -243,11 +307,23 @@ export class OpenWrtCore {
 
 	async loadModules() {
 		await this.loadModule('dashboard');
+		const integrations = await this.loadModule('app-integrations');
+		if (integrations && typeof integrations.init === 'function') {
+			await integrations.init();
+		}
 	}
 
 	shouldLoadModule(moduleName) {
 		const moduleFeatures = {
 			dashboard: ['dashboard'],
+			wan: ['network'],
+			'published-ports': ['network'],
+			devices: ['dhcp'],
+			wifi: ['wireless'],
+			qos: ['qos'],
+			tls: ['system'],
+			networks: ['firewall'],
+			'app-integrations': ['addons'],
 			network: ['network', 'wireless', 'firewall', 'dhcp', 'dns', 'diagnostics', 'wireguard', 'qos', 'ddns'],
 			system: ['system', 'backup', 'packages', 'services', 'ssh_keys', 'storage', 'leds', 'firmware'],
 			advanced: ['system'],
@@ -256,7 +332,15 @@ export class OpenWrtCore {
 			'wifi-profiles': ['wireless'],
 			'ethernet-profiles': ['network'],
 			'vpn-policies': ['wireguard'],
-			addons: ['addons']
+			addons: ['addons'],
+			features: ['system'],
+			bandwidth: ['bandwidth'],
+			multiwan: ['multiwan'],
+			adblock: ['adblock'],
+			tailscale: ['tailscale'],
+			terminal: ['terminal'],
+			statistics: ['statistics'],
+			nas: ['nas']
 		};
 
 		const features = moduleFeatures[moduleName] || [];
@@ -264,9 +348,11 @@ export class OpenWrtCore {
 	}
 
 	startApplication() {
-		this.attachEventListeners();
-
-		window.addEventListener('hashchange', () => this.handleRouteChange());
+		if (!this._applicationStarted) {
+			this.attachEventListeners();
+			window.addEventListener('hashchange', () => this.handleRouteChange());
+			this._applicationStarted = true;
+		}
 
 		if (!window.location.hash) {
 			this.navigate('/dashboard');
@@ -283,27 +369,51 @@ export class OpenWrtCore {
 		const hash=(window.location.hash||'#/dashboard').slice(2).split('/');
 		const section=hash[0]||'dashboard';
 		const tab=hash[1]||'';
-		const topics={
-			dashboard:['Network health','The dashboard shows router CPU, memory and interface activity. WAN availability depends on a working upstream default route.','Check WAN routes and DNS when online status disagrees with real connectivity.','Avoid exposing the administration interface directly to the WAN.'],
-			network:['Network & firewall','Interfaces, device bridges, DHCP, DNS, firewall zones and VPNs all change how traffic crosses your router.','Keep one known-good management address before editing a LAN bridge or VLAN.','Back up settings before changing DHCP, routing or firewall.'],
-			system:['System administration','Manage the router clock, services, packages, SSH, backups, firmware upgrades and storage.','Create a backup before upgrading firmware or modifying storage.','Use a trusted source for packages and verify that the release matches your architecture.'],
-			addons:['Add-ons','MoCI add-ons extend the interface and can request sensitive access to OpenWrt configuration and services.','Review package permissions and origins before installation.','Remove add-ons you no longer use.'],
-			docker:['Docker Applications','Applications runs on Docker Engine. The Docker daemon and management socket have root-equivalent privileges.','Use reviewed images and separate persistent data volumes from the firmware filesystem.','Avoid publishing container administration ports directly onto the WAN.'],
-			advanced:['Advanced OpenWrt','The Advanced workspace edits service-specific OpenWrt UCI sections. Connectivity-sensitive edits should use rollback/confirmation.','A service may require restarting to activate a committed setting.','Device and protocol-specific options are not always interchangeable.']
+		const titles={
+			dashboard:'Dashboard',network:'Network',system:'System',addons:'Add-ons',docker:'App Store',
+			advanced:'Advanced Config',profiles:'Security Profiles','vpn-policies':'VPN & Failover',
+			'wifi-profiles':'Wi-Fi Passwords','ethernet-profiles':'Ethernet','schedules':'Wi-Fi Schedules',
+			devices:'Devices',wan:'Internet (WAN)','published-ports':'Published Ports',wifi:'Wi-Fi',qos:'Traffic & QoS',tls:'HTTPS / Certificate',networks:'Guest & IoT Networks'
 		};
-		const [title,description,...items]=topics[section]||topics.advanced;
+		const topics={
+			dashboard:['Overview','A live picture of your router: internet status, CPU, memory and interface traffic. The bandwidth graph updates every few seconds.','WAN “online” depends on a working upstream route and DNS — if they disagree, check routes and DNS.','Keep the administration interface off the WAN.'],
+			network:['Network','Interfaces, bridges, DHCP, DNS, firewall and routing — the paths traffic takes through your router.','Keep one known-good management address before editing a LAN bridge or VLAN.','Back up settings before changing DHCP, routing or firewall.'],
+			system:['System','Clock, services, packages, SSH keys, backups, firmware upgrades and storage.','Create a backup before upgrading firmware or changing storage.','Only install packages from a trusted source that matches your architecture.'],
+			addons:['Add-ons','Add-ons extend MoCI and can request sensitive access to OpenWrt configuration and services.','Review an add-on’s permissions and origin before installing.','Remove add-ons you no longer use.'],
+			docker:['App Store','One-click applications run on Docker Engine with automatic LAN-only firewall rules. The Docker socket is root-equivalent.','Use reviewed, digest-pinned images and keep data on persistent named volumes.','Apps are published to the LAN only — never expose admin ports to the WAN.'],
+			advanced:['Advanced Config','A raw editor for service-specific OpenWrt UCI sections. Connectivity-sensitive edits apply with a timed rollback you must confirm.','Some services need a restart to activate a committed setting.','This is the power-user escape hatch — prefer the guided pages when they cover your task.'],
+			profiles:['Security Profiles','A profile is an isolated network segment with its own permissions. It controls internet access, DNS, and which other profiles a device can reach.','Assign devices to a profile by Wi-Fi password, Ethernet port, or inbound VPN under “Points of entry”.','Presets: Admin (full access), Children (filtered DNS + curfew), Guest (isolated), Smart Devices (limited internet).'],
+			'vpn-policies':['VPN & Failover','Route a profile’s traffic out through a WireGuard tunnel, or run a WireGuard server so your devices can reach home from anywhere.','A profile routed through a VPN keeps its DNS inside the tunnel; if the tunnel drops, traffic stops rather than leaking over the WAN.','Chain two tunnels to separate identity from destination.'],
+			'wifi-profiles':['Wi-Fi Passwords','One Wi-Fi network, many passwords. The password a device uses decides its security profile — devices share the airwaves and nothing else.','Each password maps to a profile (and its own VLAN). Keep the Admin password private.','Password changes take effect when devices reconnect.'],
+			'ethernet-profiles':['Ethernet','Assign a physical router port to a security profile. A device plugged into that port joins the profile’s isolated network automatically.','MoCI creates the interface, DHCP pool and firewall zone for the port.','Use this for wired devices you want isolated, like a guest desktop or IoT gear.'],
+			schedules:['Wi-Fi Schedules','Turn Wi-Fi off on a schedule (a “blackout”), or set per-profile internet curfews. Wired devices stay connected during a Wi-Fi blackout.','Overnight windows (e.g. 23:00–06:00) are supported.','Schedules run on the router, so they hold even if the app is closed.'],
+			devices:['Devices','Every device holding a DHCP lease, plus your static reservations. A reservation ties a MAC address to a fixed IP so it never changes.','Make a device static before pointing a port forward or a DNS name at it.','A reservation takes effect when the device reconnects or renews its lease.'],
+			wan:['Internet (WAN)','How the router reaches the internet: DHCP (automatic), a static IP from your ISP, or PPPoE (username & password).','Changing the connection type briefly interrupts the link and applies with a safety rollback.','Most cable/fiber modems use DHCP; many DSL lines use PPPoE.'],
+			'published-ports':['Published Ports','Let trusted LAN devices request incoming ports via UPnP / NAT-PMP, and review active mappings.','Secure mode is enforced: a device may only forward ports to itself.','UPnP is separate from the Docker App Store’s LAN-only access and never exposes the router admin.'],
+			wifi:['Wi-Fi','Create and manage wireless networks (SSIDs) on each radio. Choose the security, band and which network the SSID bridges into.','Assign a guest or IoT SSID to an isolated profile so those devices stay away from your main computers.','WPA3-Personal is the strongest option for modern devices; use WPA2/WPA3 mixed for older clients.'],
+			qos:['Traffic & QoS','Live throughput for the Internet and local network, plus Smart Queue Management to keep latency low under load.','Set SQM limits just below your real line speed; CAKE then shares bandwidth fairly and protects games and video calls from lag.','A device you want to prioritize should have a static IP (see Devices).'],
+			tls:['HTTPS / Certificate','The certificate that secures the router’s web interface. A self-signed certificate works but makes browsers warn.','Let’s Encrypt gives a free trusted certificate for a domain you own, validated via DNS-01 (your DNS provider’s API).','No domain? Upload a certificate you obtained elsewhere, or trust the self-signed one once — the warning is cosmetic.'],
+			networks:['Guest & IoT Networks','Isolated network segments for guests and smart-home devices. Each gets its own subnet, DHCP and firewall zone.','Devices on a segment can reach the internet (if allowed) but not your main computers — ideal for IoT gadgets and guest Wi-Fi.','Assign a segment to a Wi-Fi network or an Ethernet port after creating it.']
+		};
+		const [description,...items]=topics[section]||topics.advanced;
 		const hints={
-			interfaces:'Interfaces bind IP addresses to devices, bridges and routing protocols.',
-			firewall:'Firewall zones control forwarding, masquerading and traffic rules.',
-			wireless:'Wireless isolation and per-SSID credentials depend on driver and hostapd support.',
-			vpn:'WireGuard tunnels need appropriate addresses, keys, allowed IPs and routes.',
-			dhcp:'DHCP leases and reservations must not conflict with statically configured addresses.',
+			interfaces:'WAN & interfaces bind IP addresses to devices and set how the router reaches the internet (DHCP, static, PPPoE).',
+			upnp:'Published Ports lets LAN devices open inbound ports via UPnP/NAT-PMP. Manual rules always win; router-served ports are refused.',
+			firewall:'Firewall zones control forwarding, masquerading and traffic rules between network segments.',
+			wireless:'Wireless radios, channels and encryption. Per-password isolation depends on driver and hostapd support.',
+			vpn:'WireGuard tunnels need addresses, keys, allowed IPs and routes.',
+			dhcp:'DHCP hands out addresses; reservations must not conflict with static addresses. DNS settings affect every client.',
 			dns:'DNS forwarding affects name resolution and privacy for LAN clients.',
+			routes:'Static routes steer specific subnets through a chosen gateway or interface.',
+			ddns:'Dynamic DNS keeps a hostname pointed at your changing home IP.',
+			qos:'QoS prioritizes traffic classes so latency-sensitive apps stay responsive.',
+			diagnostics:'Ping, traceroute and DNS lookups to test connectivity from the router.',
 			mounts:'Use persistent filesystems for Docker volumes and shared data.',
-			upgrade:'Verify firmware checksums and preserve a recovery image.'
+			upgrade:'Verify firmware checksums and preserve a recovery image before flashing.',
+			backup:'Generate a configuration backup before major changes; restore returns the router to a saved state.'
 		};
 		if(tab&&hints[tab])items.unshift(hints[tab]);
-		return {title:section.charAt(0).toUpperCase()+section.slice(1)+' help',description,items};
+		return {title:titles[section]||(section.charAt(0).toUpperCase()+section.slice(1)),description,items};
 	}
 	refreshHelp() {
 		if(!this.helpOpen)return;
@@ -321,42 +431,241 @@ export class OpenWrtCore {
 				list.appendChild(li);
 			}
 		}
+		const fields=document.getElementById('moci-help-fields');
+		if(fields) {
+			const guide=this.getFieldHelp();
+			fields.replaceChildren();
+			const entries=Object.entries(guide);
+			fields.classList.toggle('hidden',!entries.length);
+			if(entries.length) {
+				const h=document.createElement('h4');
+				h.textContent='Field guide';
+				fields.appendChild(h);
+				const dl=document.createElement('dl');
+				for(const [name,explain] of entries) {
+					const dt=document.createElement('dt');dt.textContent=name;
+					const dd=document.createElement('dd');dd.textContent=explain;
+					dl.append(dt,dd);
+				}
+				fields.appendChild(dl);
+			}
+		}
+	}
+	getFieldHelp() {
+		const section=(window.location.hash||'#/dashboard').slice(2).split('/')[0]||'dashboard';
+		const guides={
+			wan:{'Connection type':'How the router reaches the internet: DHCP (automatic), static IP, or PPPoE (username & password from your ISP).','IPv4 address / gateway':'Only for a static connection. The gateway is your ISP’s next-hop address.','DNS servers':'Resolvers the router uses. Leave automatic unless you run your own (e.g. Pi-hole/AdGuard).'},
+			profiles:{'Name':'A short lowercase label for the segment (e.g. guest, kids, iot).','DNS':'Which resolver devices in this profile use — system, a custom resolver, or one reached through a VPN.','Outbound':'Whether traffic leaves directly over the WAN or through a WireGuard tunnel.','LAN access':'Which other profiles/devices this segment may reach. Isolated by default.','WAN access':'Whether this segment may reach the internet at all.','Quiet hours':'Time windows when internet access is blocked for this profile.'},
+			devices:{'Hostname':'The name the device reports via DHCP. May be blank for some devices.','Vendor':'Identified from the MAC address prefix (OUI). Helps recognise phones, laptops and IoT gear.','Make static':'Reserve a fixed IP for this MAC so forwards and DNS names never break.','Profile':'The security profile this device is assigned to (via its Wi-Fi password, port, or reservation).'},
+			'vpn-policies':{'Tunnel':'A WireGuard interface. Outbound policies route a profile through it.','Kill-switch':'If the tunnel has no recent handshake, traffic stops instead of leaking over the WAN.','Last handshake':'How long ago the tunnel last exchanged keys. “Not responding” means it is down.','Chain':'Send traffic through one tunnel, then a second, to separate identity from destination.'},
+			'published-ports':{'Secure mode':'A device may only forward ports to itself — never to another host or the router.','Delegation':'Let a trusted device open its own ports on demand. Off by default; leases expire automatically.','Automatic mappings':'Ports opened by UPnP/NAT-PMP. Read-only; manual rules always win.'},
+			networks:{'Segment type':'Guest, Smart Home/IoT, Kids, or fully isolated. Sets the default internet policy.','Gateway IPv4':'The .1 address of a private /24 subnet not already in use.','Allow internet':'Devices stay isolated from your main LAN either way; this only controls internet reach.'}
+		};
+		return guides[section]||{};
 	}
 	setHelpOpen(open) {
 		this.helpOpen=Boolean(open);
+		try{localStorage.setItem('moci_help_open',this.helpOpen?'1':'0');}catch{}
 		const panel=document.getElementById('moci-help-panel');
 		const toggle=document.getElementById('moci-help-toggle');
 		panel?.classList.toggle('hidden',!this.helpOpen);
 		if(toggle)toggle.setAttribute('aria-expanded',String(this.helpOpen));
+		document.body.classList.toggle('help-mode',this.helpOpen);
 		this.refreshHelp();
 	}
 	attachEventListeners() {
 		document.getElementById('logout-btn')?.addEventListener('click', () => this.logout());
 		document.getElementById('moci-help-toggle')?.addEventListener('click', () => this.setHelpOpen(!this.helpOpen));
 		document.getElementById('moci-help-close')?.addEventListener('click', () => this.setHelpOpen(false));
-		document.addEventListener('click', event=>{
-			const menu=document.querySelector('.nav-more');
-			if(menu?.open&&!menu.contains(event.target))menu.open=false;
-		});
 		this.applyTheme(this.getSavedTheme());
 		document.getElementById('moci-theme-select')?.addEventListener('change', event => {
 			this.setTheme(event.target.value);
 		});
+		this.initSidebar();
+		this.initNavGroups();
+		this.initSearch();
+		this.setHelpOpen(this.helpOpen);
+		document.addEventListener('keydown', event => {
+			if ((event.ctrlKey || event.metaKey) && (event.key === 'k' || event.key === 'K')) {
+				event.preventDefault();
+				this.openPalette();
+			}
+		});
+	}
 
-		const menuToggle = document.querySelector('.menu-toggle');
-		const nav = document.querySelector('.nav');
-		if (menuToggle && nav) {
-			menuToggle.addEventListener('click', () => {
-				nav.classList.toggle('open');
-				menuToggle.setAttribute('aria-expanded', nav.classList.contains('open'));
+	initNavGroups() {
+		let collapsed = new Set();
+		try { collapsed = new Set(JSON.parse(localStorage.getItem('moci_nav_collapsed') || '[]')); } catch {}
+		const save = () => { try { localStorage.setItem('moci_nav_collapsed', JSON.stringify([...collapsed])); } catch {} };
+		document.querySelectorAll('.sidebar-nav .nav-group').forEach(group => {
+			const label = group.querySelector('.nav-group-label');
+			if (!label || label.dataset.collapseInit) return;
+			label.dataset.collapseInit = '1';
+			const name = label.textContent.trim();
+			label.setAttribute('role', 'button');
+			label.setAttribute('tabindex', '0');
+			const caret = document.createElement('span');
+			caret.className = 'nav-group-caret';
+			caret.setAttribute('aria-hidden', 'true');
+			label.appendChild(caret);
+			const apply = () => {
+				const isCollapsed = collapsed.has(name);
+				group.classList.toggle('collapsed', isCollapsed);
+				label.setAttribute('aria-expanded', String(!isCollapsed));
+			};
+			const toggle = () => {
+				if (collapsed.has(name)) collapsed.delete(name); else collapsed.add(name);
+				save(); apply();
+			};
+			label.addEventListener('click', toggle);
+			label.addEventListener('keydown', event => {
+				if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle(); }
 			});
-			nav.querySelectorAll('a').forEach(link => {
-				link.addEventListener('click', () => nav.classList.remove('open'));
-			});
-			window.addEventListener('resize', () => {
-				if (window.innerWidth > 768) nav.classList.remove('open');
-			});
+			apply();
+		});
+	}
+
+	openPalette() {
+		const input = document.getElementById('moci-search');
+		if (!input) return;
+		input.focus();
+		input.select();
+		this.renderSearch();
+	}
+
+	initSidebar() {
+		const shell = document.getElementById('app-shell');
+		if (!shell) return;
+		const collapseBtn = document.getElementById('sidebar-collapse');
+		const menuToggle = document.getElementById('menu-toggle');
+		const scrim = document.getElementById('sidebar-scrim');
+		try {
+			if (localStorage.getItem('moci_sidebar_collapsed') === '1') shell.classList.add('sidebar-collapsed');
+		} catch {}
+		collapseBtn?.addEventListener('click', () => {
+			shell.classList.toggle('sidebar-collapsed');
+			try {
+				localStorage.setItem('moci_sidebar_collapsed', shell.classList.contains('sidebar-collapsed') ? '1' : '0');
+			} catch {}
+			window.dispatchEvent(new Event('resize'));
+		});
+		const closeDrawer = () => {
+			shell.classList.remove('sidebar-open');
+			menuToggle?.setAttribute('aria-expanded', 'false');
+		};
+		menuToggle?.addEventListener('click', () => {
+			const open = shell.classList.toggle('sidebar-open');
+			menuToggle.setAttribute('aria-expanded', String(open));
+		});
+		scrim?.addEventListener('click', closeDrawer);
+		document.addEventListener('keydown', event => {
+			if (event.key === 'Escape') { closeDrawer(); this.closeSearch(); }
+		});
+		window.addEventListener('resize', () => { if (window.innerWidth > 900) closeDrawer(); });
+	}
+
+	buildSearchIndex() {
+		const items = [];
+		document.querySelectorAll('.sidebar-nav a.nav-item').forEach(link => {
+			if (link.classList.contains('hidden')) return;
+			const label = link.querySelector('.nav-label')?.textContent?.trim() || link.textContent.trim();
+			const group = link.closest('.nav-group')?.querySelector('.nav-group-label')?.textContent?.trim() || 'Overview';
+			const icon = link.querySelector('.nav-ico')?.innerHTML || '';
+			items.push({ path: (link.getAttribute('href') || '').replace(/^#/, ''), label, group, icon, keywords: `${label} ${group}` });
+		});
+		const extra = [
+			['/network/wireless', 'Wireless Radios', 'Network'],
+			['/network/dns', 'DNS & Hosts', 'Network'],
+			['/network/ddns', 'Dynamic DNS', 'Network'],
+			['/network/qos', 'QoS', 'Network'],
+			['/network/routes', 'Static Routes', 'Network'],
+			['/network/diagnostics', 'Diagnostics (ping / traceroute)', 'Network'],
+			['/advanced/group/network', 'Network Services (UCI)', 'Advanced'],
+			['/advanced/group/routing', 'Routing & Failover (UCI)', 'Advanced'],
+			['/advanced/group/security', 'Security Services (UCI)', 'Advanced'],
+			['/advanced/group/monitoring', 'Monitoring (UCI)', 'Advanced'],
+			['/advanced/group/services', 'Storage & Services (UCI)', 'Advanced'],
+			['/advanced/group/system', 'System Tools (UCI)', 'Advanced'],
+			['/system/backup', 'Backup & Reset', 'System'],
+			['/system/upgrade', 'Firmware Upgrade', 'System'],
+			['/system/software', 'Packages', 'System'],
+			['/system/startup', 'Startup Services', 'System'],
+			['/system/ssh-keys', 'SSH Keys', 'System'],
+			['/system/mounts', 'Storage & Mounts', 'System']
+		];
+		for (const [path, label, group] of extra) items.push({ path, label, group, icon: '', keywords: `${label} ${group}` });
+		return items;
+	}
+
+	renderSearch() {
+		const input = document.getElementById('moci-search');
+		const results = document.getElementById('search-results');
+		if (!input || !results) return;
+		const query = input.value.trim().toLowerCase();
+		results.replaceChildren();
+		this._searchKbd = -1;
+		const index = this.buildSearchIndex();
+		// With no query (e.g. Ctrl+K) show the full command list, palette-style.
+		const matches = (query
+			? index.filter(it => it.label.toLowerCase().includes(query) || it.keywords.toLowerCase().includes(query))
+			: index).slice(0, query ? 9 : 14);
+		if (!matches.length) {
+			const empty = document.createElement('div');
+			empty.className = 'search-empty';
+			empty.textContent = 'No matching settings or pages.';
+			results.appendChild(empty);
+			results.classList.remove('hidden');
+			return;
 		}
+		for (const it of matches) {
+			const a = document.createElement('a');
+			a.className = 'search-result';
+			a.href = `#${it.path}`;
+			const ico = document.createElement('span');
+			ico.className = 'nav-ico';
+			ico.innerHTML = it.icon;
+			const label = document.createElement('span');
+			label.textContent = it.label;
+			const group = document.createElement('small');
+			group.textContent = it.group;
+			a.append(ico, label, group);
+			a.addEventListener('click', () => this.closeSearch());
+			results.appendChild(a);
+		}
+		results.classList.remove('hidden');
+	}
+
+	initSearch() {
+		const input = document.getElementById('moci-search');
+		const results = document.getElementById('search-results');
+		if (!input || !results) return;
+		input.addEventListener('input', () => this.renderSearch());
+		input.addEventListener('focus', () => this.renderSearch());
+		input.addEventListener('keydown', event => {
+			const items = [...results.querySelectorAll('.search-result')];
+			let kbd = this._searchKbd ?? -1;
+			if (event.key === 'ArrowDown') { event.preventDefault(); kbd = Math.min(kbd + 1, items.length - 1); this._searchKbd = kbd; this.markSearchKbd(items, kbd); }
+			else if (event.key === 'ArrowUp') { event.preventDefault(); kbd = Math.max(kbd - 1, 0); this._searchKbd = kbd; this.markSearchKbd(items, kbd); }
+			else if (event.key === 'Enter') {
+				event.preventDefault();
+				const target = items[kbd] || items[0];
+				if (target) { this.navigate(target.getAttribute('href').slice(1)); this.closeSearch(); input.blur(); }
+			} else if (event.key === 'Escape') { this.closeSearch(); input.blur(); }
+		});
+		document.addEventListener('click', event => {
+			if (!event.target.closest('.topbar-search')) this.closeSearch();
+		});
+	}
+
+	markSearchKbd(items, kbd) {
+		items.forEach((el, i) => el.classList.toggle('kbd-active', i === kbd));
+		items[kbd]?.scrollIntoView({ block: 'nearest' });
+	}
+
+	closeSearch() {
+		document.getElementById('search-results')?.classList.add('hidden');
+		const input = document.getElementById('moci-search');
+		if (input) input.value = '';
 	}
 
 	startPolling() {
@@ -461,6 +770,8 @@ export class OpenWrtCore {
 		document.getElementById('main-view').classList.add('hidden');
 
 		const loginForm = document.getElementById('login-form');
+		const passwordField = document.getElementById('password');
+		if (passwordField) passwordField.value = '';
 
 		loginForm.onsubmit = async e => {
 			e.preventDefault();
@@ -481,9 +792,42 @@ export class OpenWrtCore {
 		document.getElementById('main-view').classList.remove('hidden');
 	}
 
+	async checkSessionAfterDenied(requestSession) {
+		if (!requestSession || requestSession !== this.sessionId) return;
+		if (this._sessionCheck?.id === requestSession) return this._sessionCheck.promise;
+		const controller = new AbortController();
+		const timer = setTimeout(() => controller.abort(), 4000);
+		const promise = (async () => {
+			try {
+				// An individual ACL denial does not prove that login expired.
+				const response = await fetch('/ubus', {
+					method:'POST',headers:{'Content-Type':'application/json'},
+					signal:controller.signal,
+					body:JSON.stringify({jsonrpc:'2.0',id:Math.random(),method:'call',
+						params:[requestSession,'session','access',{}]})
+				});
+				const data = response.ok ? await response.json() : null;
+				const expired = response.status === 401 || [4,6].includes(data?.result?.[0]) || data?.error?.code === -32002;
+				if (expired && this.sessionId === requestSession) {
+					this.stopPolling();
+					sessionStorage.removeItem('ubus_session');
+					this.sessionId = null;
+					this.showLoginView();
+					this.showToast('Your router session has expired. Please log in again.', 'info');
+				}
+			} catch {
+				// Router unavailability is not proof that login expired.
+			} finally { clearTimeout(timer); }
+		})();
+		this._sessionCheck = {id:requestSession,promise};
+		try { await promise; }
+		finally { if (this._sessionCheck?.promise === promise) this._sessionCheck = null; }
+	}
+
 	async ubusCall(object, method, params = {}, { timeout = 10000, retries = 0 } = {}) {
 		let lastError;
 		for (let attempt = 0; attempt <= retries; attempt++) {
+			const requestSession = this.sessionId;
 			const controller = new AbortController();
 			const timer = setTimeout(() => controller.abort(), timeout);
 			try {
@@ -495,11 +839,14 @@ export class OpenWrtCore {
 						jsonrpc: '2.0',
 						id: Math.random(),
 						method: 'call',
-						params: [this.sessionId || '00000000000000000000000000000000', object, method, params]
+						params: [requestSession || '00000000000000000000000000000000', object, method, params]
 					})
 				});
 				clearTimeout(timer);
 				const data = await response.json();
+				if (object !== 'session' && (data.result?.[0] === 6 || data.error?.code === -32002)) {
+					await this.checkSessionAfterDenied(requestSession);
+				}
 				if (data.error) throw new Error(data.error.message || `${object}.${method} failed`);
 				return data.result;
 			} catch (err) {
@@ -521,23 +868,82 @@ export class OpenWrtCore {
 	}
 
 	uciSet(config, section, values) {
-		return this.ubusCall('uci', 'set', { config, section, values });
+		return this.uciWrite('set', { config, section, values });
 	}
 
 	uciAdd(config, type, name = null) {
 		const params = { config, type };
 		if (name) params.name = name;
-		return this.ubusCall('uci', 'add', params);
+		return this.uciWrite('add', params);
 	}
 
 	uciDelete(config, section, option = null) {
 		const params = { config, section };
 		if (option) params.option = option;
-		return this.ubusCall('uci', 'delete', params);
+		return this.uciWrite('delete', params);
 	}
 
 	uciCommit(config) {
-		return this.ubusCall('uci', 'commit', { config });
+		return this.uciWrite('commit', { config });
+	}
+
+	async uciWrite(method, params) {
+		if (this._uciApplyPending && !['apply', 'confirm', 'revert'].includes(method)) {
+			throw new Error('Finish confirming the pending network change before saving again');
+		}
+		const result = await this.ubusCall('uci', method, params);
+		if (!Array.isArray(result) || result[0] !== 0) {
+			throw new Error(`OpenWrt rejected uci.${method} (status ${result?.[0] ?? 'missing'})`);
+		}
+		return result;
+	}
+
+	async uciApplyConfig(config) {
+		if (!['network', 'firewall', 'wireless'].includes(config)) return this.uciCommit(config);
+		if (this._uciApplyPending) throw new Error('A network change is already awaiting confirmation');
+		this._uciApplyPending = true;
+		let applied = false;
+		try {
+			// rpcd applies all changes in this session. Do not include edits from another form.
+			const [status, data] = await this.ubusCall('uci', 'changes', {});
+			if (status !== 0 || !data?.changes) throw new Error('Cannot inspect pending configuration changes');
+			const pending = Object.entries(data.changes).filter(([, changes]) => changes.length);
+			if (pending.some(([name]) => name !== config)) {
+				throw new Error('Other configuration changes are pending. Review them before applying this form');
+			}
+			if (!pending.length) return;
+			// Never commit first: rpcd must snapshot the previous persistent configuration.
+			await this.uciWrite('apply', {rollback: true, timeout: 60});
+			applied = true;
+			const deadline = Date.now() + 50000;
+			this.showToast('Applying settings. Confirm connectivity within 60 seconds or OpenWrt will roll them back.', 'info');
+			await new Promise(resolve => setTimeout(resolve, 2500));
+			const [reachable] = await this.ubusCall('system', 'info', {}, {timeout: 5000});
+			if (reachable !== 0) throw new Error('Router connectivity could not be verified');
+			if (!window.confirm('The router answered after applying the change. Check that your connection works. Keep these settings?\n\nCancel, or leave this unanswered, to let OpenWrt restore the previous settings after 60 seconds.')) {
+				throw new Error('Settings left unconfirmed');
+			}
+			if (Date.now() >= deadline) throw new Error('Confirmation window expired');
+			await this.uciWrite('confirm', {});
+		} catch (error) {
+			let recovery = '';
+			if (applied) {
+				try {
+					// rpcd rollback restores both files and the pre-apply staging delta.
+					// Discard that delta too, so a later save cannot reapply a cancelled edit.
+					const [status] = await this.ubusCall('uci', 'rollback', {}, {timeout: 5000});
+					if (status !== 0 && status !== 4) throw new Error('Rollback was not acknowledged');
+					await this.uciWrite('revert', {config});
+					recovery = 'Previous settings restored and staged edits discarded.';
+				} catch {
+					recovery = 'Unconfirmed applied changes will time out. Reconnect and review staged edits before saving again.';
+				}
+			}
+			this.showToast(`${error.message}. ${recovery}`.trim(), 'error');
+			throw error;
+		} finally {
+			this._uciApplyPending = false;
+		}
 	}
 
 	serviceReload(service) {
@@ -848,41 +1254,34 @@ export class OpenWrtCore {
 		if (!manifest.nav || manifest.nav.placement === 'none') return;
 		if (document.querySelector(`a[data-addon="${id}"]`)) return;
 
+		const sidebarNav = document.querySelector('.sidebar-nav');
+		if (!sidebarNav) return;
+
 		const link = document.createElement('a');
 		link.href = `#${manifest.nav.route}`;
-		link.textContent = manifest.nav.label;
+		link.className = 'nav-item';
 		link.setAttribute('data-addon', id);
+		const ico = document.createElement('span');
+		ico.className = 'nav-ico';
+		ico.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M12 8v8M8 12h8"/></svg>';
+		const label = document.createElement('span');
+		label.className = 'nav-label';
+		label.textContent = manifest.nav.label;
+		link.append(ico, label);
 
-		const nav = document.querySelector('.nav');
-		if (!nav) return;
-
-		if (manifest.nav.placement === 'top') {
-			// The ADD-ONS link is nested inside the MORE menu. It is NOT a
-			// child of nav, so nav.insertBefore(link, addonsLink) throws.
-			const more = nav.querySelector('details.nav-more');
-			const reference = more?.parentElement === nav ? more : null;
-			if (reference) nav.insertBefore(link, reference);
-			else nav.appendChild(link);
-		} else if (manifest.nav.placement === 'addons') {
-			let group = nav.querySelector('#addons-nav-group');
-			if (!group) {
-				group = document.createElement('div');
-				group.id = 'addons-nav-group';
-				group.className = 'nav-group';
-				const dropdown = document.createElement('div');
-				dropdown.className = 'nav-dropdown';
-				group.appendChild(dropdown);
-				const container = nav.querySelector('.nav-more-menu') || nav;
-				const addonsLink = container.querySelector('a[href="#/addons"]');
-				if (addonsLink?.parentElement === container) {
-					container.insertBefore(group, addonsLink.nextSibling);
-				} else {
-					container.appendChild(group);
-				}
-			}
-			group.querySelector('.nav-dropdown')?.appendChild(link);
-			group.classList.remove('hidden');
+		let group = document.getElementById('apps-nav-group');
+		if (!group) {
+			group = document.createElement('div');
+			group.className = 'nav-group';
+			group.id = 'apps-nav-group';
+			const heading = document.createElement('span');
+			heading.className = 'nav-group-label';
+			heading.textContent = 'Apps';
+			group.appendChild(heading);
+			sidebarNav.appendChild(group);
 		}
+		group.appendChild(link);
+		group.classList.remove('hidden');
 	}
 
 	createAddonPage(id, manifest) {
@@ -1093,7 +1492,7 @@ export class OpenWrtCore {
 		for (const [elementId, uciKey] of Object.entries(fieldMap)) {
 			const el = document.getElementById(elementId);
 			if (!el) continue;
-			const formVal = el.type === 'checkbox' ? el.checked : el.value;
+			const formVal = el.type === 'checkbox' ? (el.checked ? '1' : '0') : el.value;
 			if (Array.isArray(uciKey)) {
 				for (const key of uciKey) values[key] = formVal;
 			} else {
@@ -1119,7 +1518,7 @@ export class OpenWrtCore {
 				val = data[uciKey];
 			}
 			if (el.type === 'checkbox') {
-				el.checked = !!val;
+				el.checked = val === true || val === 1 || val === '1';
 			} else {
 				el.value = Array.isArray(val) ? val.join(', ') : val || '';
 			}
@@ -1160,7 +1559,7 @@ export class OpenWrtCore {
 				if (!res?.section) throw new Error('Failed to create section');
 				await this.uciSet(config, res.section, values);
 			}
-			await this.uciCommit(config);
+			await this.uciApplyConfig(config);
 			this.closeModal(modalId);
 			this.showToast(successMsg || 'Saved', 'success');
 			if (reloadFn) await reloadFn();
@@ -1173,7 +1572,7 @@ export class OpenWrtCore {
 		if (!confirm(confirmMsg)) return;
 		try {
 			await this.uciDelete(config, id);
-			await this.uciCommit(config);
+			await this.uciApplyConfig(config);
 			this.showToast('Deleted', 'success');
 			if (reloadFn) await reloadFn();
 		} catch {

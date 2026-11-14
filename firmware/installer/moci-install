@@ -52,7 +52,8 @@ select_network() {
   local -a nics=()
   for link in /sys/class/net/*; do
     nic=${link##*/}
-    [[ "$nic" != lo && -r "$link/address" ]] || continue
+    [[ "$nic" != lo && -r "$link/address" && -e "$link/device" ]] || continue
+    [[ ! -d "$link/wireless" && "$(cat "$link/type" 2>/dev/null)" == 1 ]] || continue
     mac=$(<"$link/address")
     [[ "$mac" =~ ^([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}$ ]] || continue
     nics+=("$nic" "$mac")
@@ -201,12 +202,23 @@ resolve_nic() {
   return 1
 }
 wan=\$(resolve_nic '$wan_mac') || exit 1
-lan=\$(resolve_nic '$lan_mac') || exit 1
-[ "\$wan" != "\$lan" ] || exit 1
 uci -q set system.@system[0].hostname='$HOSTNAME'
-[ "\$(uci -q get network.@device[0].name)" = 'br-lan' ] || exit 1
+# Activate EVERY physical Ethernet port and bridge all non-WAN ports into the
+# LAN, so multi-port x86 routers have all ports ready for use out of the box.
+lan_ports=""
+for net in /sys/class/net/*; do
+  n=\$(basename "\$net")
+  case "\$n" in lo|br-*|docker*|veth*|wan|lan|*.*) continue ;; esac
+  [ -e "\$net/device" ] || continue
+  ip link set "\$n" up 2>/dev/null
+  [ "\$n" = "\$wan" ] && continue
+  lan_ports="\$lan_ports \$n"
+done
+ip link set "\$wan" up 2>/dev/null
+# Rebuild a single clean br-lan device containing all non-WAN physical ports.
+uci -q delete network.brlan
 uci -q delete network.@device[0].ports
-uci -q add_list network.@device[0].ports="\$lan"
+for p in \$lan_ports; do uci -q add_list network.@device[0].ports="\$p"; done
 uci -q set network.lan=interface
 uci -q set network.lan.proto=static
 uci -q set network.lan.device='br-lan'
@@ -215,6 +227,9 @@ uci -q set network.lan.netmask='255.255.255.0'
 uci -q set network.wan=interface
 uci -q set network.wan.proto=dhcp
 uci -q set network.wan.device="\$wan"
+uci -q set network.wan6=interface
+uci -q set network.wan6.proto=dhcpv6
+uci -q set network.wan6.device="\$wan"
 uci -q commit network
 uci -q commit system
 exit 0
@@ -259,6 +274,7 @@ while :; do
     address 'Edit LAN IPv4 address' \
     password 'Set/change administrator password' \
     install 'Install / resume installation' \
+    hardware 'Identify CPU, Ethernet ports and Wi-Fi chipset (read only)' \
     diagnostics 'View installation diagnostics' \
     quit 'Exit installer without further changes') || break
   case "$selected" in
@@ -267,6 +283,7 @@ while :; do
     hostname) set_hostname || : ;;
     address) set_lan_ip || : ;;
     password) set_password || : ;;
+    hardware) /usr/local/sbin/moci-hardware-check > /tmp/moci-hardware-report.txt 2>&1; action --textbox /tmp/moci-hardware-report.txt 22 100 || : ;;
     diagnostics) action --textbox "$LOG" 22 92 || : ;;
     install)
       if ! perform_install && [[ -n "$LAST_ERROR" ]]; then

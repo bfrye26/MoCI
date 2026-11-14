@@ -203,3 +203,4 @@ index into `feed/` without an SDK, then signs the index with
 - **Dev sideload (untrusted):** install `files/moci-dev-sideload.json` into
   `/usr/share/rpcd/acl.d/` and `/etc/init.d/rpcd reload`, then Add-ons →
   Install from URL. The add-on gets zero router permissions.
+

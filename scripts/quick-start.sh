@@ -59,3 +59,4 @@ echo "Login: root (no password)"
 echo ""
 echo "To stop VM: kill $QEMU_PID"
 echo "===================================="
+

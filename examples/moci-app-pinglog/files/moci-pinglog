@@ -9,3 +9,4 @@ while true; do
 	tail -n 500 "$log" > "$log.tmp" 2>/dev/null && mv "$log.tmp" "$log"
 	sleep 30
 done
+

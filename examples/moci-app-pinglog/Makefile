@@ -64,3 +64,4 @@ define Package/moci-app-pinglog/postrm
 endef
 
 $(eval $(call BuildPackage,moci-app-pinglog))
+

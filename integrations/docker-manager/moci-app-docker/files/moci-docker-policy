@@ -55,8 +55,13 @@ def prepare_app(name):
     apps=load('app-catalog.json').get('apps',[])
     app=next((x for x in apps if x.get('id')==name),None)
     template=load('app-templates.json').get('templates',{}).get(name)
-    if not app or not isinstance(template,dict) or app.get('risk') not in ('review',None):
-        fatal('app lacks an approved low-risk deployment template')
+    risk_ok=bool(app and (app.get('risk') in ('review',None) or
+                 (app.get('risk')=='sensitive-data' and isinstance(template,dict)
+                  and template.get('reviewed_risk')=='sensitive-data') or
+                 (app.get('risk')=='router-critical' and isinstance(template,dict)
+                  and template.get('reviewed_risk')=='router-critical')))
+    if not app or not isinstance(template,dict) or not risk_ok or app.get('template_available') is not True:
+        fatal('app lacks a reviewed deployment template')
     repo=template.get('repository')
     tag=template.get('image')
     if not isinstance(repo,str) or not isinstance(tag,str) or not tag.startswith(repo+':'):
@@ -65,7 +70,7 @@ def prepare_app(name):
         fatal('invalid reviewed Docker image tag')
     # Explicitly approved source is in root-owned installer data, not client input.
     pull=subprocess.run(['/usr/bin/docker','pull',tag],
-        stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,timeout=115,check=False)
+        stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,timeout=300,check=False)
     if pull.returncode!=0:
         fatal('Docker image pull failed; inspect Docker connectivity and registry access')
     inspect=subprocess.run(['/usr/bin/docker','image','inspect','--format','{{json .RepoDigests}}',tag],
@@ -194,8 +199,10 @@ def main(args):
         template=templates.get(name)
         if not isinstance(template,dict) or template.get('repository')!=entry.get('repository'):
             fatal('app does not have an approved installation profile')
-        if entry.get('risk') not in ('review',None):
-            fatal('app is marked as security or router critical')
+        if not (entry.get('risk') in ('review',None) or
+                (entry.get('risk')=='sensitive-data' and
+                 template.get('reviewed_risk')=='sensitive-data')):
+            fatal('app risk class is not approved for this template')
         if image.split('@',1)[0]!=entry.get('repository'):
             fatal('image repository does not match catalogue entry')
         if image not in load('allowed-images.json').get('images',[]):
@@ -223,3 +230,4 @@ def main(args):
 
 if __name__=='__main__':
     main(sys.argv[1:])
+

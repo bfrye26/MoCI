@@ -1,0 +1,15 @@
+#!/bin/sh
+# MoCI add-on defaults: new add-ons ship OFF. On first boot, stop and disable each
+# add-on service whose feature flag is off, so nothing runs until the user turns it
+# on from the Features page. Runs once via uci-defaults; a flag already set to '1'
+# (user enabled it before an upgrade) is respected and left running.
+for entry in sqm:sqm bandwidth:nlbwmon multiwan:mwan3 adblock:adblock tailscale:tailscale terminal:ttyd statistics:luci_statistics statistics:collectd nas:samba4; do
+	feature="${entry%%:*}"
+	service="${entry##*:}"
+	enabled="$(uci -q get "moci.features.$feature")"
+	[ "$enabled" = "1" ] && continue
+	[ -x "/etc/init.d/$service" ] || continue
+	/etc/init.d/"$service" stop >/dev/null 2>&1
+	/etc/init.d/"$service" disable >/dev/null 2>&1
+done
+exit 0

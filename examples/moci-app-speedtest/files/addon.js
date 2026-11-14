@@ -326,3 +326,4 @@ export default class SpeedtestAddon {
 		this.el = null;
 	}
 }
+

@@ -27,11 +27,15 @@ class CatalogueExpansionTests(unittest.TestCase):
         }
         self.assertFalse(required - {a["id"] for a in self.apps})
 
-    def test_new_apps_not_installable(self):
-        supported = {"adguard-home", "uptime-kuma", "it-tools", "openspeedtest", "cyberchef", "gotify"}
+    def test_unreviewed_apps_not_advertised_installable(self):
+        templates = json.loads((ROOT / "app-templates.json").read_text())["templates"]
         for app in self.apps:
-            if app["id"] not in supported:
-                self.assertFalse(app["template_available"], app["id"])
+            self.assertEqual(app["template_available"], app["id"] in templates, app["id"])
+            if app["risk"] in {"router-critical", "security-critical", "privileged", "docker-socket"}:
+                template = templates.get(app["id"])
+                explicitly_reviewed = isinstance(template, dict) and template.get("reviewed_risk") == app["risk"]
+                if not explicitly_reviewed:
+                    self.assertNotIn(app["id"], templates, app["id"])
 
     def test_risky_apps_marked(self):
         by_id = {a["id"]: a for a in self.apps}

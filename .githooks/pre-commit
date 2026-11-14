@@ -10,3 +10,4 @@ fi
 
 printf '%s\n' "$staged" | tr '\n' '\0' | xargs -0 pnpm exec prettier --write
 printf '%s\n' "$staged" | tr '\n' '\0' | xargs -0 git add
+

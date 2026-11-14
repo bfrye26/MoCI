@@ -50,11 +50,15 @@ class DockerStoreContract(unittest.TestCase):
 
     def test_reviewed_templates_match_listings_and_repositories(self):
         catalog_by_id={a['id']:a for a in CATALOG}
-        self.assertEqual(len(TEMPLATES),5)
+        self.assertEqual(len(TEMPLATES),33)
         for name,template in TEMPLATES.items():
             self.assertIn(name,catalog_by_id)
             self.assertTrue(catalog_by_id[name]['template_available'])
-            self.assertEqual(catalog_by_id[name]['risk'],'review')
+            self.assertTrue(catalog_by_id[name]['risk']=='review' or (
+                catalog_by_id[name]['risk']=='sensitive-data' and
+                template.get('reviewed_risk')=='sensitive-data') or (
+                catalog_by_id[name]['risk']=='router-critical' and
+                template.get('reviewed_risk')=='router-critical'))
             self.assertEqual(template['repository'],catalog_by_id[name]['repository'])
             self.assertTrue(template['image'].startswith(template['repository']+':'))
             self.assertLessEqual(len(template.get('ports',[])),8)
@@ -76,8 +80,8 @@ class DockerStoreContract(unittest.TestCase):
         with patch.dict(API['catalog'].__globals__,{'writes_enabled':lambda:True}):
             apps=API['catalog']()['catalog']
         reviewed=[a for a in apps if a['can_prepare']]
-        self.assertEqual(len(reviewed),5)
-        self.assertEqual(len([a for a in apps if a['setup_state']=='manual']),68)
+        self.assertEqual(len(reviewed),33)
+        self.assertEqual(len([a for a in apps if a['setup_state']=='manual']),40)
         self.assertTrue(all(a['reviewed_template'] for a in reviewed))
         self.assertTrue(all(not a['ready'] for a in apps))
 
@@ -95,6 +99,24 @@ class DockerStoreContract(unittest.TestCase):
             path.write_text('{}')
             entry=next(a for a in API['catalog']()['catalog'] if a['id']=='uptime-kuma')
             self.assertEqual(entry['setup_state'],'installed')
+
+    def test_catalog_open_link_only_for_running_managed_stack(self):
+        root=self.root/'stacks'/'uptime-kuma'
+        root.mkdir(parents=True)
+        (root/'compose.json').write_text('{"services":{}}')
+        approved={'writes_enabled':lambda:True,
+                  'policy':lambda:{DIGEST},
+                  'pins':lambda:{'uptime-kuma':DIGEST}}
+        def inspect(state,url):
+            with patch.dict(API['catalog'].__globals__,dict(approved,
+                managed_stacks=lambda:{'managed_stacks':[{
+                    'name':'uptime-kuma','state':state,'url':url}]})):
+                return next(x for x in API['catalog']()['catalog']
+                            if x['id']=='uptime-kuma')
+        self.assertIsNone(inspect('stopped',None)['url'])
+        self.assertIsNone(inspect('unhealthy',None)['url'])
+        self.assertEqual(inspect('running','http://192.168.50.1:3001/')['url'],
+                         'http://192.168.50.1:3001/')
 
     def test_it_tools_tmpfs_is_narrowly_scoped_to_reviewed_image(self):
         docker_image='corentinth/it-tools@sha256:'+('b'*64)
@@ -120,6 +142,28 @@ class DockerStoreContract(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'Unsupported Compose service'):
                 API['spec_validate'](spec,advanced=True)
 
+    def test_cyberchef_tmpfs_uses_same_reviewed_scratch_profile(self):
+        # CyberChef's Nginx image is stateless and runs read-only as nobody,
+        # so it needs exactly the reviewed IT Tools scratch mount set.
+        docker_image='mpepping/cyberchef@sha256:'+('d'*64)
+        spec={'services':{'app':{
+            'image':docker_image,
+            'ports':['192.168.50.1:8000:8000'],
+            'volumes':[]}}}
+        with patch.dict(API['spec_validate'].__globals__,{
+            'policy':lambda:{docker_image},
+            'pins':lambda:{'cyberchef':docker_image},
+            'template_specs':lambda:TEMPLATES,
+            'lan_ip':lambda:'192.168.50.1'}):
+            validated=API['spec_validate'](spec,app_id='cyberchef')
+            app=validated['services']['app']
+            self.assertTrue(app['read_only'])
+            self.assertEqual(app['user'],'65534:65534')
+            self.assertEqual(app['tmpfs'],[
+                '/var/cache/nginx:uid=65534,gid=65534,mode=1777,size=16m',
+                '/var/run:uid=65534,gid=65534,mode=1777,size=4m',
+                '/tmp:uid=65534,gid=65534,mode=1777,size=16m'])
+
     def test_openspeedtest_reviewed_runtime_allows_nginx_cron_without_global_root(self):
         speed_image='openspeedtest/latest@sha256:'+('c'*64)
         spec={'services':{'app':{
@@ -137,7 +181,32 @@ class DockerStoreContract(unittest.TestCase):
             self.assertEqual(actual['cap_drop'],['ALL'])
             self.assertEqual(actual['cap_add'],[
                 'CHOWN','DAC_OVERRIDE','FOWNER','SETGID','SETUID'])
-            self.assertEqual(actual['security_opt'],['no-new-privileges:true'])
+
+    def test_homarr_reviewed_root_startup_is_limited_to_dac_override(self):
+        # Homarr's startup rewrites root-owned nginx configuration and needs
+        # its database directory pre-created; the reviewed profile allows only
+        # root startup with DAC_OVERRIDE and no other capability.
+        homarr_image='ghcr.io/homarr-labs/homarr@sha256:'+('f'*64)
+        spec={'services':{'app':{
+            'image':homarr_image,
+            'ports':['192.168.50.1:7575:7575'],
+            'volumes':['homarr-appdata:/appdata'],
+            'environment':{'SECRET_ENCRYPTION_KEY':'a'*64},
+            'mem_limit':'768m'}}}
+        opts={'policy':lambda:{homarr_image},
+              'pins':lambda:{'homarr':homarr_image},
+              'template_specs':lambda:TEMPLATES,
+              'lan_ip':lambda:'192.168.50.1'}
+        with patch.dict(API['spec_validate'].__globals__,opts):
+            actual=API['spec_validate'](spec,app_id='homarr')['services']['app']
+            self.assertEqual(actual['user'],'0:0')
+            self.assertFalse(actual['read_only'])
+            self.assertEqual(actual['cap_drop'],['ALL'])
+            self.assertEqual(actual['cap_add'],['CHOWN','DAC_OVERRIDE'])
+            self.assertEqual(actual['healthcheck'],
+                {'interval':'15s','timeout':'5s','retries':20,
+                 'start_period':'300s'})
+            self.assertEqual(actual['security_opt'],['no-new-privileges=true'])
             self.assertEqual(actual['ports'],spec['services']['app']['ports'])
             # Generic compose callers cannot get the reviewed root/capability
             # exemption, even if a matching image digest is approved.
@@ -178,6 +247,200 @@ class DockerStoreContract(unittest.TestCase):
         for tag in denied:
             self.assertFalse(API['public_image_tag'](tag),tag)
             self.assertFalse(policy['public_image_tag'](tag),tag)
+
+    def test_new_one_click_templates_match_official_storage_and_lan_ports(self):
+        expected={'memos':('5230:5230','/var/opt/memos'),
+                  'beszel':('8090:8090','/beszel_data'),
+                  'grafana':('3010:3000','/var/lib/grafana')}
+        for name,(port,path) in expected.items():
+            item=TEMPLATES[name]
+            self.assertIn(port,item['ports'])
+            self.assertTrue(any(mount.endswith(':'+path) for mount in item['volumes']))
+            self.assertTrue(item.get('needs_write_access'))
+            self.assertEqual(item['repository'],next(
+                app['repository'] for app in CATALOG if app['id']==name))
+            self.assertTrue(item['path'].startswith('http://ROUTER_IP:'))
+        self.assertEqual(TEMPLATES['grafana']['initial_password_env'],
+                         'GF_SECURITY_ADMIN_PASSWORD')
+        self.assertEqual(TEMPLATES['memos']['run_as_user'],'10001:10001')
+        self.assertEqual(TEMPLATES['grafana']['run_as_user'],'472:472')
+
+    def test_candidate_templates_have_unique_host_ports_and_volume_owners(self):
+        host_ports=set()
+        catalog={app['id']:app for app in CATALOG}
+        self.assertEqual(len(TEMPLATES),33)
+        for name,template in TEMPLATES.items():
+            self.assertTrue(catalog[name]['template_available'])
+            self.assertEqual(catalog[name]['repository'],template['repository'])
+            self.assertIn(template['needs_write_access'],(True,False))
+            for port in template.get('ports',[]):
+                host=int(port.split(':')[0])
+                self.assertGreaterEqual(host,1024)
+                self.assertNotIn(host,host_ports,(name,port))
+                host_ports.add(host)
+            mounts={value.split(':',1)[1] for value in template.get('volumes',[])}
+            inits=template.get('volume_initializers',[])
+            if template.get('volume_initializer'):inits=inits+[template['volume_initializer']]
+            for item in inits:
+                self.assertIn(item['path'],mounts)
+                self.assertTrue(1<=item['uid']<=65534)
+                self.assertTrue(1<=item['gid']<=65534)
+        self.assertEqual(TEMPLATES['homarr']['generated_secret_env'],'SECRET_ENCRYPTION_KEY')
+        self.assertEqual(TEMPLATES['homarr']['volume_initializer']['dirs'],['db'])
+        self.assertEqual(TEMPLATES['homepage']['environment']['HOMEPAGE_ALLOWED_HOSTS'],'ROUTER_IP:3333')
+
+    def test_reviewed_environment_is_not_browser_editable(self):
+        digest='ghcr.io/gethomepage/homepage@sha256:'+('e'*64)
+        original={'image':digest,'ports':['192.168.50.1:3333:3000'],
+                  'volumes':['homepage-config:/app/config'],
+                  'environment':{'HOMEPAGE_ALLOWED_HOSTS':'192.168.50.1:3333',
+                                 'PUID':'1000','PGID':'1000'}}
+        policy={'policy':lambda:{digest},
+                'pins':lambda:{'homepage':digest},
+                'template_specs':lambda:TEMPLATES,
+                'lan_ip':lambda:'192.168.50.1'}
+        with patch.dict(API['spec_validate'].__globals__,policy):
+            good=API['spec_validate']({'services':{'app':dict(original)}},app_id='homepage')
+            self.assertEqual(good['services']['app']['environment']['HOMEPAGE_ALLOWED_HOSTS'],
+                             '192.168.50.1:3333')
+            evil=dict(original,environment=dict(original['environment'],TRUST_ALL='yes'))
+            with self.assertRaisesRegex(ValueError,'environment differs'):
+                API['spec_validate']({'services':{'app':evil}},app_id='homepage')
+            evil=dict(original,command=['rm','-rf','/'])
+            with self.assertRaisesRegex(ValueError,'command differs'):
+                API['spec_validate']({'services':{'app':evil}},app_id='homepage')
+
+    def test_homarr_generated_encryption_secret_is_required(self):
+        digest='ghcr.io/homarr-labs/homarr@sha256:'+('e'*64)
+        base={'image':digest,'ports':['192.168.50.1:7575:7575'],
+              'volumes':['homarr-appdata:/appdata'],'mem_limit':'768m'}
+        policy={'policy':lambda:{digest},'pins':lambda:{'homarr':digest},
+                'template_specs':lambda:TEMPLATES,'lan_ip':lambda:'192.168.50.1'}
+        with patch.dict(API['spec_validate'].__globals__,policy):
+            with self.assertRaisesRegex(ValueError,'Invalid generated'):
+                API['spec_validate']({'services':{'app':base}},app_id='homarr')
+            base['environment']={'SECRET_ENCRYPTION_KEY':'f'*64}
+            approved=API['spec_validate']({'services':{'app':base}},app_id='homarr')
+            self.assertEqual(approved['services']['app']['environment']['SECRET_ENCRYPTION_KEY'],'f'*64)
+
+    def test_sensitive_templates_require_audited_risk_flag(self):
+        approved={a['id'] for a in CATALOG if a.get('template_available')}
+        for app in CATALOG:
+            if app['risk']=='sensitive-data' and app['id'] in approved:
+                self.assertEqual(TEMPLATES[app['id']].get('reviewed_risk'),'sensitive-data')
+        for key in ['filebrowser','sftpgo','n8n']:
+            self.assertIn(key,TEMPLATES)
+            self.assertEqual(TEMPLATES[key]['reviewed_risk'],'sensitive-data')
+        self.assertEqual(TEMPLATES['n8n']['generated_secret_env'],'N8N_ENCRYPTION_KEY')
+
+    def test_sensitive_app_requires_explicit_confirmation_before_backend_install(self):
+        # Reject before digest or Docker setup so the gateway cannot bypass it.
+        methods=API['run'].__globals__
+        name='n8n'
+        digest='docker.n8n.io/n8nio/n8n@sha256:'+('e'*64)
+        app={'id':name,'ready':True,'risk':'sensitive-data'}
+        with patch.dict(methods,{'catalog':lambda:{'catalog':[app]},
+                                 'writes_enabled':lambda:True,
+                                 'pins':lambda:{name:digest},
+                                 'policy':lambda:{digest}}):
+            with self.assertRaisesRegex(ValueError,'explicit administrator acknowledgement'):
+                API['run']('install_catalog',{'id':name})
+
+    def test_sensitive_app_does_not_need_an_admin_warning_for_review_class(self):
+        self.assertEqual(TEMPLATES['ntfy']['ports'],['8093:80'])
+        self.assertEqual(TEMPLATES['ntfy']['command'],['serve'])
+        self.assertEqual(TEMPLATES['ntfy']['environment']['NTFY_AUTH_DEFAULT_ACCESS'],
+                         'read-write')
+
+    def test_bootstrap_dashboard_configs_have_explicit_safe_paths_and_bounded_content(self):
+        for app,path,port in [('dashy','/app/user-data/conf.yml','4000:8080'),
+                              ('glance','/app/config/glance.yml','8088:8080')]:
+            template=TEMPLATES[app]
+            self.assertIn(port,template['ports'])
+            self.assertTrue(template['needs_write_access'])
+            seeds=template.get('seed_files',[])
+            self.assertEqual(len(seeds),1)
+            self.assertEqual(seeds[0]['path'],path)
+            self.assertIn('pages:',seeds[0]['content']) if app=='glance' else self.assertIn('pageInfo:',seeds[0]['content'])
+            self.assertLessEqual(len(seeds[0]['content']),4096)
+            self.assertTrue(any(path.startswith(v.split(':',1)[1]+'/')
+                for v in template.get('volumes',[])))
+        self.assertTrue(all('docker.sock' not in str(t) for t in
+                            (TEMPLATES['dashy'],TEMPLATES['glance'])))
+
+    def test_seed_bootstrap_uses_only_networkless_reviewed_image_and_preserves_files(self):
+        digest='glanceapp/glance@sha256:'+('e'*64)
+        template=TEMPLATES['glance']
+        spec={'services':{'app':{'image':digest,
+                                 'volumes':template['volumes']}}}
+        calls=[]
+        def fake_run(argv,**kwargs):
+            calls.append(argv)
+            class Result:
+                returncode=0
+            return Result()
+        with patch.dict(API['initialize_approved_volume'].__globals__,{
+            'template_specs':lambda:{'glance':template},
+            'subprocess':type('Proc',(),{'run':staticmethod(fake_run),
+                     'DEVNULL':__import__('subprocess').DEVNULL,
+                     'PIPE':__import__('subprocess').PIPE})}):
+            API['initialize_approved_volume']('glance',spec)
+        seed=[argv for argv in calls if 'moci-seed-config' in argv]
+        self.assertEqual(len(seed),1)
+        args=seed[0]
+        self.assertIn('--network',args)
+        self.assertEqual(args[args.index('--network')+1],'none')
+        self.assertEqual(args[args.index('--user')+1],'1000:1000')
+        self.assertTrue(any('test -e "$1"' in token for token in args))
+        self.assertEqual(args[args.index('moci-seed-config')+1],
+                         '/app/config/glance.yml')
+        self.assertNotIn('--privileged',args)
+
+    def test_filestash_and_backrest_require_sensitive_data_approval(self):
+        for name,port,destination in [
+            ('filestash','8334:8334','/app/data/state'),
+            ('backrest','9898:9898','/data')]:
+            app=next(entry for entry in CATALOG if entry['id']==name)
+            template=TEMPLATES[name]
+            self.assertEqual(app['risk'],'sensitive-data')
+            self.assertEqual(template.get('reviewed_risk'),'sensitive-data')
+            self.assertTrue(app['template_available'])
+            self.assertIn(port,template['ports'])
+            self.assertTrue(any(mount.endswith(':'+destination)
+                                for mount in template['volumes']))
+            self.assertFalse(any('/var/run/docker.sock' in str(value)
+                                 for value in template.values()))
+        self.assertEqual(TEMPLATES['backrest']['environment']['BACKREST_CONFIG'],
+                         '/config/config.json')
+
+    def test_managed_docker_reports_missing_automatic_lan_firewall(self):
+        globals_=API['docker_lan_firewall_status'].__globals__
+        with patch.object(globals_['os'].path,'isfile',return_value=False):
+            result=API['docker_lan_firewall_status']()
+        self.assertEqual(result['state'],'missing')
+        self.assertIn('unreachable',result['detail'])
+
+    def test_docker_firewall_only_publishes_managed_running_lan_tcp_ports(self):
+        fw=runpy.run_path(str(BASE/'moci-docker-firewall'))
+        netid='a'*64
+        networks=[{'Driver':'bridge','Id':netid,
+                   'Options':{},'Labels':{'com.docker.compose.project':'moci-memos'}}]
+        def container(project='moci-memos',ip='192.168.50.1',state='running',proto='tcp'):
+            return {'Id':'b'*64,'State':state,
+              'Labels':{'com.moci.managed':'true',
+                        'com.docker.compose.project':project},
+              'NetworkSettings':{'Networks':{'default':{
+                  'NetworkID':netid,'IPAddress':'172.23.0.2'}}},
+              'Ports':[{'IP':ip,'Type':proto,'PublicPort':5230,'PrivatePort':5230}]}
+        valid=fw['plan'](networks,[container()], '192.168.50.1')
+        self.assertEqual(valid['devices'],['br-'+'a'*12])
+        self.assertEqual(len(valid['rules']),1)
+        self.assertEqual(next(iter(valid['rules'].values()))['ip'],'172.23.0.2')
+        for client in [container(ip='0.0.0.0'),container(state='exited'),
+                       container(project='unrelated'),container(proto='udp')]:
+            rejected=fw['plan'](networks,[client],'192.168.50.1')
+            self.assertEqual(rejected['devices'],[])
+            self.assertEqual(rejected['rules'],{})
 
     def test_managed_apps_report_live_state_and_safe_lan_launch_url(self):
         names=('it-tools','openspeedtest','uptime-kuma','memos')
@@ -245,10 +508,15 @@ class DockerStoreContract(unittest.TestCase):
     def test_sensitive_apps_are_never_auto_promoted_to_one_click(self):
         with patch.dict(API['catalog'].__globals__,{'writes_enabled':lambda:True}):
             apps=API['catalog']()['catalog']
+        templates=TEMPLATES
         for app in apps:
             if app['risk'] in {'router-critical','security-critical','privileged','docker-socket'}:
-                self.assertFalse(app['reviewed_template'],app['id'])
-                self.assertFalse(app['ready'],app['id'])
+                # A sensitive app may only become one-click through an explicit,
+                # audited reviewed_risk marker matching its risk (e.g. Pi-hole).
+                template=templates.get(app['id']) or {}
+                if template.get('reviewed_risk')!=app['risk']:
+                    self.assertFalse(app['reviewed_template'],app['id'])
+                    self.assertFalse(app['ready'],app['id'])
 
 
 if __name__=='__main__':

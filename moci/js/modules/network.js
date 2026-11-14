@@ -76,6 +76,7 @@ export default class NetworkModule {
 					routes: () => this.loadRoutes(),
 					wireless: () => this.loadWireless(),
 					firewall: () => this.loadFirewall(),
+					upnp: () => this.loadUpnp(),
 					dhcp: () => this.loadDHCP(),
 					dns: () => this.loadDNS(),
 					ddns: () => this.loadDDNS(),
@@ -93,6 +94,14 @@ export default class NetworkModule {
 			const tab = subPaths[0] || 'interfaces';
 			this.subTabs.showSubTab(tab);
 		});
+	}
+
+	async loadUpnp(){
+		if(!this.upnp){
+			const {default: UpnpModule}=await import('./upnp.js?v=1.0.0r4');
+			this.upnp=new UpnpModule(this.core);
+		}
+		await this.upnp.load(document.getElementById('tab-upnp'));
 	}
 
 	setupModals() {
@@ -308,7 +317,7 @@ export default class NetworkModule {
 		}
 		try {
 			await this.core.uciSet('network', name, values);
-			await this.core.uciCommit('network');
+			await this.core.uciApplyConfig('network');
 			this.core.closeModal('interface-modal');
 			this.core.showToast('Interface updated', 'success');
 			this.loadInterfaces();
@@ -482,7 +491,7 @@ export default class NetworkModule {
 					if (v.device === oldName) await this.core.uciSet('network', v.section, { device: name });
 				}
 			}
-			await this.core.uciCommit('network');
+			await this.core.uciApplyConfig('network');
 			this.core.closeModal('device-modal');
 			this.core.showToast('Device saved', 'success');
 			this.loadDevices();
@@ -501,7 +510,7 @@ export default class NetworkModule {
 		try {
 			for (const v of vlans) await this.core.uciDelete('network', v.section);
 			await this.core.uciDelete('network', id);
-			await this.core.uciCommit('network');
+			await this.core.uciApplyConfig('network');
 			this.core.showToast('Deleted', 'success');
 			this.loadDevices();
 		} catch {
@@ -589,7 +598,7 @@ export default class NetworkModule {
 				target = res.section;
 			}
 			await this.core.uciSet('network', target, values);
-			await this.core.uciCommit('network');
+			await this.core.uciApplyConfig('network');
 			this.core.closeModal('bridge-vlan-modal');
 			this.core.showToast('Bridge VLAN saved', 'success');
 			this.loadDevices();
@@ -723,7 +732,7 @@ export default class NetworkModule {
 					}
 				}
 			}
-			await this.core.uciCommit('network');
+			await this.core.uciApplyConfig('network');
 			this.core.closeModal('route-modal');
 			this.core.showToast('Route saved', 'success');
 			this.loadRoutes();
@@ -814,7 +823,7 @@ export default class NetworkModule {
 					await this.core.uciSet('wireless', radio, radioValues);
 				}
 			}
-			await this.core.uciCommit('wireless');
+			await this.core.uciApplyConfig('wireless');
 			this.core.closeModal('wireless-modal');
 			this.core.showToast('Wireless settings saved', 'success');
 			this.loadWireless();
@@ -960,7 +969,7 @@ export default class NetworkModule {
 				output: document.getElementById('fw-default-output').value,
 				forward: document.getElementById('fw-default-forward').value
 			});
-			await this.core.uciCommit('firewall');
+			await this.core.uciApplyConfig('firewall');
 			this.core.showToast('Firewall settings saved', 'success');
 			this.loadFirewall();
 		} catch {
@@ -1096,7 +1105,7 @@ export default class NetworkModule {
 				await this.core.uciSet('firewall', res.section, { src: name, dest });
 			}
 
-			await this.core.uciCommit('firewall');
+			await this.core.uciApplyConfig('firewall');
 			this.core.closeModal('zone-modal');
 			this.core.showToast('Zone saved', 'success');
 			this.loadFirewall();
@@ -1114,7 +1123,7 @@ export default class NetworkModule {
 				.filter(f => f.src === name || f.dest === name);
 			for (const f of stale) await this.core.uciDelete('firewall', f.section);
 			await this.core.uciDelete('firewall', id);
-			await this.core.uciCommit('firewall');
+			await this.core.uciApplyConfig('firewall');
 			this.core.showToast('Zone deleted', 'success');
 			this.loadFirewall();
 		} catch {
@@ -1255,16 +1264,23 @@ export default class NetworkModule {
 	}
 
 	async reloadDHCPAfterReservation() {
+		return this.reloadDhcpServices(() => this.loadDHCP());
+	}
+
+	async reloadDhcpServices(refresh, includeIPv6 = false) {
 		// Commit alone does not make dnsmasq pick up UCI host reservations.
 		// A failed service reload must not be reported as a failed UCI commit.
 		try {
-			const [status, response]=await this.core.serviceReload('dnsmasq');
-			if(status!==0||Number(response?.code||0)!==0)throw new Error('dnsmasq reload denied');
+			const services = includeIPv6 ? ['dnsmasq', 'odhcpd'] : ['dnsmasq'];
+			for (const service of services) {
+				const [status, response] = await this.core.serviceReload(service);
+				if (status !== 0 || response?.code !== 0) throw new Error(`${service} reload failed`);
+			}
 		} catch(error) {
-			console.warn('DHCP reservation saved but dnsmasq reload failed:',error);
-			this.core.showToast('Saved. DHCP service reload may be needed before the reservation takes effect.','info');
+			console.warn('Configuration saved but DHCP/DNS service reload failed:', error);
+			this.core.showToast('Saved, but DHCP/DNS service reload failed. Check System services before relying on these settings.', 'error');
 		}
-		await this.loadDHCP();
+		await refresh();
 	}
 
 	async saveStaticLease() {
@@ -1360,14 +1376,14 @@ export default class NetworkModule {
 			await this.core.uciCommit('dhcp');
 			this.core.closeModal('dhcp-pool-modal');
 			this.core.showToast('DHCP pool saved', 'success');
-			this.loadDHCP();
+			await this.reloadDhcpServices(() => this.loadDHCP(), true);
 		} catch {
 			this.core.showToast('Failed to save DHCP pool', 'error');
 		}
 	}
 
 	deleteDhcpPool(id) {
-		this.core.uciDeleteEntry('dhcp', id, `Delete DHCP pool "${id}"?`, () => this.loadDHCP());
+		return this.core.uciDeleteEntry('dhcp', id, `Delete DHCP pool "${id}"?`, () => this.reloadDhcpServices(() => this.loadDHCP(), true));
 	}
 
 	async loadDNS() {
@@ -1407,7 +1423,83 @@ export default class NetworkModule {
 					);
 				}
 			} catch {}
+			this.renderPublishedDns();
 		});
+	}
+
+	async renderPublishedDns() {
+		const root = document.getElementById('dns-published-section');
+		if (!root) return;
+		root.replaceChildren();
+		const el = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; };
+		let data = { allowed: [], records: [], port: 53530, domain: 'lan' };
+		try {
+			const [s, r] = await this.core.ubusCall('moci', 'dnsPublishList', {}, { timeout: 15000 });
+			if (s === 0 && r) data = r;
+		} catch {}
+		root.append(el('div', 'PUBLISHED DNS RECORDS (RFC 2136)', 'section-title'));
+		root.append(el('p', 'Devices you opt in below can publish their own DNS names (record type A/AAAA) to the router on UDP port ' + data.port + ', within the .' + data.domain + ' domain. Publishing is off by default; a device’s records are removed when it loses its DHCP lease. Router and admin names are reserved.', 'page-note'));
+		// Opt-in manager
+		const form = el('form', undefined, 'profiles-allow-form');
+		const ip = el('input'); ip.placeholder = 'Device IPv4 to allow publishing'; ip.required = true; ip.maxLength = 15;
+		ip.setAttribute('aria-label', 'Device IPv4 allowed to publish DNS');
+		const allow = el('button', 'ALLOW DEVICE', 'action-btn'); allow.type = 'submit';
+		form.append(ip, allow);
+		form.addEventListener('submit', async e => {
+			e.preventDefault();
+			const value = ip.value.trim();
+			if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(value) || value.split('.').some(o => Number(o) > 255)) { this.core.showToast('Enter a valid IPv4 address', 'error'); return; }
+			if (!window.confirm('Allow ' + value + ' to publish DNS records to the router?')) return;
+			try {
+				const [s, r] = await this.core.ubusCall('moci', 'dnsPublishPermission', { ip: value, enable: true }, { timeout: 15000 });
+				if (s !== 0 || r?.error) throw new Error(r?.error || 'rejected');
+				this.core.showToast('Device allowed to publish', 'success');
+				this.renderPublishedDns();
+			} catch (err) { this.core.showToast('Could not allow device: ' + err.message, 'error'); }
+		});
+		root.append(form);
+		const allowedList = el('div', undefined, 'profiles-grants');
+		if (!data.allowed.length) allowedList.append(el('p', 'No devices are allowed to publish yet.', 'page-note'));
+		for (const addr of data.allowed) {
+			const line = el('div', undefined, 'profiles-entry');
+			line.append(el('span', addr));
+			const revoke = el('button', 'REVOKE', 'action-btn danger'); revoke.type = 'button';
+			revoke.addEventListener('click', async () => {
+				if (!window.confirm('Stop ' + addr + ' from publishing DNS records?')) return;
+				try {
+					await this.core.ubusCall('moci', 'dnsPublishPermission', { ip: addr, enable: false }, { timeout: 15000 });
+					this.core.showToast('Publishing revoked', 'success');
+					this.renderPublishedDns();
+				} catch (err) { this.core.showToast('Revoke failed: ' + err.message, 'error'); }
+			});
+			line.append(revoke); allowedList.append(line);
+		}
+		root.append(allowedList);
+		// Read-only published records table
+		const table = el('table', undefined, 'data-table');
+		const thead = el('thead'); const hr = el('tr');
+		for (const h of ['Name', 'Address', 'Type', 'Published by', '']) hr.append(el('th', h));
+		thead.append(hr); table.append(thead);
+		const tbody = el('tbody');
+		if (!data.records.length) {
+			const tr = el('tr'); const td = el('td', 'No published records.', 'page-note'); td.colSpan = 5; tr.append(td); tbody.append(tr);
+		}
+		for (const rec of data.records) {
+			const tr = el('tr');
+			tr.append(el('td', rec.name), el('td', rec.addr), el('td', rec.type), el('td', rec.publisher));
+			const act = el('td');
+			const del = el('button', 'REMOVE', 'dev-action danger'); del.type = 'button';
+			del.addEventListener('click', async () => {
+				if (!window.confirm('Remove the published record ' + rec.name + '?')) return;
+				try {
+					await this.core.ubusCall('moci', 'dnsPublishRemove', { name: rec.name }, { timeout: 15000 });
+					this.core.showToast('Record removed', 'success');
+					this.renderPublishedDns();
+				} catch (err) { this.core.showToast('Remove failed: ' + err.message, 'error'); }
+			});
+			act.append(del); tr.append(act); tbody.append(tr);
+		}
+		table.append(tbody); root.append(table);
 	}
 
 	parseHosts(data) {
@@ -1455,7 +1547,7 @@ export default class NetworkModule {
 			await this.setListOption('dhcp', target, 'server', servers, this._dnsmasqHadServers);
 			await this.core.uciCommit('dhcp');
 			this.core.showToast('DNS settings saved', 'success');
-			this.loadDNS();
+			await this.reloadDhcpServices(() => this.loadDNS());
 		} catch {
 			this.core.showToast('Failed to save DNS settings', 'error');
 		}
@@ -1466,19 +1558,19 @@ export default class NetworkModule {
 	}
 
 	saveDnsEntry() {
-		this.core.uciSave({
+		return this.core.uciSave({
 			config: 'dhcp',
 			uciType: 'domain',
 			modalId: 'dns-entry-modal',
 			sectionIdField: 'edit-dns-entry-section',
 			fieldMap: DNS_ENTRY_FIELDS,
-			reloadFn: () => this.loadDNS(),
+			reloadFn: () => this.reloadDhcpServices(() => this.loadDNS()),
 			successMsg: 'DNS entry saved'
 		});
 	}
 
 	deleteDnsEntry(id) {
-		this.core.uciDeleteEntry('dhcp', id, 'Delete this DNS entry?', () => this.loadDNS());
+		return this.core.uciDeleteEntry('dhcp', id, 'Delete this DNS entry?', () => this.reloadDhcpServices(() => this.loadDNS()));
 	}
 
 	editHostEntry(index) {
@@ -1516,10 +1608,11 @@ export default class NetworkModule {
 			`${ip}\t${names}`
 		);
 		try {
-			await this.core.ubusCall('file', 'write', { path: '/etc/hosts', data: newContent });
+			const [status] = await this.core.ubusCall('file', 'write', { path: '/etc/hosts', data: newContent });
+			if (status !== 0) throw new Error('Hosts file write rejected');
 			this.core.closeModal('host-entry-modal');
 			this.core.showToast('Hosts entry saved', 'success');
-			this.loadDNS();
+			await this.reloadDhcpServices(() => this.loadDNS());
 		} catch {
 			this.core.showToast('Failed to save hosts entry', 'error');
 		}
@@ -1540,9 +1633,10 @@ export default class NetworkModule {
 			null
 		);
 		try {
-			await this.core.ubusCall('file', 'write', { path: '/etc/hosts', data: newContent });
+			const [status] = await this.core.ubusCall('file', 'write', { path: '/etc/hosts', data: newContent });
+			if (status !== 0) throw new Error('Hosts file write rejected');
 			this.core.showToast('Hosts entry deleted', 'success');
-			this.loadDNS();
+			await this.reloadDhcpServices(() => this.loadDNS());
 		} catch {
 			this.core.showToast('Failed to delete hosts entry', 'error');
 		}
@@ -1727,7 +1821,7 @@ export default class NetworkModule {
 				disabled: disabled ? '1' : '0'
 			};
 			await this.core.uciSet('network', ifaceName, values);
-			await this.core.uciCommit('network');
+			await this.core.uciApplyConfig('network');
 			this.core.showToast('WireGuard configuration saved', 'success');
 		} catch {
 			this.core.showToast('Failed to save WireGuard config', 'error');
@@ -1924,3 +2018,4 @@ export default class NetworkModule {
 		}
 	}
 }
+

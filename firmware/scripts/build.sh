@@ -10,6 +10,7 @@ export PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 : "${SOURCE_V07:?Set SOURCE_V07 to integrated Docker add-on source}"
 WORK=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$OPENWRT_SRC"
+for tool in e2fsck tune2fs; do command -v "$tool" >/dev/null || { echo "Missing host tool: $tool" >&2; exit 1; }; done
 [[ -f include/toplevel.mk ]] || { echo 'Invalid OpenWrt checkout' >&2; exit 1; }
 [[ -f "$MOCI_SRC/Makefile" && -f "$MOCI_SRC/dist/moci/index.html" ]] || { echo 'MoCI dist not built' >&2; exit 1; }
 [[ -f "$SOURCE_V07/moci-app-docker/Makefile" ]] || { echo 'Docker add-on source not imported' >&2; exit 1; }
@@ -22,6 +23,9 @@ cp -a "$SOURCE_V07/moci-app-docker"/. package/moci-app-docker/
 mkdir -p files
 cp -a "$WORK/files"/. files/
 chmod 0755 files/etc/uci-defaults/90-moci-setup files/etc/uci-defaults/91-moci-secure-admin
+chmod 0755 files/etc/uci-defaults/93-moci-runtime-defaults files/usr/libexec/moci-runtime-defaults
+chmod 0755 files/etc/uci-defaults/94-moci-grow-root files/usr/libexec/moci-grow-root
+chmod 0755 files/etc/uci-defaults/95-moci-dns-publish
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 cat > .config <<'CONFIG'
@@ -38,15 +42,38 @@ CONFIG_PACKAGE_openssl-util=y
 CONFIG_PACKAGE_luci-app-uhttpd=y
 CONFIG_PACKAGE_wpad-basic-mbedtls=n
 CONFIG_PACKAGE_wpad-mbedtls=y
+# Wi-Fi stack + drivers so USB/PCIe wireless cards are detected out of the box.
+# rt2800-usb covers the Ralink RT3070/RT5370 (13d3:3273) shipped in the P09B;
+# the mt76/rtl8xxxu/ath9k-htc set covers other common USB Wi-Fi adapters.
+CONFIG_PACKAGE_kmod-cfg80211=y
+CONFIG_PACKAGE_kmod-mac80211=y
+CONFIG_PACKAGE_kmod-rt2800-usb=y
+CONFIG_PACKAGE_rt2800-usb-firmware=y
+CONFIG_PACKAGE_kmod-mt7601u=y
+CONFIG_PACKAGE_kmod-mt76x0u=y
+CONFIG_PACKAGE_kmod-mt76x2u=y
+CONFIG_PACKAGE_kmod-rtl8xxxu=y
+CONFIG_PACKAGE_kmod-ath9k-htc=y
+CONFIG_PACKAGE_ath9k-htc-firmware=y
+CONFIG_PACKAGE_iwinfo=y
+CONFIG_PACKAGE_wireless-regdb=y
+# Common x86 Ethernet drivers so every port is detected on varied hardware.
+CONFIG_PACKAGE_kmod-igb=y
+CONFIG_PACKAGE_kmod-e1000e=y
+CONFIG_PACKAGE_kmod-r8169=y
+CONFIG_PACKAGE_kmod-ixgbe=y
 CONFIG_PACKAGE_moci=y
 CONFIG_PACKAGE_moci-app-docker=y
 CONFIG_PACKAGE_dockerd=y
 CONFIG_PACKAGE_docker=y
 CONFIG_PACKAGE_docker-compose=y
-CONFIG_PACKAGE_python3-light=y
+CONFIG_PACKAGE_python3=y
 CONFIG_PACKAGE_samba4-server=y
 CONFIG_PACKAGE_block-mount=y
 CONFIG_PACKAGE_e2fsprogs=y
+CONFIG_PACKAGE_resize2fs=y
+CONFIG_PACKAGE_sfdisk=y
+CONFIG_PACKAGE_partx-utils=y
 CONFIG_PACKAGE_parted=y
 CONFIG_PACKAGE_lsblk=y
 CONFIG_PACKAGE_kmod-fs-ext4=y
@@ -58,11 +85,20 @@ CONFIG_PACKAGE_tcpdump=y
 CONFIG_PACKAGE_htop=y
 CONFIG_PACKAGE_nano=y
 CONFIG_PACKAGE_openssh-sftp-server=y
+CONFIG_PACKAGE_kmod-igc=y
+CONFIG_PACKAGE_intel-microcode=y
+CONFIG_PACKAGE_kmod-hwmon-coretemp=y
+CONFIG_PACKAGE_pciutils=y
+CONFIG_PACKAGE_usbutils=y
+CONFIG_PACKAGE_iw=y
 CONFIG_PACKAGE_kmod-tun=y
 CONFIG_PACKAGE_wireguard-tools=y
 CONFIG_PACKAGE_luci-proto-wireguard=y
 CONFIG_PACKAGE_luci-app-sqm=y
 CONFIG_PACKAGE_luci-app-ddns=y
+# UPnP IGD and NAT-PMP/PCP installed but disabled; use MoCI's escaped native UI.
+# Do NOT preinstall luci-app-upnp while GHSA-8v49-6387-7f89 remains unresolved.
+CONFIG_PACKAGE_miniupnpd-nftables=y
 CONFIG_PACKAGE_luci-app-samba4=y
 # Business-ready diagnostics and resilience, available but not auto-enabled.
 CONFIG_PACKAGE_luci-app-statistics=y
@@ -79,6 +115,13 @@ CONFIG_PACKAGE_luci-app-snmpd=y
 CONFIG_PACKAGE_luci-app-watchcat=y
 CONFIG_PACKAGE_luci-app-vnstat2=y
 CONFIG_PACKAGE_luci-app-smartdns=y
+# Native add-on dashboards (Haven Features page): ad blocking, Tailscale VPN, web
+# terminal. Installed but OFF by default; the Features toggle enables each one.
+CONFIG_PACKAGE_adblock=y
+CONFIG_PACKAGE_luci-app-adblock=y
+CONFIG_PACKAGE_tailscale=y
+CONFIG_PACKAGE_ttyd=y
+CONFIG_PACKAGE_luci-app-ttyd=y
 CONFIG_PACKAGE_ethtool=y
 CONFIG_PACKAGE_irqbalance=y
 CONFIG_PACKAGE_uhttpd-mod-ubus=y
@@ -86,9 +129,28 @@ CONFIG_PACKAGE_dnsmasq-full=y
 CONFIG_PACKAGE_dnsmasq=n
 CONFIG
 make defconfig
-for p in moci moci-app-docker docker-compose dockerd samba4-server uhttpd-mod-ubus luci-ssl wpad-mbedtls luci-app-statistics luci-app-nlbwmon luci-app-mwan3 luci-app-banip luci-app-acme; do
+for p in moci moci-app-docker docker-compose dockerd samba4-server uhttpd-mod-ubus luci-ssl wpad-mbedtls luci-app-statistics luci-app-nlbwmon luci-app-mwan3 luci-app-banip luci-app-acme miniupnpd-nftables kmod-igc intel-microcode kmod-hwmon-coretemp pciutils usbutils iw resize2fs sfdisk partx-utils kmod-mac80211 kmod-rt2800-usb iwinfo wireless-regdb adblock luci-app-adblock tailscale ttyd luci-app-ttyd; do
   grep -q "^CONFIG_PACKAGE_${p}=y$" .config || { echo "Missing package after defconfig: $p" >&2; exit 1; }
 done
 make download -j"${JOBS:-2}"
 make -j"${JOBS:-2}" V=s
+for image in bin/targets/x86/64/*ext4-combined-efi.img.gz; do
+  python3 "$WORK/scripts/normalize-ext4-image.py" "$image"
+done
+# Sign the release artifacts with usign. The public key ships inside the image
+# (/etc/moci/moci-image.pub); the secret key stays on the build host only.
+USIGN="$(command -v usign || true)"
+if [ -z "$USIGN" ] && [ -x "$PWD/staging_dir/host/bin/usign" ]; then
+  USIGN="$PWD/staging_dir/host/bin/usign"
+fi
+IMAGE_KEY="${MOCI_IMAGE_KEY:-$HOME/.usign/moci-image.sec}"
+if [ -n "$USIGN" ] && [ -f "$IMAGE_KEY" ]; then
+  ( cd bin/targets/x86/64 && "$USIGN" -S -m sha256sums -s "$IMAGE_KEY" -x sha256sums.sig )
+  for image in bin/targets/x86/64/*ext4-combined-efi.img.gz; do
+    "$USIGN" -S -m "$image" -s "$IMAGE_KEY" -x "$image.sig"
+  done
+  echo "Firmware artifacts signed with $IMAGE_KEY"
+else
+  echo "WARNING: firmware artifacts NOT signed (usign or $IMAGE_KEY missing)" >&2
+fi
 find bin/targets/x86/64 -maxdepth 1 -name '*ext4-combined-efi.img.gz' -print

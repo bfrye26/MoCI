@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 PKG_NAME:=moci-app-docker
-PKG_VERSION:=0.10.0
-PKG_RELEASE:=5
+PKG_VERSION:=1.0.0
+PKG_RELEASE:=1
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=MoCI contributors
 include $(INCLUDE_DIR)/package.mk
@@ -12,7 +12,12 @@ define Package/moci-app-docker
   SUBMENU:=MoCI Add-ons
   TITLE:=Native Docker and Homelab Applications for MoCI
   PKGARCH:=all
-  DEPENDS:=+moci +dockerd +docker-compose +python3-light +python3-email +python3-urllib
+  DEPENDS:=+moci +dockerd +docker-compose +python3 +python3-email +python3-urllib
+endef
+
+define Package/moci-app-docker/conffiles
+/etc/moci-docker/allowed-images.json
+/etc/moci-docker/app-pins.json
 endef
 
 define Build/Compile
@@ -29,6 +34,9 @@ define Package/moci-app-docker/install
 	$(INSTALL_BIN) ./files/moci-docker-api $(1)/usr/libexec/moci-docker-api
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_BIN) ./files/moci-docker-policy $(1)/usr/sbin/moci-docker-policy
+	$(INSTALL_BIN) ./files/moci-docker-firewall $(1)/usr/sbin/moci-docker-firewall
+	$(INSTALL_DIR) $(1)/etc/init.d
+	$(INSTALL_BIN) ./files/init-moci-docker-firewall $(1)/etc/init.d/moci-docker-firewall
 	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
 	$(INSTALL_DATA) ./files/acl.json $(1)/usr/share/rpcd/acl.d/moci-app-docker.json
 	$(INSTALL_DIR) $(1)/etc/moci-docker
@@ -38,4 +46,13 @@ define Package/moci-app-docker/install
 	$(INSTALL_CONF) ./files/app-pins.json $(1)/etc/moci-docker/app-pins.json
 endef
 
+define Package/moci-app-docker/postinst
+#!/bin/sh
+[ -n "${IPKG_INSTROOT}" ] || {
+    /etc/init.d/moci-docker-firewall enable 2>/dev/null || :
+    /etc/init.d/moci-docker-firewall restart 2>/dev/null || :
+}
+endef
+
 $(eval $(call BuildPackage,moci-app-docker))
+

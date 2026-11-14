@@ -69,3 +69,4 @@ OPENWRT_SRC="$PWD/../openwrt" MOCI_SRC="$PWD" SOURCE_V07="$PWD/integrations/dock
 ```
 
 Do not enable Docker write operations, expose MoCI/ubus on WAN, or flash over a live router until all security and connectivity gates pass.
+

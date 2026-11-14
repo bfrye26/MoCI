@@ -84,3 +84,4 @@ for state in /tmp/moci-wifi-scheduler/radio*.state; do
   fi
   rm -f "$state"
 done
+

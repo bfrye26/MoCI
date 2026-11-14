@@ -1,0 +1,15 @@
+#!/bin/sh /etc/rc.common
+# Haven RFC 2136 DNS record publisher. Off by default: devices must be opted in
+# by the administrator before they may publish records.
+START=97
+STOP=10
+USE_PROCD=1
+
+start_service() {
+	procd_open_instance
+	procd_set_param command /usr/bin/python3 /usr/sbin/moci-dns-publish
+	procd_set_param respawn 3600 5 0
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_close_instance
+}
