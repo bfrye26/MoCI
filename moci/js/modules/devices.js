@@ -59,21 +59,50 @@ export default class DevicesModule{
 		if(!this.root)return;
 		this.root.replaceChildren(this.el('p','Discovering devices on your network…','page-loading'));
 		try{
-			const [leases,dhcp,network,firewall]=await Promise.all([
+			const [leases,dhcp,network,firewall,arp]=await Promise.all([
 				this.rpc('moci','getDHCPLeases').catch(()=>({dhcp_leases:[]})),
 				this.uci('get',{config:'dhcp'}),
 				this.uci('get',{config:'network'}).catch(()=>({values:{}})),
-				this.uci('get',{config:'firewall'}).catch(()=>({values:{}}))
+				this.uci('get',{config:'firewall'}).catch(()=>({values:{}})),
+				this.rpc('file','read',{path:'/proc/net/arp'}).catch(()=>({data:''}))
 			]);
 			this.leases=Array.isArray(leases.dhcp_leases)?leases.dhcp_leases:[];
 			this.dhcp=dhcp.values||{};
 			this.network=network.values||{};
 			this.firewall=firewall.values||{};
 			this.reservations=Object.entries(this.dhcp).filter(([,v])=>v?.['.type']==='host');
+			this.connected=this.buildConnected(arp.data);
 			this.render();
 		}catch(e){this.root.replaceChildren(this.el('p','Unable to read devices: '+e.message,'page-error'));}
 	}
 	resForMac(mac){return this.reservations.find(([,v])=>normMac(v.mac)===normMac(mac));}
+	// Every device seen on the LAN (ARP table), not just ones this router gave a
+	// DHCP lease to — other DHCP servers (e.g. a mesh system) may serve clients.
+	buildConnected(arpData){
+		const leaseByMac=new Map(this.leases.map(l=>[normMac(l.macaddr),l]));
+		const resByMac=new Map(this.reservations.map(([id,v])=>[normMac(v.mac),{id,...v}]));
+		const clean=h=>(h&&h!=='*')?h:'';
+		const seen=new Set();const out=[];
+		const push=(ip,mac)=>{
+			const key=normMac(mac);if(seen.has(key))return;seen.add(key);
+			const lease=leaseByMac.get(key);const res=resByMac.get(key);
+			out.push({ipaddr:ip,macaddr:mac,
+				hostname:clean(lease?.hostname)||clean(res?.name)||'',
+				expires:lease?lease.expires:0,hasLease:!!lease,isStatic:!!res});
+		};
+		for(const line of String(arpData||'').split('\n').slice(1)){
+			const p=line.trim().split(/\s+/);
+			if(p.length<6)continue;
+			const [ip,,flags,mac,,device]=p;
+			if(flags==='0x0'||device!=='br-lan')continue;
+			if(!validIP(ip)||!MAC.test(mac))continue;
+			push(ip,mac);
+		}
+		for(const l of this.leases){if(validIP(l.ipaddr)&&MAC.test(l.macaddr))push(l.ipaddr,l.macaddr);}
+		const ipNum=ip=>ip.split('.').reduce((a,o)=>a*256+Number(o),0);
+		out.sort((a,b)=>ipNum(a.ipaddr)-ipNum(b.ipaddr));
+		return out;
+	}
 	profileForIp(ip){
 		if(!validIP(ip))return '—';
 		const octets=ip.split('.').map(Number);
@@ -106,41 +135,42 @@ export default class DevicesModule{
 		// Summary
 		const summary=this.el('div',undefined,'dev-summary');
 		const stat=(n,label)=>{const c=this.el('div',undefined,'dev-stat stat-card');c.append(this.el('strong',String(n),'dev-stat-n'),this.el('span',label,'dev-stat-l'));return c;};
-		summary.append(stat(this.leases.length,'Connected now'),stat(this.reservations.length,'Static reservations'));
+		summary.append(stat(this.connected.length,'Connected now'),stat(this.reservations.length,'Static reservations'));
 		root.append(summary);
 
 		// Connected devices
 		root.append(this.el('h3','Connected devices'));
-		root.append(this.el('p','Devices currently holding a DHCP lease. Make a device’s address static so it never changes — useful for servers, printers and port forwarding.','page-note'));
+		root.append(this.el('p','Every device seen on your LAN, whether or not this router handed out its address (another DHCP server, e.g. a mesh system, may serve some). Make a device’s address static so it never changes — useful for servers, printers and port forwarding.','page-note'));
 		const table=this.el('table',undefined,'data-table dev-table');
 		const thead=this.el('thead');const hr=this.el('tr');
 		for(const h of ['Device','Vendor','IP address','Profile','Lease','Type',''])hr.append(this.el('th',h));
 		thead.append(hr);table.append(thead);
 		const tbody=this.el('tbody');
-		if(!this.leases.length){
+		if(!this.connected.length){
 			const tr=this.el('tr');const td=this.el('td','No devices are currently connected.','page-note');td.colSpan=7;tr.append(td);tbody.append(tr);
 		}
-		for(const lease of this.leases){
+		for(const dev of this.connected){
 			const tr=this.el('tr');
-			const name=lease.hostname||'Unknown device';
-			const res=resByMac.get(normMac(lease.macaddr));
-			const nameCell=this.el('td');nameCell.append(this.el('span',name,'dev-name'),this.el('span',lease.macaddr,'dev-mono dev-res-meta'));
-			const profile=this.profileForIp(lease.ipaddr);
-			tr.append(nameCell,this.el('td',vendorForMac(lease.macaddr)),this.el('td',lease.ipaddr,'dev-mono'),
-				this.el('td',profile),this.el('td',lease.expires>0?this.fmtLease(lease.expires):'—'));
+			const name=dev.hostname||'Unknown device';
+			const res=resByMac.get(normMac(dev.macaddr));
+			const nameCell=this.el('td');nameCell.append(this.el('span',name,'dev-name'),this.el('span',dev.macaddr,'dev-mono dev-res-meta'));
+			const profile=this.profileForIp(dev.ipaddr);
+			tr.append(nameCell,this.el('td',vendorForMac(dev.macaddr)),this.el('td',dev.ipaddr,'dev-mono'),
+				this.el('td',profile),this.el('td',dev.expires>0?this.fmtLease(dev.expires):'—'));
 			const typeCell=this.el('td');
-			typeCell.append(this.el('span',res?'Static':'Dynamic','dev-badge '+(res?'static':'dynamic')));
+			const typeLabel=dev.isStatic?'Static':(dev.hasLease?'DHCP':'Other');
+			typeCell.append(this.el('span',typeLabel,'dev-badge '+(dev.isStatic?'static':'dynamic')));
 			tr.append(typeCell);
 			const act=this.el('td');
 			if(res){
 				const b=this.el('button','Reserved','dev-action');b.type='button';b.disabled=true;act.append(b);
 			}else{
 				const b=this.el('button','Make static','dev-action');b.type='button';
-				b.addEventListener('click',()=>this.makeStatic(lease));
+				b.addEventListener('click',()=>this.makeStatic(dev));
 				act.append(b);
 			}
 			const perm=this.el('button','Permissions','dev-action');perm.type='button';
-			perm.addEventListener('click',()=>this.showPermissions(lease,profile));
+			perm.addEventListener('click',()=>this.showPermissions(dev,profile));
 			act.append(perm);
 			tr.append(act);tbody.append(tr);
 		}
@@ -157,7 +187,7 @@ export default class DevicesModule{
 				const info=this.el('div',undefined,'dev-res-info');
 				info.append(this.el('strong',v.name||'(unnamed)','dev-name'),
 					this.el('span',(v.ip||'—')+'  ·  '+(v.mac||'—'),'dev-mono dev-res-meta'));
-				const online=this.leases.some(l=>normMac(l.macaddr)===normMac(v.mac));
+				const online=this.connected.some(d=>normMac(d.macaddr)===normMac(v.mac));
 				const actions=this.el('div',undefined,'dev-res-actions');
 				actions.append(this.el('span',online?'Online':'Offline','dev-badge '+(online?'static':'dynamic')));
 				const edit=this.el('button','Edit','dev-action');edit.type='button';

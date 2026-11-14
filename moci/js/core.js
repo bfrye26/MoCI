@@ -1,6 +1,6 @@
 // Bump on every frontend release so browsers fetch fresh modules instead of a
 // stale cached bundle. Kept in sync with the query strings in index.html.
-const ASSET_VER = '1.0.0r2';
+const ASSET_VER = '1.0.0r3';
 
 export class OpenWrtCore {
 	constructor() {

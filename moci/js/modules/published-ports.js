@@ -1,7 +1,7 @@
 // Published Ports — a first-class page hosting the UPnP / NAT-PMP workspace so it
 // renders at full content width like the other modern-router pages, instead of a
 // cramped tab inside the legacy Network workspace.
-import UpnpModule from './upnp.js?v=1.0.0r2';
+import UpnpModule from './upnp.js?v=1.0.0r3';
 export default class PublishedPortsModule{
 	constructor(core){
 		this.core=core;
